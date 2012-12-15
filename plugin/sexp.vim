@@ -29,16 +29,18 @@ if !exists('g:sexp_options')
     let g:sexp_options = deepcopy(g:sexp_default_options)
 endif
 
+augroup sexp_autocommands
+    autocmd!
+augroup END
+
+""" Plugin utility functions {{{1
+
 function! s:filetype_autocmd(...)
     if !has_key(g:sexp_options, 'filetypes') | return | endif
     for cmd in a:000
         execute 'autocmd FileType ' . g:sexp_options['filetypes'] . ' ' . cmd
     endfor
 endfunction
-
-augroup sexp_autocommands
-    autocmd!
-augroup END
 
 """ Text object mappings {{{1
 
@@ -47,8 +49,8 @@ if has_key(g:sexp_options, 'textobj_mappings')
 
     augroup sexp_autocommands
         call s:filetype_autocmd(
-            \ 'vnoremap <silent><buffer> <Plug>select_outer_bracket :<C-u>call sexp#select_bracket(0)<CR>',
-            \ 'vnoremap <silent><buffer> <Plug>select_inner_bracket :<C-u>call sexp#select_bracket(1)<CR>',
+            \ 'vnoremap <silent><buffer> <Plug>select_outer_bracket :<C-u>call sexp#select_outer_bracket()<CR>',
+            \ 'vnoremap <silent><buffer> <Plug>select_inner_bracket :<C-u>call sexp#select_inner_bracket()<CR>',
             \ 'vmap <silent><buffer> ' . s:amap . ' <Plug>select_outer_bracket',
             \ 'vmap <silent><buffer> ' . s:imap . ' <Plug>select_inner_bracket',
             \ 'omap <silent><buffer> ' . s:amap . ' :normal v ' . s:amap . '<CR>',

@@ -97,9 +97,7 @@ function! s:move_to_bracket(closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
-""" Exported functions {{{1
-
-function! sexp#select_bracket(offset)
+function! s:select_bracket(offset)
     execute "normal! \<C-Bslash>\<C-n>"
 
     " If we already have some text selected, we assume that we are trying to
@@ -114,7 +112,7 @@ function! sexp#select_bracket(offset)
     if s:current_char() =~ s:opening_bracket
         if visual_repeat
             call s:move_to_bracket(1)
-            call s:move_to_bracket(1)
+            call s:move_to_bracket(1) " Expansion step
             call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
             call setpos("'>", s:pos_with_col_offset(getpos('.'), -a:offset))
         else
@@ -133,4 +131,14 @@ function! sexp#select_bracket(offset)
     endif
 
     normal! gv
+endfunction
+
+""" Exported functions {{{1
+
+function! sexp#select_outer_bracket()
+    call s:select_bracket(0)
+endfunction
+
+function! sexp#select_inner_bracket()
+    call s:select_bracket(1)
 endfunction

@@ -36,6 +36,28 @@ function! s:pos_with_col_offset(pos, offset)
     return [b, l, c + a:offset, o]
 endfunction
 
+function! s:min_by_distance_from(pos, a, b)
+    " First return closest by line difference
+    let line_delta_a = abs(a:pos[1] - a:a[1])
+    let line_delta_b = abs(a:pos[1] - a:b[1])
+    if line_delta_a > line_delta_b
+        return a:b
+    elseif line_delta_a < line_delta_b
+        return a:a
+    " They are on the same line as the cursor
+    elseif line_delta_a == 0
+        let col_delta_a = abs(a:pos[2] - a:a[2])
+        let col_delta_b = abs(a:pos[2] - a:b[2])
+        return col_delta_a > col_delta_b ? a:b : a:a
+    " They are on the same line, but not on the same line as the cursor. If
+    " above the cursor, proximity is closest to eol and vice versa.
+    else
+        let op = a:a[1] - a:pos[1] > 0 ? '>' : '<'
+        execute 'let a_is_closer = ' . a:a[2] . op . a:b[2]
+        return a_is_closer ? a:a : a:b
+    endif
+endfunction
+
 function! s:syntax_name(line, col)
     return synIDattr(synID(a:line, a:col, 0), 'name')
 endfunction
@@ -46,7 +68,7 @@ endfunction
 
 " Position of nearest bracket: 0 for opening, 1 for closing.
 function! s:nearest_bracket(closing)
-    let [_b, cline, ccol, _o] = getpos('.')
+    let pos = getpos('.')
     let closest = []
     let flags = a:closing ? 'n' : 'bn'
     let stopline = a:closing ? line('$') : 1
@@ -57,13 +79,14 @@ function! s:nearest_bracket(closing)
             \ stopline)
         if !line | continue | endif
 
-        if empty(closest) || ((abs(line - cline) <= abs(closest[1] - cline)) &&
-                           \  (abs(col - ccol) < abs(closest[2] - ccol)))
-            let closest = [_b, line, col, _o]
+        if empty(closest)
+            let closest = [0, line, col, 0]
+        else
+            let closest = s:min_by_distance_from(pos, closest, [0, line, col, 0])
         endif
     endfor
 
-    return empty(closest) ? [_b, 0, 0, _o] : closest
+    return empty(closest) ? [0, 0, 0, 0] : closest
 endfunction
 
 " Tries to move cursor to nearest bracket; same arguments as s:nearest_bracket
@@ -73,7 +96,7 @@ function! s:move_to_bracket(closing)
 endfunction
 
 function! s:visual_bracket(offset)
-    execute "normal! \<C-\\>\<C-n>"
+    execute "normal! \<C-Bslash>\<C-n>"
 
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
@@ -108,6 +131,7 @@ function! s:visual_bracket(offset)
     normal! gv
 endfunction
 
+nnoremap f :<C-u>call <SID>move_to_bracket(1)<CR>
 vnoremap af :<C-u>call <SID>visual_bracket(0)<CR>
 vnoremap if :<C-u>call <SID>visual_bracket(1)<CR>
 omap af :normal vaf<CR>

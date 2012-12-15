@@ -31,6 +31,11 @@ function! s:previous_char()
     return getline('.')[col('.')-2]
 endfunction
 
+function! s:pos_with_col_offset(pos, offset)
+    let [b, l, c, o] = a:pos
+    return [b, l, c + a:offset, o]
+endfunction
+
 function! s:syntax_name(line, col)
     return synIDattr(synID(a:line, a:col, 0), 'name')
 endfunction
@@ -67,21 +72,20 @@ function! s:move_to_bracket(closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
-function! s:pos_with_col_offset(pos, offset)
-    let [b, l, c, o] = a:pos
-    return [b, l, c + a:offset, o]
-endfunction
-
 function! s:visual_bracket(offset)
-    let vmode = visualmode()
     execute "normal! \<C-\\>\<C-n>"
 
-    if s:current_char() =~ s:opening_bracket || s:previous_char() =~ s:opening_bracket
-        " Native text objects expand when repeating inner motions too
-        if s:current_char() !~ s:opening_bracket | execute 'normal! h' | endif
+    " If we already have some text selected, we assume that we are trying to
+    " expand our selection.
+    let visual_repeat = visualmode() =~? '\v^v' && getpos("'<") != getpos("'>")
 
-        " If we're already in visual mode, we want to expand the selection
-        if vmode =~? '\v^v'
+    " Native text objects expand when repeating inner motions too
+    if visual_repeat && s:previous_char() =~ s:opening_bracket
+        normal! h
+    endif
+
+    if s:current_char() =~ s:opening_bracket
+        if visual_repeat
             call s:move_to_bracket(1)
             call s:move_to_bracket(1)
             call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
@@ -106,3 +110,5 @@ endfunction
 
 vnoremap af :<C-u>call <SID>visual_bracket(0)<CR>
 vnoremap if :<C-u>call <SID>visual_bracket(1)<CR>
+omap af :normal vaf<CR>
+omap if :normal vif<CR>

@@ -18,6 +18,8 @@ if exists('g:autoloaded_vim_sexp')
 endif
 let g:autoloaded_vim_sexp = 1
 
+""" Bracket patterns {{{1
+
 let s:bracket = '\v[\(\)\[\]\{\}]'
 let s:opening_bracket = '\v[\(\[\{]'
 let s:closing_bracket = '\v[\)\]\}]'
@@ -52,9 +54,9 @@ function! s:min_by_distance_from(pos, a, b)
         let col_delta_b = abs(a:pos[2] - a:b[2])
         return col_delta_a > col_delta_b ? a:b : a:a
     " They are on the same line, but not on the same line as the cursor. If
-    " above the cursor, proximity is closest to eol and vice versa.
+    " below the cursor, proximity is closest to bol and vice versa.
     else
-        let op = a:a[1] - a:pos[1] > 0 ? '<' : '>'
+        let op = a:pos[1] - a:a[1] < 0 ? '<' : '>'
         execute 'let a_is_closer = ' . a:a[2] . op . a:b[2]
         return a_is_closer ? a:a : a:b
     endif

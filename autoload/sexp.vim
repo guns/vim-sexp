@@ -97,8 +97,9 @@ function! s:move_to_bracket(closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
-function! s:select_bracket(offset)
-    execute "normal! \<C-Bslash>\<C-n>"
+" Breaks insert mode and potentially moves the cursor!
+function! s:set_bracket_marks(offset)
+    stopinsert
 
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
@@ -129,16 +130,31 @@ function! s:select_bracket(offset)
             call setpos("'>", s:pos_with_col_offset(pos, -a:offset))
         endif
     endif
+endfunction
 
-    normal! gv
+function! s:wrap_and_insert(bra, ket, at_end)
+    let pos = s:nearest_bracket(1)
+    " if pos[1]
+    " else
+    " endif
 endfunction
 
 """ Exported functions {{{1
 
 function! sexp#select_outer_bracket()
-    call s:select_bracket(0)
+    call s:set_bracket_marks(0)
+    normal! gv
 endfunction
 
 function! sexp#select_inner_bracket()
-    call s:select_bracket(1)
+    call s:set_bracket_marks(1)
+    normal! gv
+endfunction
+
+function! sexp#wrap_round_and_insert_at_tail()
+    call s:wrap_and_insert('(', ')', 1)
+endfunction
+
+function! sexp#wrap_round_and_insert_at_head()
+    call s:wrap_and_insert('(', ')', 0)
 endfunction

@@ -22,8 +22,11 @@ let g:loaded_vim_sexp = 1
 
 let g:sexp_default_options = {
     \ 'filetypes': 'clojure,scheme,lisp',
-    \ 'textobj_mappings': ['af', 'if']
-    \ }
+    \ 'mappings': {
+    \   'wrap_round_and_insert_at_tail': '<Leader>w',
+    \   'wrap_round_and_insert_at_head': '<Leader>W'
+    \ },
+    \ 'textobj_mappings': ['af', 'if'] }
 
 if !exists('g:sexp_options')
     let g:sexp_options = deepcopy(g:sexp_default_options)
@@ -42,6 +45,18 @@ function! s:filetype_autocmd(...)
     endfor
 endfunction
 
+""" Sexp mappings {{{1
+
+if has_key(g:sexp_options, 'mappings')
+    for s:funcname in keys(g:sexp_options['mappings'])
+        augroup sexp_autocommands
+            call s:filetype_autocmd('nnoremap <silent><buffer> ' .
+                                  \ g:sexp_options['mappings'][s:funcname] .
+                                  \ ' :<C-u>call sexp#' . s:funcname . '()<CR>')
+        augroup END
+    endfor
+endif
+
 """ Text object mappings {{{1
 
 if has_key(g:sexp_options, 'textobj_mappings')
@@ -52,7 +67,6 @@ if has_key(g:sexp_options, 'textobj_mappings')
             \ 'vmap <silent><buffer> ' . s:amap . ' :<C-u>call sexp#select_outer_bracket()<CR>',
             \ 'vmap <silent><buffer> ' . s:imap . ' :<C-u>call sexp#select_inner_bracket()<CR>',
             \ 'omap <silent><buffer> ' . s:amap . ' :normal v ' . s:amap . '<CR>',
-            \ 'omap <silent><buffer> ' . s:imap . ' :normal v ' . s:imap . '<CR>'
-            \ )
+            \ 'omap <silent><buffer> ' . s:imap . ' :normal v ' . s:imap . '<CR>')
     augroup END
 endif

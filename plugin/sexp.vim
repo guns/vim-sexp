@@ -49,10 +49,8 @@ if has_key(g:sexp_options, 'textobj_mappings')
 
     augroup sexp_autocommands
         call s:filetype_autocmd(
-            \ 'vnoremap <silent><buffer> <Plug>select_outer_bracket :<C-u>call sexp#select_outer_bracket()<CR>',
-            \ 'vnoremap <silent><buffer> <Plug>select_inner_bracket :<C-u>call sexp#select_inner_bracket()<CR>',
-            \ 'vmap <silent><buffer> ' . s:amap . ' <Plug>select_outer_bracket',
-            \ 'vmap <silent><buffer> ' . s:imap . ' <Plug>select_inner_bracket',
+            \ 'vmap <silent><buffer> ' . s:amap . ' :<C-u>call sexp#select_outer_bracket()<CR>',
+            \ 'vmap <silent><buffer> ' . s:imap . ' :<C-u>call sexp#select_inner_bracket()<CR>',
             \ 'omap <silent><buffer> ' . s:amap . ' :normal v ' . s:amap . '<CR>',
             \ 'omap <silent><buffer> ' . s:imap . ' :normal v ' . s:imap . '<CR>'
             \ )

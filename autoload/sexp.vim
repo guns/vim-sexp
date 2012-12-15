@@ -54,7 +54,7 @@ function! s:min_by_distance_from(pos, a, b)
     " They are on the same line, but not on the same line as the cursor. If
     " above the cursor, proximity is closest to eol and vice versa.
     else
-        let op = a:a[1] - a:pos[1] > 0 ? '>' : '<'
+        let op = a:a[1] - a:pos[1] > 0 ? '<' : '>'
         execute 'let a_is_closer = ' . a:a[2] . op . a:b[2]
         return a_is_closer ? a:a : a:b
     endif

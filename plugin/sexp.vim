@@ -95,7 +95,7 @@ function! s:move_to_bracket(closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
-function! s:visual_bracket(offset)
+function! s:select_bracket(offset)
     execute "normal! \<C-Bslash>\<C-n>"
 
     " If we already have some text selected, we assume that we are trying to
@@ -131,8 +131,10 @@ function! s:visual_bracket(offset)
     normal! gv
 endfunction
 
-nnoremap f :<C-u>call <SID>move_to_bracket(1)<CR>
-vnoremap af :<C-u>call <SID>visual_bracket(0)<CR>
-vnoremap if :<C-u>call <SID>visual_bracket(1)<CR>
+vnoremap <Plug>select_outer_bracket :<C-u>call <SID>select_bracket(0)<CR>
+vnoremap <Plug>select_inner_bracket :<C-u>call <SID>select_bracket(1)<CR>
+
+vmap af <Plug>select_outer_bracket
+vmap if <Plug>select_inner_bracket
 omap af :normal vaf<CR>
 omap if :normal vif<CR>

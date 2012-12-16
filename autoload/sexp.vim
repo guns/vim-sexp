@@ -177,21 +177,24 @@ function! s:insert_brackets_around_current_word(bra, ket, at_head)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
 endfunction
 
-" Place brackets around scope, then place cursor at head or tail
+" Place brackets around scope, then place cursor at head or tail.
 function! sexp#wrap(scope, bra, ket, at_head)
     let original_start = getpos("'<")
     let original_end = getpos("'>")
 
-    " Wrap form
+    " Wrap form.
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
-    " Wrap word. Much easier since we can use builtin viw
+    " Wrap form if on bracket, word otherwise
     elseif a:scope ==# 'w'
         if s:current_char() =~ s:bracket
             call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
         else
             call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head)
         endif
+    " Wrap current visual selection
+    elseif a:scope ==# 'v'
+        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
     endif
 
     call setpos("'<", original_start)

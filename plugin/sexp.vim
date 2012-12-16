@@ -79,24 +79,43 @@ endif
 
 """ Sexp mappings {{{1
 
-nnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('f', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('f', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('f', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('f', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('f', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('f', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+" These definitions could be created in a loop, but we'll keep them in long
+" form for easy grepping.
 
+" Wrap form
+nnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('f', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('f', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('f', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('f', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('f', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('f', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+
+" Wrap word
 nnoremap <silent> <Plug>sexp_word_wrap_round_head  :<C-u>call sexp#wrap('w', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_word_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 nnoremap <silent> <Plug>sexp_word_wrap_round_tail  :<C-u>call sexp#wrap('w', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_word_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 nnoremap <silent> <Plug>sexp_word_wrap_square_head :<C-u>call sexp#wrap('w', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_word_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 nnoremap <silent> <Plug>sexp_word_wrap_square_tail :<C-u>call sexp#wrap('w', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_word_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 nnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('w', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 nnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('w', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+vnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)
         if !empty(g:sexp_mappings[s:plug])
-            call s:filetype_autocmd('nmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>' . s:plug)
+            call s:filetype_autocmd(
+                \ 'nmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>' . s:plug,
+                \ 'vmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>' . s:plug)
         endif
     endfor
 endif

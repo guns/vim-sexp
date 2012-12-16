@@ -33,6 +33,7 @@ if !exists('g:sexp_textobj_mapping')
 endif
 
 if !exists('g:sexp_mappings')
+    " FIXME: Set to LocalLeader before release!
     let g:sexp_mappings = {
         \ 'sexp_form_wrap_round_head':  '<Leader>i',
         \ 'sexp_form_wrap_round_tail':  '<Leader>I',

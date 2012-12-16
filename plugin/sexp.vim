@@ -34,18 +34,18 @@ endif
 
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {
-        \ 'form_wrap_round_head':  '<Leader>i',
-        \ 'form_wrap_round_tail':  '<Leader>I',
-        \ 'form_wrap_square_head': '<Leader>[',
-        \ 'form_wrap_square_tail': '<Leader>]',
-        \ 'form_wrap_curly_head':  '<Leader>{',
-        \ 'form_wrap_curly_tail':  '<Leader>}',
-        \ 'word_wrap_round_head':  '<Leader>W',
-        \ 'word_wrap_round_tail':  '<Leader>w',
-        \ 'word_wrap_square_head': '',
-        \ 'word_wrap_square_tail': '',
-        \ 'word_wrap_curly_head':  '',
-        \ 'word_wrap_curly_tail':  '',
+        \ 'sexp_form_wrap_round_head':  '<Leader>i',
+        \ 'sexp_form_wrap_round_tail':  '<Leader>I',
+        \ 'sexp_form_wrap_square_head': '<Leader>[',
+        \ 'sexp_form_wrap_square_tail': '<Leader>]',
+        \ 'sexp_form_wrap_curly_head':  '<Leader>{',
+        \ 'sexp_form_wrap_curly_tail':  '<Leader>}',
+        \ 'sexp_word_wrap_round_head':  '<Leader>W',
+        \ 'sexp_word_wrap_round_tail':  '<Leader>w',
+        \ 'sexp_word_wrap_square_head': '',
+        \ 'sexp_word_wrap_square_tail': '',
+        \ 'sexp_word_wrap_curly_head':  '',
+        \ 'sexp_word_wrap_curly_tail':  '',
     \ }
 endif
 
@@ -96,7 +96,7 @@ nnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('w', '{'
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)
         if !empty(g:sexp_mappings[s:plug])
-            call s:filetype_autocmd('nmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>sexp_' . s:plug)
+            call s:filetype_autocmd('nmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>' . s:plug)
         endif
     endfor
 endif

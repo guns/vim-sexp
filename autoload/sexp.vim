@@ -177,6 +177,7 @@ function! s:insert_brackets_around_current_word(bra, ket, at_head)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
 endfunction
 
+" Place brackets around scope, then place cursor at head or tail
 function! sexp#wrap(scope, bra, ket, at_head)
     let original_start = getpos("'<")
     let original_end = getpos("'>")

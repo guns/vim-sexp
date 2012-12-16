@@ -89,16 +89,14 @@ function! s:nearest_bracket(closing)
     return empty(closest) ? [0, 0, 0, 0] : closest
 endfunction
 
-" Tries to move cursor to nearest bracket; same arguments as s:nearest_bracket
+" Tries to move cursor to nearest bracket; same parameters as s:nearest_bracket
 function! s:move_to_bracket(closing)
     let pos = s:nearest_bracket(a:closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
-" Breaks insert mode and potentially moves the cursor!
+" Potentially moves the cursor!
 function! sexp#set_bracket_marks(offset)
-    stopinsert
-
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
     let visual_repeat = visualmode() =~? '\v^v' && getpos("'<") != getpos("'>")
@@ -185,18 +183,46 @@ function! sexp#wrap(scope, bra, ket, at_head)
     " Wrap form.
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
-    " Wrap form if on bracket, word otherwise
+    " Wrap form if on bracket, word otherwise.
     elseif a:scope ==# 'w'
         if s:current_char() =~ s:bracket
             call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
         else
             call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head)
         endif
-    " Wrap current visual selection
+    " Wrap current visual selection.
     elseif a:scope ==# 'v'
         call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
     endif
 
     call setpos("'<", original_start)
     call setpos("'>", original_end)
+endfunction
+
+" Remove brackets from current form, keeping the cursor in place
+function! sexp#splice_form()
+    let original_start = getpos("'<")
+    let original_end = getpos("'>")
+    let original_pos = getpos('.')
+
+    call setpos("'<", [0, 0, 0, 0])
+    call sexp#set_bracket_marks(0)
+
+    let start = getpos("'<")
+
+    if start[1] > 0
+        " Delete ending bracket first so we don't mess up '<
+        call setpos('.', getpos("'>"))
+        normal! dl
+        call setpos('.', start)
+        normal! dl
+        " If leading bracket was on same line, we need to shift the cursor too
+        if start[1] == original_pos[1]
+            let original_pos = s:pos_with_col_offset(original_pos, -1)
+        endif
+    endif
+
+    call setpos("'<", original_start)
+    call setpos("'>", original_end)
+    call setpos('.', original_pos)
 endfunction

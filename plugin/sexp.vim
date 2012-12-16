@@ -48,6 +48,7 @@ if !exists('g:sexp_mappings')
         \ 'sexp_word_wrap_curly_head':  '',
         \ 'sexp_word_wrap_curly_tail':  '',
         \ 'sexp_raise_form':            '<Leader>o',
+        \ 'sexp_splice_form':           '<Leader>O',
     \ }
 endif
 
@@ -117,6 +118,10 @@ vnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{'
 " Raise form
 nmap <silent> <Plug>sexp_raise_form d<Plug>sexp_textobj_outer_formv<Plug>sexp_textobj_outer_formp
 vmap <silent> <Plug>sexp_raise_form dv<Plug>sexp_textobj_outer_formp
+
+" Splice form
+nnoremap <silent> <Plug>sexp_splice_form :<C-u>call sexp#splice_form()<CR>
+vnoremap <silent> <Plug>sexp_splice_form :<C-u>call sexp#splice_form()<CR>
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)

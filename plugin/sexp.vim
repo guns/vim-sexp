@@ -13,60 +13,90 @@
 " License:  MIT
 " Homepage: https://github.com/guns/vim-sexp
 
-if exists('g:loaded_vim_sexp')
+if exists('g:__sexp_loaded__')
     finish
 endif
-let g:loaded_vim_sexp = 1
+let g:__sexp_loaded__ = 1
 
 """ Default options {{{1
 
-let g:sexp_default_options = {
-    \ 'filetypes': 'clojure,scheme,lisp',
-    \ 'mappings': {
-    \   'wrap_round_and_insert_at_tail': '<Leader>w',
-    \   'wrap_round_and_insert_at_head': '<Leader>W'
-    \ },
-    \ 'textobj_mappings': ['af', 'if'] }
+if !exists('g:sexp_filetypes')
+    let g:sexp_filetypes = 'clojure,scheme,lisp'
+endif
 
-if !exists('g:sexp_options')
-    let g:sexp_options = deepcopy(g:sexp_default_options)
+if !exists('g:sexp_wrap_insert')
+    let g:sexp_wrap_insert = 1
+endif
+
+if !exists('g:sexp_textobj_mapping')
+    let g:sexp_textobj_mapping = 'f'
+endif
+
+if !exists('g:sexp_mappings')
+    let g:sexp_mappings = {
+        \ 'form_wrap_round_head':  '<Leader>i',
+        \ 'form_wrap_round_tail':  '<Leader>I',
+        \ 'form_wrap_square_head': '<Leader>[',
+        \ 'form_wrap_square_tail': '<Leader>]',
+        \ 'form_wrap_curly_head':  '<Leader>{',
+        \ 'form_wrap_curly_tail':  '<Leader>}',
+        \ 'word_wrap_round_head':  '<Leader>W',
+        \ 'word_wrap_round_tail':  '<Leader>w',
+        \ 'word_wrap_square_head': '',
+        \ 'word_wrap_square_tail': '',
+        \ 'word_wrap_curly_head':  '',
+        \ 'word_wrap_curly_tail':  '',
+    \ }
 endif
 
 augroup sexp_autocommands
     autocmd!
 augroup END
 
-""" Plugin utility functions {{{1
+""" Utility functions {{{1
 
 function! s:filetype_autocmd(...)
-    if !has_key(g:sexp_options, 'filetypes') | return | endif
-    for cmd in a:000
-        execute 'autocmd FileType ' . g:sexp_options['filetypes'] . ' ' . cmd
-    endfor
+    if empty(g:sexp_filetypes) | return | endif
+    augroup sexp_autocommands
+        for cmd in a:000
+            execute 'autocmd FileType ' . g:sexp_filetypes . ' ' . cmd
+        endfor
+    augroup END
 endfunction
+
+""" Textobj mappings {{{1
+
+vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_bracket_marks(0) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#set_bracket_marks(1) \| normal! gv<CR>
+
+if !empty(g:sexp_textobj_mapping)
+    call s:filetype_autocmd(
+        \ 'vmap <silent><buffer> a' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_outer_form',
+        \ 'vmap <silent><buffer> i' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_inner_form',
+        \ 'omap <silent><buffer> a' . g:sexp_textobj_mapping . ' :normal va' . g:sexp_textobj_mapping . '<CR>',
+        \ 'omap <silent><buffer> i' . g:sexp_textobj_mapping . ' :normal vi' . g:sexp_textobj_mapping . '<CR>')
+endif
 
 """ Sexp mappings {{{1
 
-if has_key(g:sexp_options, 'mappings')
-    for s:funcname in keys(g:sexp_options['mappings'])
-        augroup sexp_autocommands
-            call s:filetype_autocmd('nnoremap <silent><buffer> ' .
-                                  \ g:sexp_options['mappings'][s:funcname] .
-                                  \ ' :<C-u>call sexp#' . s:funcname . '()<CR>')
-        augroup END
+nnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('f', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('f', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('f', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('f', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('f', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('f', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+
+nnoremap <silent> <Plug>sexp_word_wrap_round_head  :<C-u>call sexp#wrap('w', '(', ')', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_word_wrap_round_tail  :<C-u>call sexp#wrap('w', '(', ')', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_word_wrap_square_head :<C-u>call sexp#wrap('w', '[', ']', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_word_wrap_square_tail :<C-u>call sexp#wrap('w', '[', ']', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('w', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+nnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('w', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+
+if !empty(g:sexp_mappings)
+    for s:plug in keys(g:sexp_mappings)
+        if !empty(g:sexp_mappings[s:plug])
+            call s:filetype_autocmd('nmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>sexp_' . s:plug)
+        endif
     endfor
-endif
-
-""" Text object mappings {{{1
-
-if has_key(g:sexp_options, 'textobj_mappings')
-    let [s:amap, s:imap] = g:sexp_options['textobj_mappings']
-
-    augroup sexp_autocommands
-        call s:filetype_autocmd(
-            \ 'vmap <silent><buffer> ' . s:amap . ' :<C-u>call sexp#select_outer_bracket()<CR>',
-            \ 'vmap <silent><buffer> ' . s:imap . ' :<C-u>call sexp#select_inner_bracket()<CR>',
-            \ 'omap <silent><buffer> ' . s:amap . ' :normal v ' . s:amap . '<CR>',
-            \ 'omap <silent><buffer> ' . s:imap . ' :normal v ' . s:imap . '<CR>')
-    augroup END
 endif

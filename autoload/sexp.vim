@@ -13,19 +13,15 @@
 " License:  MIT
 " Homepage: https://github.com/guns/vim-sexp
 
-if exists('g:autoloaded_vim_sexp')
+if exists('g:__sexp_autoloaded__')
     finish
 endif
-let g:autoloaded_vim_sexp = 1
-
-""" Bracket patterns {{{1
+let g:__sexp_autoloaded__ = 1
 
 let s:bracket = '\v[\(\)\[\]\{\}]'
 let s:opening_bracket = '\v[\(\[\{]'
 let s:closing_bracket = '\v[\)\]\}]'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
-
-""" Utility functions {{{1
 
 function! s:current_char()
     return getline('.')[col('.')-1]
@@ -100,7 +96,7 @@ function! s:move_to_bracket(closing)
 endfunction
 
 " Breaks insert mode and potentially moves the cursor!
-function! s:set_bracket_marks(offset)
+function! sexp#set_bracket_marks(offset)
     stopinsert
 
     " If we already have some text selected, we assume that we are trying to
@@ -134,29 +130,69 @@ function! s:set_bracket_marks(offset)
     endif
 endfunction
 
-function! s:wrap_and_insert(bra, ket, at_end)
-    let pos = s:nearest_bracket(1)
-    " if pos[1]
-    " else
-    " endif
+function! s:with_saved_position(cmd)
+    let pos = getpos('.')
+    try
+        let val = eval(a:cmd)
+    finally
+        call setpos('.', pos)
+    endtry
+    return val
 endfunction
 
-""" Exported functions {{{1
+" If line of '< is less than 1, inserts brackets at cursor
+function! s:insert_brackets_around_visual_marks(bra, ket, at_head)
+    let start = getpos("'<")
+    let end = getpos("'>")
 
-function! sexp#select_outer_bracket()
-    call s:set_bracket_marks(0)
-    normal! gv
+    " No form, just insert brackets
+    if start[1] < 1
+        execute 'normal! i' . a:bra . a:ket
+    elseif a:at_head
+        call setpos('.', end)
+        execute 'normal! a' . a:ket
+        call setpos('.', start)
+        execute 'normal! i' . a:bra . ' '
+    else
+        call setpos('.', start)
+        execute 'normal! i' . a:bra
+        " Did we just insert a character on the same line?
+        let end = start[1] == end[1] ? s:pos_with_col_offset(end, len(a:bra)) : end
+        call setpos('.', end)
+        execute 'normal! a' . a:ket
+    endif
 endfunction
 
-function! sexp#select_inner_bracket()
-    call s:set_bracket_marks(1)
-    normal! gv
+" Mangles visual marks!
+function! s:insert_brackets_around_current_form(bra, ket, at_head)
+    call setpos("'<", [0, 0, 0, 0])
+    call s:with_saved_position('sexp#set_bracket_marks(0)')
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
 endfunction
 
-function! sexp#wrap_round_and_insert_at_tail()
-    call s:wrap_and_insert('(', ')', 1)
+" Mangles visual marks!
+function! s:insert_brackets_around_current_word(bra, ket, at_head)
+    call setpos("'<", [0, 0, 0, 0])
+    execute "normal! viw\<Esc>"
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
 endfunction
 
-function! sexp#wrap_round_and_insert_at_head()
-    call s:wrap_and_insert('(', ')', 0)
+function! sexp#wrap(scope, bra, ket, at_head)
+    let original_start = getpos("'<")
+    let original_end = getpos("'>")
+
+    " Wrap form
+    if a:scope ==# 'f'
+        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
+    " Wrap word. Much easier since we can use builtin viw
+    elseif a:scope ==# 'w'
+        if s:current_char() =~ s:bracket
+            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
+        else
+            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head)
+        endif
+    endif
+
+    call setpos("'<", original_start)
+    call setpos("'>", original_end)
 endfunction

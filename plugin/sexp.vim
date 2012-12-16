@@ -47,7 +47,7 @@ if !exists('g:sexp_mappings')
         \ 'sexp_word_wrap_square_tail': '',
         \ 'sexp_word_wrap_curly_head':  '',
         \ 'sexp_word_wrap_curly_tail':  '',
-        \ 'sexp_raise_form':            '<Leader>o',
+        \ 'sexp_lift_form':             '<Leader>o',
         \ 'sexp_splice_form':           '<Leader>O',
     \ }
 endif
@@ -115,9 +115,9 @@ vnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('v', '{'
 nnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('w', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 vnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 
-" Raise form
-nmap <silent> <Plug>sexp_raise_form d<Plug>sexp_textobj_outer_formv<Plug>sexp_textobj_outer_formp
-vmap <silent> <Plug>sexp_raise_form dv<Plug>sexp_textobj_outer_formp
+" Lift form
+nmap <silent> <Plug>sexp_lift_form d<Plug>sexp_textobj_outer_formv<Plug>sexp_textobj_outer_formp
+vmap <silent> <Plug>sexp_lift_form dv<Plug>sexp_textobj_outer_formp
 
 " Splice form
 nnoremap <silent> <Plug>sexp_splice_form :<C-u>call sexp#splice_form()<CR>

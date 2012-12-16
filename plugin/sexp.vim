@@ -47,6 +47,7 @@ if !exists('g:sexp_mappings')
         \ 'sexp_word_wrap_square_tail': '',
         \ 'sexp_word_wrap_curly_head':  '',
         \ 'sexp_word_wrap_curly_tail':  '',
+        \ 'sexp_raise_form':            '<Leader>o',
     \ }
 endif
 
@@ -68,14 +69,16 @@ endfunction
 """ Textobj mappings {{{1
 
 vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_bracket_marks(0) \| normal! gv<CR>
+omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>execute "normal v\<Plug>sexp_textobj_outer_form"<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#set_bracket_marks(1) \| normal! gv<CR>
+omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>execute "normal v\<Plug>sexp_textobj_inner_form"<CR>
 
 if !empty(g:sexp_textobj_mapping)
     call s:filetype_autocmd(
         \ 'vmap <silent><buffer> a' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_outer_form',
+        \ 'omap <silent><buffer> a' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_outer_form',
         \ 'vmap <silent><buffer> i' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_inner_form',
-        \ 'omap <silent><buffer> a' . g:sexp_textobj_mapping . ' :normal va' . g:sexp_textobj_mapping . '<CR>',
-        \ 'omap <silent><buffer> i' . g:sexp_textobj_mapping . ' :normal vi' . g:sexp_textobj_mapping . '<CR>')
+        \ 'omap <silent><buffer> i' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_inner_form')
 endif
 
 """ Sexp mappings {{{1
@@ -110,6 +113,10 @@ nnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('w', '{'
 vnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 1) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 nnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('w', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
 vnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 0) \| if g:sexp_wrap_insert \| startinsert \| endif<CR>
+
+" Raise form
+nmap <silent> <Plug>sexp_raise_form d<Plug>sexp_textobj_outer_formv<Plug>sexp_textobj_outer_formp
+vmap <silent> <Plug>sexp_raise_form dv<Plug>sexp_textobj_outer_formp
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)

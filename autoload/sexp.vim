@@ -67,8 +67,8 @@ function! s:is_ignored_scope(line, col)
     return s:syntax_name(a:line, a:col) =~? '\vstring|comment|char'
 endfunction
 
-" Returns 1 if character at position is a string; handles empty lines in
-" string that return a synID of 0.
+" Returns 1 if character at position is a string; handles empty lines, which
+" always return a synID of 0.
 function! s:is_string(line, col)
     if s:syntax_name(a:line, a:col) =~? 'string'
         return 1
@@ -115,7 +115,7 @@ function! s:move_to_nearest_bracket(closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
-" Position of start or end of current string: 0 for start, 1 for end.
+" Position of start / end of current string: 0 for start, 1 for end.
 "
 " We can't rely on va" or on searchpairpos() because they don't work well
 " on symmetric patterns. Also, we aren't searching for just double quotes

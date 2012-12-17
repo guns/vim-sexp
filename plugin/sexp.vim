@@ -70,7 +70,7 @@ function! s:filetype_autocmd(...)
     augroup END
 endfunction
 
-""" Textobj mappings {{{1
+""" Text object mappings {{{1
 
 " Current form
 vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_marks_around_current_form(0) \| normal! gv<CR>
@@ -100,7 +100,7 @@ if has_key(g:sexp_textobj_mappings, 'string')
         \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_inner_string')
 endif
 
-""" Sexp mappings {{{1
+""" S-expression mappings {{{1
 
 " These definitions could be created in a loop, but we'll keep them in long
 " form for easy grepping.

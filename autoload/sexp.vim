@@ -89,13 +89,13 @@ function! s:nearest_bracket(closing)
 endfunction
 
 " Tries to move cursor to nearest bracket; same parameters as s:nearest_bracket
-function! s:move_to_bracket(closing)
+function! s:move_to_nearest_bracket(closing)
     let pos = s:nearest_bracket(a:closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
 " Potentially moves the cursor!
-function! sexp#set_bracket_marks(offset)
+function! sexp#set_marks_around_current_form(offset)
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
     let visual_repeat = visualmode() =~# '\v^[vV]' && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
@@ -107,8 +107,8 @@ function! sexp#set_bracket_marks(offset)
 
     if s:current_char() =~ s:opening_bracket
         if visual_repeat
-            call s:move_to_bracket(1)
-            call s:move_to_bracket(1) " Expansion step
+            call s:move_to_nearest_bracket(1)
+            call s:move_to_nearest_bracket(1) " Expansion step
             call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
             call setpos("'>", s:pos_with_col_offset(getpos('.'), -a:offset))
         else
@@ -206,7 +206,7 @@ function! sexp#splice_form()
     let cursor = getpos('.')
 
     call setpos("'<", [0, 0, 0, 0])
-    call sexp#set_bracket_marks(0)
+    call sexp#set_marks_around_current_form(0)
 
     let start = getpos("'<")
 

@@ -69,9 +69,9 @@ endfunction
 
 """ Textobj mappings {{{1
 
-vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_bracket_marks(0) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_marks_around_current_form(0) \| normal! gv<CR>
 omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>execute "normal v\<Plug>sexp_textobj_outer_form"<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#set_bracket_marks(1) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#set_marks_around_current_form(1) \| normal! gv<CR>
 omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>execute "normal v\<Plug>sexp_textobj_inner_form"<CR>
 
 if !empty(g:sexp_textobj_mapping)

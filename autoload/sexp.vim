@@ -69,7 +69,7 @@ endfunction
 
 " Position of nearest bracket: 0 for opening, 1 for closing.
 function! s:nearest_bracket(closing)
-    let pos = getpos('.')
+    let cursor = getpos('.')
     let closest = []
     let flags = a:closing ? 'n' : 'bn'
     let stopline = a:closing ? line('$') : 1
@@ -83,7 +83,7 @@ function! s:nearest_bracket(closing)
         if empty(closest)
             let closest = [0, line, col, 0]
         else
-            let closest = s:min_by_distance_from(pos, closest, [0, line, col, 0])
+            let closest = s:min_by_distance_from(cursor, closest, [0, line, col, 0])
         endif
     endfor
 
@@ -129,12 +129,12 @@ function! sexp#set_bracket_marks(offset)
     endif
 endfunction
 
-function! s:with_saved_position(cmd)
-    let pos = getpos('.')
+function! s:with_unmoved_cursor(cmd)
+    let cursor = getpos('.')
     try
         let val = eval(a:cmd)
     finally
-        call setpos('.', pos)
+        call setpos('.', cursor)
     endtry
     return val
 endfunction
@@ -165,7 +165,7 @@ endfunction
 " Mangles visual marks!
 function! s:insert_brackets_around_current_form(bra, ket, at_head)
     call setpos("'<", [0, 0, 0, 0])
-    call s:with_saved_position('sexp#set_bracket_marks(0)')
+    call s:with_unmoved_cursor('sexp#set_bracket_marks(0)')
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
 endfunction
 
@@ -204,7 +204,7 @@ endfunction
 function! sexp#splice_form()
     let original_start = getpos("'<")
     let original_end = getpos("'>")
-    let original_pos = getpos('.')
+    let cursor = getpos('.')
 
     call setpos("'<", [0, 0, 0, 0])
     call sexp#set_bracket_marks(0)
@@ -219,11 +219,11 @@ function! sexp#splice_form()
         normal! dl
         " If leading bracket was on same line, we need to shift the cursor too
         if start[1] == original_pos[1]
-            let original_pos = s:pos_with_col_offset(original_pos, -1)
+            let cursor = s:pos_with_col_offset(original_pos, -1)
         endif
     endif
 
     call setpos("'<", original_start)
     call setpos("'>", original_end)
-    call setpos('.', original_pos)
+    call setpos('.', cursor)
 endfunction

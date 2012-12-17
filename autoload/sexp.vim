@@ -71,16 +71,14 @@ endfunction
 function! s:nearest_bracket(closing)
     let cursor = getpos('.')
     let closest = []
-    let flags = a:closing ? 'n' : 'bn'
-    let stopline = a:closing ? line('$') : 1
+    let flags = a:closing ? 'nW' : 'bnW'
 
     for [start, end] in s:pairs
-        let [line, col] = searchpairpos(start, '', end, flags,
-            \ 's:is_ignored_scope(line("."), col("."))',
-            \ stopline)
-        if !line | continue | endif
+        let [line, col] = searchpairpos(start, '', end, flags, 's:is_ignored_scope(line("."), col("."))')
 
-        if empty(closest)
+        if line < 1
+            continue
+        elseif empty(closest)
             let closest = [0, line, col, 0]
         else
             let closest = s:min_by_distance_from(cursor, closest, [0, line, col, 0])

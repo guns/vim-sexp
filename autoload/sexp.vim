@@ -200,7 +200,8 @@ function! sexp#wrap(scope, bra, ket, at_head)
     call setpos("'>", original_end)
 endfunction
 
-" Remove brackets from current form, keeping the cursor in place
+" Remove brackets from current form, placing cursor at position of now-deleted
+" first bracket.
 function! sexp#splice_form()
     let original_start = getpos("'<")
     let original_end = getpos("'>")
@@ -217,13 +218,10 @@ function! sexp#splice_form()
         normal! dl
         call setpos('.', start)
         normal! dl
-        " If leading bracket was on same line, we need to shift the cursor too
-        if start[1] == original_pos[1]
-            let cursor = s:pos_with_col_offset(original_pos, -1)
-        endif
+    else
+        call setpos('.' cursor)
     endif
 
     call setpos("'<", original_start)
     call setpos("'>", original_end)
-    call setpos('.', cursor)
 endfunction

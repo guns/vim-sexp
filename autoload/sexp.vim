@@ -18,6 +18,7 @@ if exists('g:__sexp_autoloaded__')
 endif
 let g:__sexp_autoloaded__ = 1
 
+" Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
 let s:bracket = '\v[\(\)\[\]\{\}]'
 let s:opening_bracket = '\v[\(\[\{]'
 let s:closing_bracket = '\v[\)\]\}]'

@@ -67,6 +67,27 @@ function! s:is_ignored_scope(line, col)
     return s:syntax_name(a:line, a:col) =~? '\vstring|comment|char'
 endfunction
 
+" Returns 1 if character at position is a string; handles empty lines in
+" string that return a synID of 0.
+function! s:is_string(line, col)
+    if s:syntax_name(a:line, a:col) =~? 'string'
+        return 1
+    else
+        " We may be on an empty line; check nearest pair of nonspace chars
+        let instring = 0
+
+        if col('$') == 1
+            let [pline, pcol] = searchpos('\v\S', 'nW')
+            let [nline, ncol] = searchpos('\v\S', 'bnW')
+            if s:syntax_name(pline, pcol) =~? 'string' && s:syntax_name(nline, ncol) =~? 'string'
+                let instring = 1
+            endif
+        endif
+
+        return instring
+    endif
+endfunction
+
 " Position of nearest bracket: 0 for opening, 1 for closing.
 function! s:nearest_bracket(closing)
     let cursor = getpos('.')
@@ -94,6 +115,42 @@ function! s:move_to_nearest_bracket(closing)
     if pos[1] | call setpos('.', pos) | endif
 endfunction
 
+" Position of start or end of current string: 0 for start, 1 for end.
+"
+" We can't rely on va" or on searchpairpos() because they don't work well
+" on symmetric patterns. Also, we aren't searching for just double quotes
+" because we'd like to work with non-Lisps.
+function! s:current_string_terminal(end)
+    let [_b, termline, termcol, _o] = getpos('.')
+    let flags = a:end ? 'W' : 'bW'
+
+    while 1
+        let [_b, line, col, _o] = getpos('.')
+
+        " Test adjacent character
+        if a:end ? col == col('$') - 1 : col == 1
+            let line += a:end ? 1 : -1
+            " Skip if adjacent character is just an empty line
+            if col([line, '$']) == 1
+                call search('\v\S', flags)
+                continue
+            endif
+            let col = a:end ? 1 : col([line, '$']) - 1
+        else
+            let col += a:end ? 1 : -1
+        endif
+
+        if s:is_string(line, col)
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    return [0, termline, termcol, 0]
+endfunction
+
 " Potentially moves the cursor!
 function! sexp#set_marks_around_current_form(offset)
     " If we already have some text selected, we assume that we are trying to
@@ -105,7 +162,9 @@ function! sexp#set_marks_around_current_form(offset)
         normal! h
     endif
 
-    if s:current_char() =~ s:opening_bracket
+    let char = s:current_char()
+
+    if char =~ s:opening_bracket
         if visual_repeat
             call s:move_to_nearest_bracket(1)
             call s:move_to_nearest_bracket(1) " Expansion step
@@ -115,7 +174,7 @@ function! sexp#set_marks_around_current_form(offset)
             call setpos("'<", s:pos_with_col_offset(getpos('.'), a:offset))
             call setpos("'>", s:pos_with_col_offset(s:nearest_bracket(1), -a:offset))
         endif
-    elseif s:current_char() =~ s:closing_bracket
+    elseif char =~ s:closing_bracket
         call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
         call setpos("'>", s:pos_with_col_offset(getpos('.'), -a:offset))
     else
@@ -125,6 +184,12 @@ function! sexp#set_marks_around_current_form(offset)
             call setpos("'>", s:pos_with_col_offset(pos, -a:offset))
         endif
     endif
+endfunction
+
+" Potentially moves the cursor!
+function! sexp#set_marks_around_current_string(offset)
+    call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
+    call setpos("'>", s:pos_with_col_offset(s:current_string_terminal(1), -a:offset))
 endfunction
 
 function! s:with_unmoved_cursor(cmd)
@@ -163,7 +228,14 @@ endfunction
 " Mangles visual marks!
 function! s:insert_brackets_around_current_form(bra, ket, at_head)
     call setpos("'<", [0, 0, 0, 0])
-    call s:with_unmoved_cursor('sexp#set_bracket_marks(0)')
+    call s:with_unmoved_cursor('sexp#set_marks_around_current_form(0)')
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
+endfunction
+
+" Mangles visual marks!
+function! s:insert_brackets_around_current_string(bra, ket, at_head)
+    call setpos("'<", [0, 0, 0, 0])
+    call s:with_unmoved_cursor('sexp#set_marks_around_current_string(0)')
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
 endfunction
 
@@ -182,10 +254,13 @@ function! sexp#wrap(scope, bra, ket, at_head)
     " Wrap form.
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
-    " Wrap form if on bracket, word otherwise.
+    " Wrap form if on bracket, string if in string, word otherwise.
     elseif a:scope ==# 'w'
-        if s:current_char() =~ s:bracket
+        let [_b, line, col, _o] = getpos('.')
+        if getline(line)[col-1] =~ s:bracket
             call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
+        elseif s:is_string(line, col)
+            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_head)
         else
             call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head)
         endif

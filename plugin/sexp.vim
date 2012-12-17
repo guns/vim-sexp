@@ -28,8 +28,11 @@ if !exists('g:sexp_wrap_insert')
     let g:sexp_wrap_insert = 1
 endif
 
-if !exists('g:sexp_textobj_mapping')
-    let g:sexp_textobj_mapping = 'f'
+if !exists('g:sexp_textobj_mappings')
+    let g:sexp_textobj_mappings = {
+        \ 'form':   'f',
+        \ 'string': 's'
+    \ }
 endif
 
 if !exists('g:sexp_mappings')
@@ -69,17 +72,32 @@ endfunction
 
 """ Textobj mappings {{{1
 
+" Current form
 vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_marks_around_current_form(0) \| normal! gv<CR>
 omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>execute "normal v\<Plug>sexp_textobj_outer_form"<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#set_marks_around_current_form(1) \| normal! gv<CR>
 omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>execute "normal v\<Plug>sexp_textobj_inner_form"<CR>
 
-if !empty(g:sexp_textobj_mapping)
+" Current string
+vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#set_marks_around_current_string(0) \| normal! gv<CR>
+omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>execute "normal v\<Plug>sexp_textobj_outer_string"<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#set_marks_around_current_string(1) \| normal! gv<CR>
+omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>execute "normal v\<Plug>sexp_textobj_inner_string"<CR>
+
+if has_key(g:sexp_textobj_mappings, 'form')
     call s:filetype_autocmd(
-        \ 'vmap <silent><buffer> a' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_outer_form',
-        \ 'omap <silent><buffer> a' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_outer_form',
-        \ 'vmap <silent><buffer> i' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_inner_form',
-        \ 'omap <silent><buffer> i' . g:sexp_textobj_mapping . ' <Plug>sexp_textobj_inner_form')
+        \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_outer_form',
+        \ 'omap <silent><buffer> a' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_outer_form',
+        \ 'vmap <silent><buffer> i' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_inner_form',
+        \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_inner_form')
+endif
+
+if has_key(g:sexp_textobj_mappings, 'string')
+    call s:filetype_autocmd(
+        \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_outer_string',
+        \ 'omap <silent><buffer> a' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_outer_string',
+        \ 'vmap <silent><buffer> i' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_inner_string',
+        \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_inner_string')
 endif
 
 """ Sexp mappings {{{1

@@ -142,7 +142,7 @@ function! s:current_string_terminal(end)
 
         if s:is_string(line, col)
             let [termline, termcol] = [line, col]
-            call cursor(line, col)
+            call search('\v.', flags)
         else
             break
         endif

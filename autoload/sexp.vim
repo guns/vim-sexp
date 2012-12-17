@@ -100,7 +100,7 @@ endfunction
 function! sexp#set_bracket_marks(offset)
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
-    let visual_repeat = visualmode() =~? '\v^v' && getpos("'<") != getpos("'>")
+    let visual_repeat = visualmode() =~# '\v^[vV]' && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
 
     " Native text objects expand when repeating inner motions too
     if visual_repeat && s:previous_char() =~ s:opening_bracket

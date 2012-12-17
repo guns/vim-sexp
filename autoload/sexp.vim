@@ -203,7 +203,7 @@ function! s:with_unmoved_cursor(cmd)
 endfunction
 
 " If line of '< is less than 1, inserts brackets at cursor
-function! s:insert_brackets_around_visual_marks(bra, ket, at_head)
+function! s:insert_brackets_around_visual_marks(bra, ket, at_head, insert)
     let start = getpos("'<")
     let end = getpos("'>")
 
@@ -214,7 +214,7 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_head)
         call setpos('.', end)
         execute 'normal! a' . a:ket
         call setpos('.', start)
-        execute 'normal! i' . a:bra . ' '
+        execute 'normal! i' . a:bra . (a:insert ? ' ' : '')
     else
         call setpos('.', start)
         execute 'normal! i' . a:bra
@@ -226,51 +226,52 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_head)
 endfunction
 
 " Mangles visual marks!
-function! s:insert_brackets_around_current_form(bra, ket, at_head)
+function! s:insert_brackets_around_current_form(bra, ket, at_head, insert)
     call setpos("'<", [0, 0, 0, 0])
     call s:with_unmoved_cursor('sexp#set_marks_around_current_form(0)')
-    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
 endfunction
 
 " Mangles visual marks!
-function! s:insert_brackets_around_current_string(bra, ket, at_head)
+function! s:insert_brackets_around_current_string(bra, ket, at_head, insert)
     call setpos("'<", [0, 0, 0, 0])
     call s:with_unmoved_cursor('sexp#set_marks_around_current_string(0)')
-    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
 endfunction
 
 " Mangles visual marks!
-function! s:insert_brackets_around_current_word(bra, ket, at_head)
+function! s:insert_brackets_around_current_word(bra, ket, at_head, insert)
     call setpos("'<", [0, 0, 0, 0])
     execute "normal! viw\<Esc>"
-    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail.
-function! sexp#wrap(scope, bra, ket, at_head)
+function! sexp#wrap(scope, bra, ket, at_head, insert)
     let original_start = getpos("'<")
     let original_end = getpos("'>")
 
     " Wrap form.
     if a:scope ==# 'f'
-        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
+        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head, a:insert)
     " Wrap form if on bracket, string if in string, word otherwise.
     elseif a:scope ==# 'w'
         let [_b, line, col, _o] = getpos('.')
         if getline(line)[col-1] =~ s:bracket
-            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head)
+            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head, a:insert)
         elseif s:is_string(line, col)
-            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_head)
+            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_head, a:insert)
         else
-            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head)
+            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head, a:insert)
         endif
     " Wrap current visual selection.
     elseif a:scope ==# 'v'
-        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head)
+        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
     endif
 
     call setpos("'<", original_start)
     call setpos("'>", original_end)
+    if a:insert | startinsert | endif
 endfunction
 
 " Remove brackets from current form, placing cursor at position of now-deleted

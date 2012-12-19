@@ -83,11 +83,14 @@ function! s:is_string(line, col)
 
         " We may be on an empty line; check nearest pair of nonspace chars
         if col('$') == 1
+            let cursor = getpos('.')
+            call setpos('.', [0, a:line, a:col, 0])
             let [pline, pcol] = searchpos('\v\S', 'nW')
             let [nline, ncol] = searchpos('\v\S', 'bnW')
             if s:syntax_name(pline, pcol) =~? 'string' && s:syntax_name(nline, ncol) =~? 'string'
                 let instring = 1
             endif
+            call setpos('.', cursor)
         endif
 
         return instring

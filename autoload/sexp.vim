@@ -24,7 +24,6 @@ let g:__sexp_autoloaded__ = 1
 " * Do we ever really need s:with_unmoved_cursor?
 " * Deliberately set jump marks so users can `` back after undo.
 " * Create text object functions sexp#select_current_*
-" * Multibyte issues when counting by col()
 
 " Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
 let s:bracket = '\v[\(\)\[\]\{\}]'
@@ -32,10 +31,12 @@ let s:opening_bracket = '\v[\(\[\{]'
 let s:closing_bracket = '\v[\)\]\}]'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 
+" Does not return multibyte characters!
 function! s:current_char()
     return getline('.')[col('.')-1]
 endfunction
 
+" Does not return multibyte characters!
 function! s:previous_char()
     return getline('.')[col('.')-2]
 endfunction
@@ -81,9 +82,9 @@ function! s:is_string(line, col)
     if s:syntax_name(a:line, a:col) =~? 'string'
         return 1
     else
-        " We may be on an empty line; check nearest pair of nonspace chars
         let instring = 0
 
+        " We may be on an empty line; check nearest pair of nonspace chars
         if col('$') == 1
             let [pline, pcol] = searchpos('\v\S', 'nW')
             let [nline, ncol] = searchpos('\v\S', 'bnW')
@@ -128,34 +129,44 @@ endfunction
 " We can't rely on va" or on searchpairpos() because they don't work well
 " on symmetric patterns. Also, we aren't searching for just double quotes
 " because we'd like to work with non-Lisps.
+"
+" We also use search() while moving the cursor because using simple column
+" arithmetic breaks on multibyte characters.
 function! s:current_string_terminal(end)
-    let [_b, termline, termcol, _o] = getpos('.')
+    let cursor = getpos('.')
+    let [_b, termline, termcol, _o] = cursor
     let flags = a:end ? 'W' : 'bW'
 
     while 1
-        let [_b, line, col, _o] = getpos('.')
-
-        " Test adjacent character
-        if a:end ? col == col('$') - 1 : col == 1
-            let line += a:end ? 1 : -1
-            " Skip if adjacent character is just an empty line
-            if col([line, '$']) == 1
-                call search('\v\S', flags)
-                continue
-            endif
-            let col = a:end ? 1 : col([line, '$']) - 1
+        " Test adjacent character. There is a bug in which searching backwards
+        " from a multibyte character moves the cursor too far, so we have to
+        " handle this separately.
+        "
+        " https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
+        if a:end
+            let [line, col] = searchpos('\v.', flags)
         else
-            let col += a:end ? 1 : -1
+            let [_b, line, col, _o] = getpos('.')
+            " Backwards search from bol still works fine
+            if col == 1
+                let [line, col] = searchpos('\v.', flags)
+            else
+                let col -= 1
+                call cursor(line, col)
+            endif
         endif
+
+        " Beginning or end of file.
+        if line < 1 | break | endif
 
         if s:is_string(line, col)
             let [termline, termcol] = [line, col]
-            call search('\v.', flags)
         else
             break
         endif
     endwhile
 
+    call setpos('.', cursor)
     return [0, termline, termcol, 0]
 endfunction
 

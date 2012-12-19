@@ -38,6 +38,32 @@ function! s:previous_char()
     return getline('.')[col('.')-2]
 endfunction
 
+" Returns adjacent character position from cursor as [line, col]; 0 for
+" previous, 1 for next. The cursor will also be moved if move is 1.
+function! s:adjacent_position(next, move)
+    let flags = a:move ? '' : 'n'
+    let flags .= a:next ? 'W' : 'bW'
+
+    " There is a bug in Vim where searching backwards from a multibyte
+    " character moves the cursor too far, so we have to handle this
+    " separately.
+    "
+    " https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
+    if a:next
+        let [line, col] = searchpos('\v.', flags)
+    else
+        let [_b, line, col, _o] = getpos('.')
+        " Backwards search from bol still works fine
+        if col == 1
+            let [line, col] = searchpos('\v.', flags)
+        else
+            let col -= 1
+            if a:move | call cursor(line, col) | endif
+        endif
+    endif
+
+    return [line, col]
+endfunction
 function! s:pos_with_col_offset(pos, offset)
     let [b, l, c, o] = a:pos
     return [b, l, c + a:offset, o]
@@ -136,23 +162,7 @@ function! s:current_string_terminal(end)
     let flags = a:end ? 'W' : 'bW'
 
     while 1
-        " Test adjacent character. There is a bug in which searching backwards
-        " from a multibyte character moves the cursor too far, so we have to
-        " handle this separately.
-        "
-        " https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
-        if a:end
-            let [line, col] = searchpos('\v.', flags)
-        else
-            let [_b, line, col, _o] = getpos('.')
-            " Backwards search from bol still works fine
-            if col == 1
-                let [line, col] = searchpos('\v.', flags)
-            else
-                let col -= 1
-                call cursor(line, col)
-            endif
-        endif
+        let [line, col] = s:adjacent_position(a:end, 1)
 
         " Beginning or end of file.
         if line < 1 | break | endif

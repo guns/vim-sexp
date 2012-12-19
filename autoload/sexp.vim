@@ -20,8 +20,6 @@ let g:__sexp_autoloaded__ = 1
 
 " TODO:
 "
-" * s:set_marks_* functions should set the leading mark to [0,0,0,0] on error
-" * Do we ever really need s:with_unmoved_cursor?
 " * Deliberately set jump marks so users can `` back after undo.
 
 " Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
@@ -96,7 +94,8 @@ function! s:is_string(line, col)
     endif
 endfunction
 
-" Position of nearest bracket: 0 for opening, 1 for closing.
+" Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
+" [0, 0, 0, 0] if none found.
 function! s:nearest_bracket(closing)
     let cursor = getpos('.')
     let closest = []
@@ -117,13 +116,8 @@ function! s:nearest_bracket(closing)
     return empty(closest) ? [0, 0, 0, 0] : closest
 endfunction
 
-" Tries to move cursor to nearest bracket; same parameters as s:nearest_bracket
-function! s:move_to_nearest_bracket(closing)
-    let pos = s:nearest_bracket(a:closing)
-    if pos[1] | call setpos('.', pos) | endif
-endfunction
-
-" Position of start / end of current string: 0 for start, 1 for end.
+" Position of start / end of current string: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in a string.
 "
 " We can't rely on va" or on searchpairpos() because they don't work well
 " on symmetric patterns. Also, we aren't searching for just double quotes
@@ -132,8 +126,10 @@ endfunction
 " We also use search() while moving the cursor because using simple column
 " arithmetic breaks on multibyte characters.
 function! s:current_string_terminal(end)
-    let cursor = getpos('.')
-    let [_b, termline, termcol, _o] = cursor
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0,] | endif
+
+    let [termline, termcol] = [cursorline, cursorcol]
     let flags = a:end ? 'W' : 'bW'
 
     while 1
@@ -165,12 +161,27 @@ function! s:current_string_terminal(end)
         endif
     endwhile
 
-    call setpos('.', cursor)
+    call setpos('.', [0, cursorline, cursorcol, 0])
     return [0, termline, termcol, 0]
 endfunction
 
-" Potentially moves the cursor!
+" Tries to move cursor to nearest _paired_ bracket.
+function! s:move_to_nearest_bracket(closing)
+    let pos = s:nearest_bracket(a:closing)
+    if pos[1] | call setpos('.', pos) | endif
+endfunction
+
+" Set visual marks '< and '> to the positions of the nearest paired brackets.
+" Offset is the number of columns inwards from the brackets to set the marks.
+" Will set both to [0, 0, 0, 0] if none are found.
+"
+" If cursor is on an opening bracket, the mark '< is valid, and the mark
+" '< does not equal '>, the visual marks are set to the next outer pair of
+" brackets.
 function! s:set_marks_around_current_form(offset)
+    " We may potentially move the cursor.
+    let cursor = getpos('.')
+
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
     let visual_repeat = visualmode() =~# '\v^[vV]' && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
@@ -186,115 +197,127 @@ function! s:set_marks_around_current_form(offset)
         if visual_repeat
             call s:move_to_nearest_bracket(1)
             call s:move_to_nearest_bracket(1) " Expansion step
-            call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
-            call setpos("'>", s:pos_with_col_offset(getpos('.'), -a:offset))
+            let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
+            let close = s:pos_with_col_offset(getpos('.'), -a:offset)
         else
-            call setpos("'<", s:pos_with_col_offset(getpos('.'), a:offset))
-            call setpos("'>", s:pos_with_col_offset(s:nearest_bracket(1), -a:offset))
+            let open = s:pos_with_col_offset(getpos('.'), a:offset)
+            let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
         endif
     elseif char =~ s:closing_bracket
-        call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
-        call setpos("'>", s:pos_with_col_offset(getpos('.'), -a:offset))
+        let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
+        let close = s:pos_with_col_offset(getpos('.'), -a:offset)
     else
-        let pos = s:nearest_bracket(1)
-        if pos[1]
-            call setpos("'<", s:pos_with_col_offset(s:nearest_bracket(0), a:offset))
-            call setpos("'>", s:pos_with_col_offset(pos, -a:offset))
-        endif
+        let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
+        let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
+    endif
+
+    " Check closing position's line to determine success because opening
+    " position is sometimes set erroneously!
+    if close[1]
+        call setpos("'<", open)
+        call setpos("'>", close)
+    else
+        call setpos("'<", [0, 0, 0, 0])
+        call setpos("'>", [0, 0, 0, 0])
+    endif
+
+    call setpos('.', cursor)
+endfunction
+
+" Set visual marks '< and '> to the start and end of the current string. Will
+" set both to [0, 0, 0, 0] if not currently in a string.
+function! s:set_marks_around_current_string(offset)
+    let end = s:current_string_terminal(1)
+    if end[1]
+        call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
+        call setpos("'>", s:pos_with_col_offset(end, -a:offset))
+    else
+        call setpos("'<", [0, 0, 0, 0])
+        call setpos("'>", [0, 0, 0, 0])
     endif
 endfunction
 
-" Potentially moves the cursor!
-function! s:set_marks_around_current_string(offset)
-    call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
-    call setpos("'>", s:pos_with_col_offset(s:current_string_terminal(1), -a:offset))
-endfunction
-
-function! s:with_unmoved_cursor(cmd)
-    let cursor = getpos('.')
-    try
-        let val = eval(a:cmd)
-    finally
-        call setpos('.', cursor)
-    endtry
-    return val
-endfunction
-
-" If line of '< is less than 1, inserts brackets at cursor
-function! s:insert_brackets_around_visual_marks(bra, ket, at_head, insert)
+" Insert bra and ket around current visual marks. If mark '< is invalid,
+" inserts brackets at cursor.
+"
+" Parameter at_tail sets cursor at head or tail (0 or 1), and parameter
+" headspace determines whether to insert a space after the opening bracket
+" when placing cursor at the head.
+function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
     let start = getpos("'<")
     let end = getpos("'>")
 
     " No form, just insert brackets
     if start[1] < 1
         execute 'normal! i' . a:bra . a:ket
-    elseif a:at_head
-        call setpos('.', end)
-        execute 'normal! a' . a:ket
-        call setpos('.', start)
-        execute 'normal! i' . a:bra . (a:insert ? ' ' : '')
-    else
+    elseif a:at_tail
         call setpos('.', start)
         execute 'normal! i' . a:bra
         " Did we just insert a character on the same line?
         let end = start[1] == end[1] ? s:pos_with_col_offset(end, len(a:bra)) : end
         call setpos('.', end)
         execute 'normal! a' . a:ket
+    else
+        call setpos('.', end)
+        execute 'normal! a' . a:ket
+        call setpos('.', start)
+        execute 'normal! i' . a:bra . (a:headspace ? ' ' : '')
     endif
 endfunction
 
-" Mangles visual marks!
-function! s:insert_brackets_around_current_form(bra, ket, at_head, insert)
+function! s:insert_brackets_around_current_form(bra, ket, at_tail, headspace)
+    " Clear visual start mark to signal that we are not trying to expand the
+    " selection.
     call setpos("'<", [0, 0, 0, 0])
-    call s:with_unmoved_cursor('s:set_marks_around_current_form(0)')
-    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
+    call s:set_marks_around_current_form(0)
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Mangles visual marks!
-function! s:insert_brackets_around_current_string(bra, ket, at_head, insert)
-    call setpos("'<", [0, 0, 0, 0])
-    call s:with_unmoved_cursor('s:set_marks_around_current_string(0)')
-    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
+function! s:insert_brackets_around_current_string(bra, ket, at_tail, headspace)
+    call s:set_marks_around_current_string(0)
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Mangles visual marks!
-function! s:insert_brackets_around_current_word(bra, ket, at_head, insert)
-    call setpos("'<", [0, 0, 0, 0])
+function! s:insert_brackets_around_current_word(bra, ket, at_tail, headspace)
     execute "normal! viw\<Esc>"
-    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
+    call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
 function! sexp#select_current_form(offset)
     call s:set_marks_around_current_form(a:offset)
-    normal! gv
+    execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
 endfunction
 
+" Unlike the native va" we do not try to select all the whitespace up to the
+" next element. We will do that when moving elements.
 function! sexp#select_current_string(offset)
     call s:set_marks_around_current_string(a:offset)
-    normal! gv
+    execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
 endfunction
 
-" Place brackets around scope, then place cursor at head or tail.
-function! sexp#wrap(scope, bra, ket, at_head, insert)
+" Place brackets around scope, then place cursor at head or tail, finally
+" leaving off in insert mode if specified. Insert also sets the headspace
+" parameter when inserting brackets.
+function! sexp#wrap(scope, bra, ket, at_tail, insert)
     let original_start = getpos("'<")
     let original_end = getpos("'>")
 
     " Wrap form.
     if a:scope ==# 'f'
-        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head, a:insert)
+        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
     " Wrap form if on bracket, string if in string, word otherwise.
     elseif a:scope ==# 'w'
         let [_b, line, col, _o] = getpos('.')
         if getline(line)[col-1] =~ s:bracket
-            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_head, a:insert)
+            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
         elseif s:is_string(line, col)
-            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_head, a:insert)
+            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_tail, a:insert)
         else
-            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_head, a:insert)
+            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_tail, a:insert)
         endif
     " Wrap current visual selection.
     elseif a:scope ==# 'v'
-        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
+        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
     endif
 
     call setpos("'<", original_start)
@@ -302,7 +325,7 @@ function! sexp#wrap(scope, bra, ket, at_head, insert)
     if a:insert | startinsert | endif
 endfunction
 
-" Remove brackets from current form, placing cursor at position of now-deleted
+" Remove brackets from current form, placing cursor at position of deleted
 " first bracket.
 function! sexp#splice_form()
     let original_start = getpos("'<")

@@ -18,6 +18,14 @@ if exists('g:__sexp_autoloaded__')
 endif
 let g:__sexp_autoloaded__ = 1
 
+" TODO:
+"
+" * s:set_marks_* functions should set the leading mark to [0,0,0,0] on error
+" * Do we ever really need s:with_unmoved_cursor?
+" * Deliberately set jump marks so users can `` back after undo.
+" * Create text object functions sexp#select_current_*
+" * Multibyte issues when counting by col()
+
 " Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
 let s:bracket = '\v[\(\)\[\]\{\}]'
 let s:opening_bracket = '\v[\(\[\{]'

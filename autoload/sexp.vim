@@ -126,7 +126,6 @@ endfunction
 " Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
 " [0, 0, 0, 0] if none found.
 function! s:nearest_bracket(closing)
-    let cursor = getpos('.')
     let closest = []
     let flags = a:closing ? 'nW' : 'bnW'
 
@@ -138,7 +137,7 @@ function! s:nearest_bracket(closing)
         elseif empty(closest)
             let closest = [0, line, col, 0]
         else
-            let closest = s:min_by_distance_from(cursor, closest, [0, line, col, 0])
+            let closest = s:min_by_distance_from(getpos('.'), closest, [0, line, col, 0])
         endif
     endfor
 
@@ -156,7 +155,7 @@ endfunction
 " arithmetic breaks on multibyte characters.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0,] | endif
+    if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
 
     let [termline, termcol] = [cursorline, cursorcol]
     let flags = a:end ? 'W' : 'bW'

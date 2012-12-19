@@ -23,7 +23,6 @@ let g:__sexp_autoloaded__ = 1
 " * s:set_marks_* functions should set the leading mark to [0,0,0,0] on error
 " * Do we ever really need s:with_unmoved_cursor?
 " * Deliberately set jump marks so users can `` back after undo.
-" * Create text object functions sexp#select_current_*
 
 " Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
 let s:bracket = '\v[\(\)\[\]\{\}]'
@@ -171,7 +170,7 @@ function! s:current_string_terminal(end)
 endfunction
 
 " Potentially moves the cursor!
-function! sexp#set_marks_around_current_form(offset)
+function! s:set_marks_around_current_form(offset)
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
     let visual_repeat = visualmode() =~# '\v^[vV]' && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
@@ -206,7 +205,7 @@ function! sexp#set_marks_around_current_form(offset)
 endfunction
 
 " Potentially moves the cursor!
-function! sexp#set_marks_around_current_string(offset)
+function! s:set_marks_around_current_string(offset)
     call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
     call setpos("'>", s:pos_with_col_offset(s:current_string_terminal(1), -a:offset))
 endfunction
@@ -247,14 +246,14 @@ endfunction
 " Mangles visual marks!
 function! s:insert_brackets_around_current_form(bra, ket, at_head, insert)
     call setpos("'<", [0, 0, 0, 0])
-    call s:with_unmoved_cursor('sexp#set_marks_around_current_form(0)')
+    call s:with_unmoved_cursor('s:set_marks_around_current_form(0)')
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
 endfunction
 
 " Mangles visual marks!
 function! s:insert_brackets_around_current_string(bra, ket, at_head, insert)
     call setpos("'<", [0, 0, 0, 0])
-    call s:with_unmoved_cursor('sexp#set_marks_around_current_string(0)')
+    call s:with_unmoved_cursor('s:set_marks_around_current_string(0)')
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
 endfunction
 
@@ -263,6 +262,16 @@ function! s:insert_brackets_around_current_word(bra, ket, at_head, insert)
     call setpos("'<", [0, 0, 0, 0])
     execute "normal! viw\<Esc>"
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_head, a:insert)
+endfunction
+
+function! sexp#select_current_form(offset)
+    call s:set_marks_around_current_form(a:offset)
+    normal! gv
+endfunction
+
+function! sexp#select_current_string(offset)
+    call s:set_marks_around_current_string(a:offset)
+    normal! gv
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail.
@@ -301,7 +310,7 @@ function! sexp#splice_form()
     let cursor = getpos('.')
 
     call setpos("'<", [0, 0, 0, 0])
-    call sexp#set_marks_around_current_form(0)
+    call s:set_marks_around_current_form(0)
 
     let start = getpos("'<")
 

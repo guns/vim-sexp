@@ -73,15 +73,15 @@ endfunction
 """ Text object mappings {{{1
 
 " Current form
-vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#set_marks_around_current_form(0) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#select_current_form(0)<CR>
 omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>execute "normal v\<Plug>sexp_textobj_outer_form"<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#set_marks_around_current_form(1) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#select_current_form(1)<CR>
 omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>execute "normal v\<Plug>sexp_textobj_inner_form"<CR>
 
 " Current string
-vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#set_marks_around_current_string(0) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string(0)<CR>
 omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>execute "normal v\<Plug>sexp_textobj_outer_string"<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#set_marks_around_current_string(1) \| normal! gv<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string(1)<CR>
 omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>execute "normal v\<Plug>sexp_textobj_inner_string"<CR>
 
 if has_key(g:sexp_textobj_mappings, 'form')

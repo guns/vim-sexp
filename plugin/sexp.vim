@@ -30,8 +30,8 @@ endif
 
 if !exists('g:sexp_textobj_mappings')
     let g:sexp_textobj_mappings = {
-        \ 'form':   'f',
-        \ 'string': 's'
+        \ 'form':         'f',
+        \ 'string':       's',
     \ }
 endif
 
@@ -84,20 +84,16 @@ omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>execute "normal v\<Plug>
 vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string(1)<CR>
 omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>execute "normal v\<Plug>sexp_textobj_inner_string"<CR>
 
-if has_key(g:sexp_textobj_mappings, 'form')
-    call s:filetype_autocmd(
-        \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_outer_form',
-        \ 'omap <silent><buffer> a' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_outer_form',
-        \ 'vmap <silent><buffer> i' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_inner_form',
-        \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings['form'] . ' <Plug>sexp_textobj_inner_form')
-endif
-
-if has_key(g:sexp_textobj_mappings, 'string')
-    call s:filetype_autocmd(
-        \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_outer_string',
-        \ 'omap <silent><buffer> a' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_outer_string',
-        \ 'vmap <silent><buffer> i' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_inner_string',
-        \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings['string'] . ' <Plug>sexp_textobj_inner_string')
+if !empty('g:sexp_textobj_mappings')
+    for s:key in ['form', 'string']
+        if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
+            call s:filetype_autocmd(
+                \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,
+                \ 'omap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,
+                \ 'vmap <silent><buffer> i' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_inner_' . s:key,
+                \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_inner_' . s:key)
+        endif
+    endfor
 endif
 
 """ S-expression mappings {{{1

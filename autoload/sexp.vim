@@ -23,10 +23,12 @@ let g:__sexp_autoloaded__ = 1
 " * Deliberately set jump marks so users can `` back after undo.
 
 " Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
-let s:bracket = '\v[\(\)\[\]\{\}]'
-let s:opening_bracket = '\v[\(\[\{]'
-let s:closing_bracket = '\v[\)\]\}]'
+let s:bracket = '\v\(|\)|\[|\]|\{|\}'
+let s:opening_bracket = '\v\(|\[|\{'
+let s:closing_bracket = '\v\)|\]|\}'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
+let s:delimiter = s:bracket . '|\s'
+let s:element = s:bracket . '|\S'
 
 " Does not return multibyte characters!
 function! s:current_char()
@@ -121,6 +123,32 @@ function! s:is_string(line, col)
         endif
 
         return instring
+    endif
+endfunction
+
+" Deterimines if [line, col] is the head or tail of a form, string, or any
+" other element.
+function! s:is_element_terminal(line, col, tail)
+    let char = getline(a:line)[a:col-1]
+
+    if s:is_string(a:line, a:col)
+        let cursor = getpos('.')
+        call setpos('.', [0, a:line, a:col, 0])
+        let [l, c] = s:adjacent_position(a:tail, 0)
+        call setpos('.', cursor)
+        return !s:is_string(l, c)
+    elseif char =~ s:opening_bracket
+        return !a:tail
+    elseif char =~ s:closing_bracket
+        return a:tail
+    else
+        " All non-bracket, non-whitespace characters will be considered to be
+        " parts of an element.
+        let cursor = getpos('.')
+        call setpos('.', [0, a:line, a:col, 0])
+        let [l, c] = s:adjacent_position(a:tail, 0)
+        call setpos('.', cursor)
+        return getline(l)[c-1] =~ s:delimiter
     endif
 endfunction
 

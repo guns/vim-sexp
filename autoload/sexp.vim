@@ -64,6 +64,7 @@ function! s:adjacent_position(next, move)
 
     return [line, col]
 endfunction
+
 function! s:pos_with_col_offset(pos, offset)
     let [b, l, c, o] = a:pos
     return [b, l, c + a:offset, o]
@@ -149,7 +150,7 @@ endfunction
 "
 " We can't rely on va" or on searchpairpos() because they don't work well
 " on symmetric patterns. Also, we aren't searching for just double quotes
-" because we'd like to work with non-Lisps.
+" because then we can be generic at a small cost.
 "
 " We also use search() while moving the cursor because using simple column
 " arithmetic breaks on multibyte characters.
@@ -300,8 +301,8 @@ function! sexp#select_current_form(offset)
     execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
 endfunction
 
-" Unlike the native va" we do not try to select all the whitespace up to the
-" next element. We will do that when moving elements.
+" Unlike the native text object a" we do not try to select all the whitespace
+" up to the next element. We will do that when moving elements.
 function! sexp#select_current_string(offset)
     call s:set_marks_around_current_string(a:offset)
     execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')

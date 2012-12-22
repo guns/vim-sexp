@@ -13,10 +13,10 @@
 " License:  MIT
 " Homepage: https://github.com/guns/vim-sexp
 
-if exists('g:__sexp_autoloaded__')
+if exists('g:sexp_autoloaded')
     finish
 endif
-let g:__sexp_autoloaded__ = 1
+let g:sexp_autoloaded = 1
 
 " TODO:
 "

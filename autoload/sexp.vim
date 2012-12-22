@@ -21,6 +21,9 @@ let g:sexp_autoloaded = 1
 " TODO:
 "
 " * Deliberately set jump marks so users can `` back after undo.
+" * Set stopline for searchpairpos()
+" * Next/prev element text object
+" * Top level sexp text object
 
 " Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'

@@ -37,22 +37,22 @@ let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 
 """ QUERIES AT CURSOR {{{1
 
-" Returns adjacent character position from cursor as [line, col]; 0 for
-" previous, 1 for next.
-function! s:adjacent_pos(next)
-    " There is a bug in Vim where searching backwards from a multibyte
-    " character moves the cursor too far, so we have to handle this
-    " separately.
-    "
-    " https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
+" Like searchpos(), return first pattern match from cursor as [line, col].
+" Unlike searchpos(), searching backwards when the cursor is on a multibyte
+" character does not move the cursor too far (but the position returned may
+" be in the middle of a multibyte sequence).
+"
+" cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
+function! s:findpos(pattern, next)
     if a:next
-        let [line, col] = searchpos('\v.', 'nW')
+        let [line, col] = searchpos(a:pattern, 'nW')
     else
         let [_b, line, col, _o] = getpos('.')
-        " Backwards search from bol still works fine
         if col == 1
-            let [line, col] = searchpos('\v.', 'bnW')
+            " Backwards search from bol still works fine
+            let [line, col] = searchpos(a:pattern, 'bnW')
         else
+            " Note that this may not be the beginning of the character
             let col -= 1
         endif
     endif
@@ -67,7 +67,7 @@ endfunction
 
 " Return single-byte character behind cursor.
 function! s:previous_char()
-    let [line, col] = s:adjacent_pos(0)
+    let [line, col] = s:findpos('\v.', 0)
     return getline(line)[col-1]
 endfunction
 
@@ -109,7 +109,7 @@ function! s:current_string_terminal(end)
     let flags = a:end ? 'W' : 'bW'
 
     while 1
-        let [line, col] = s:adjacent_pos(a:end)
+        let [line, col] = s:findpos('\v\S', a:end)
 
         " Beginning or end of file.
         if line < 1 | break | endif
@@ -199,7 +199,7 @@ function! s:is_element_terminal(line, col, tail)
     if s:is_string(a:line, a:col)
         let cursor = getpos('.')
         call setpos('.', [0, a:line, a:col, 0])
-        let [l, c] = s:adjacent_pos(a:tail)
+        let [l, c] = s:findpos('\v.', a:tail)
         call setpos('.', cursor)
         return !s:is_string(l, c)
     elseif char =~ s:opening_bracket
@@ -211,7 +211,7 @@ function! s:is_element_terminal(line, col, tail)
         " parts of an element.
         let cursor = getpos('.')
         call setpos('.', [0, a:line, a:col, 0])
-        let [l, c] = s:adjacent_pos(a:tail)
+        let [l, c] = s:findpos('\v.', a:tail)
         call setpos('.', cursor)
         return getline(l)[c-1] =~ s:delimiter
     endif

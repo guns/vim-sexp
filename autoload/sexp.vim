@@ -60,11 +60,6 @@ function! s:findpos(pattern, next)
     return [line, col]
 endfunction
 
-" Return single-byte character at cursor.
-function! s:current_char()
-    return getline('.')[col('.')-1]
-endfunction
-
 " Return single-byte character behind cursor.
 function! s:previous_char()
     let [line, col] = s:findpos('\v.', 0)
@@ -249,9 +244,10 @@ function! s:set_marks_around_current_form(mode, offset)
         normal! h
     endif
 
-    let char = s:current_char()
+    let ignored = s:is_ignored_scope(cursor[1], cursor[2])
+    let char = getline(cursor[1])[cursor[2]-1]
 
-    if char =~ s:opening_bracket
+    if !ignored && char =~ s:opening_bracket
         if visual_repeat
             if s:move_to_nearest_bracket(1)[1] > 0
                 call s:move_to_nearest_bracket(1) " Expansion step
@@ -262,7 +258,7 @@ function! s:set_marks_around_current_form(mode, offset)
             let open = s:pos_with_col_offset(getpos('.'), a:offset)
             let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
         endif
-    elseif char =~ s:closing_bracket
+    elseif !ignored && char =~ s:closing_bracket
         let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
         let close = s:pos_with_col_offset(getpos('.'), -a:offset)
     else

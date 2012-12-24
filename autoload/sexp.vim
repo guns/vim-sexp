@@ -156,7 +156,7 @@ endfunction
 
 """ PREDICATES {{{1
 
-" It is established Vim convention that grepping '\cstring|comment' and so on
+" It is established Vim convention that matching '\cstring|comment' and so on
 " is acceptable for syntax regions that are conventionally named.
 function! s:is_ignored_scope(line, col)
     return s:syntax_name(a:line, a:col) =~? '\vstring|comment|char'

@@ -73,16 +73,16 @@ endfunction
 """ Text object mappings {{{1
 
 " Current form
-vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#select_current_form(0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>execute "normal v\<Plug>sexp_textobj_outer_form"<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#select_current_form(1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>execute "normal v\<Plug>sexp_textobj_inner_form"<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#select_current_form('v', 0)<CR>
+omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#select_current_form('o', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#select_current_form('v', 1)<CR>
+omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#select_current_form('o', 1)<CR>
 
 " Current string
-vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string(0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>execute "normal v\<Plug>sexp_textobj_outer_string"<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string(1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>execute "normal v\<Plug>sexp_textobj_inner_string"<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('v', 0)<CR>
+omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('o', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('v', 1)<CR>
+omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('o', 1)<CR>
 
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'string']

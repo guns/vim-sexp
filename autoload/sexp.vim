@@ -228,18 +228,19 @@ endfunction
 
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
-" Will set both to [0, 0, 0, 0] if none are found.
+" Will set both to [0, 0, 0, 0] if none are found, unless mode == 'v'.
 "
-" If cursor is on an opening bracket, the mark '< is valid, and the mark
-" '< does not equal '>, the visual marks are set to the next outer pair of
-" brackets.
-function! s:set_marks_around_current_form(offset)
+" If mode == 'v', the cursor is on an opening bracket, the mark '< is valid,
+" and the mark '< does not equal '>, the visual marks are set to the next
+" outer pair of brackets.
+function! s:set_marks_around_current_form(mode, offset)
     " We may potentially move the cursor.
     let cursor = getpos('.')
 
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
-    let visual_repeat = visualmode() =~# '\v^[vV]' && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
+    let visual = a:mode ==? 'v'
+    let visual_repeat = visual && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
 
     " Native text objects expand when repeating inner motions too
     if visual_repeat && a:offset == 1 && s:previous_char() =~ s:opening_bracket
@@ -269,8 +270,8 @@ function! s:set_marks_around_current_form(offset)
     if open[1] > 0 && close[1] > 0
         call setpos("'<", open)
         call setpos("'>", close)
-    " Don't erase marks when expanding visual selection
-    elseif !visual_repeat
+    " Don't erase marks when in visual mode
+    elseif !visual
         call setpos("'<", [0, 0, 0, 0])
         call setpos("'>", [0, 0, 0, 0])
     endif
@@ -279,13 +280,13 @@ function! s:set_marks_around_current_form(offset)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current string. Will
-" set both to [0, 0, 0, 0] if not currently in a string.
-function! s:set_marks_around_current_string(offset)
+" set both to [0, 0, 0, 0] if not currently in a string, unless mode == 'v'.
+function! s:set_marks_around_current_string(mode, offset)
     let end = s:current_string_terminal(1)
     if end[1] > 0
         call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
         call setpos("'>", s:pos_with_col_offset(end, -a:offset))
-    else
+    elseif a:mode !=? 'v'
         call setpos("'<", [0, 0, 0, 0])
         call setpos("'>", [0, 0, 0, 0])
     endif
@@ -323,12 +324,12 @@ function! s:insert_brackets_around_current_form(bra, ket, at_tail, headspace)
     " Clear visual start mark to signal that we are not trying to expand the
     " selection.
     call setpos("'<", [0, 0, 0, 0])
-    call s:set_marks_around_current_form(0)
+    call s:set_marks_around_current_form('n', 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
 function! s:insert_brackets_around_current_string(bra, ket, at_tail, headspace)
-    call s:set_marks_around_current_string(0)
+    call s:set_marks_around_current_string('n', 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
@@ -339,15 +340,15 @@ endfunction
 
 """ EXPORTED FUNCTIONS {{{1
 
-function! sexp#select_current_form(offset)
-    call s:set_marks_around_current_form(a:offset)
+function! sexp#select_current_form(mode, offset)
+    call s:set_marks_around_current_form(a:mode, a:offset)
     execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
 " up to the next element. We will do that when moving elements.
-function! sexp#select_current_string(offset)
-    call s:set_marks_around_current_string(a:offset)
+function! sexp#select_current_string(mode, offset)
+    call s:set_marks_around_current_string(a:mode, a:offset)
     execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
 endfunction
 
@@ -389,7 +390,7 @@ function! sexp#splice_form()
     let cursor = getpos('.')
 
     call setpos("'<", [0, 0, 0, 0])
-    call s:set_marks_around_current_form(0)
+    call s:set_marks_around_current_form('n', 0)
 
     let start = getpos("'<")
 

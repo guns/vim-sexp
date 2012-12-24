@@ -212,7 +212,7 @@ endfunction
 " Tries to move cursor to nearest _paired_ bracket.
 function! s:move_to_nearest_bracket(closing)
     let pos = s:nearest_bracket(a:closing)
-    if pos[1] | call setpos('.', pos) | endif
+    if pos[1] > 0 | call setpos('.', pos) | endif
 endfunction
 
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
@@ -231,7 +231,7 @@ function! s:set_marks_around_current_form(offset)
     let visual_repeat = visualmode() =~# '\v^[vV]' && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
 
     " Native text objects expand when repeating inner motions too
-    if visual_repeat && s:previous_char() =~ s:opening_bracket
+    if visual_repeat && a:offset == 1 && s:previous_char() =~ s:opening_bracket
         normal! h
     endif
 
@@ -255,12 +255,11 @@ function! s:set_marks_around_current_form(offset)
         let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
     endif
 
-    " Check closing position's line to determine success because opening
-    " position is sometimes set erroneously!
-    if close[1]
+    if open[1] > 0 && close[1] > 0
         call setpos("'<", open)
         call setpos("'>", close)
-    else
+    " Don't erase marks when expanding visual selection
+    elseif !visual_repeat
         call setpos("'<", [0, 0, 0, 0])
         call setpos("'>", [0, 0, 0, 0])
     endif
@@ -272,7 +271,7 @@ endfunction
 " set both to [0, 0, 0, 0] if not currently in a string.
 function! s:set_marks_around_current_string(offset)
     let end = s:current_string_terminal(1)
-    if end[1]
+    if end[1] > 0
         call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
         call setpos("'>", s:pos_with_col_offset(end, -a:offset))
     else

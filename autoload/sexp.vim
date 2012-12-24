@@ -186,32 +186,6 @@ function! s:is_string(line, col)
     endif
 endfunction
 
-" Determines if [line, col] is the head or tail of a form, string, or any
-" other element.
-function! s:is_element_terminal(line, col, tail)
-    let char = getline(a:line)[a:col-1]
-
-    if s:is_string(a:line, a:col)
-        let cursor = getpos('.')
-        call setpos('.', [0, a:line, a:col, 0])
-        let [l, c] = s:findpos('\v.', a:tail)
-        call setpos('.', cursor)
-        return !s:is_string(l, c)
-    elseif char =~ s:opening_bracket
-        return !a:tail
-    elseif char =~ s:closing_bracket
-        return a:tail
-    else
-        " All non-bracket, non-whitespace characters will be considered to be
-        " parts of an element.
-        let cursor = getpos('.')
-        call setpos('.', [0, a:line, a:col, 0])
-        let [l, c] = s:findpos('\v.', a:tail)
-        call setpos('.', cursor)
-        return getline(l)[c-1] =~ s:delimiter
-    endif
-endfunction
-
 """ CURSOR MOVEMENT {{{1
 
 " Tries to move cursor to nearest _paired_ bracket, returning its position

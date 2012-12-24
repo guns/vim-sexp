@@ -71,6 +71,63 @@ function! s:previous_char()
     return getline(line)[col-1]
 endfunction
 
+" Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
+" [0, 0, 0, 0] if none found.
+function! s:nearest_bracket(closing)
+    let closest = []
+    let flags = a:closing ? 'nW' : 'bnW'
+
+    for [start, end] in s:pairs
+        let [line, col] = searchpairpos(start, '', end, flags, 's:is_ignored_scope(line("."), col("."))')
+
+        if line < 1
+            continue
+        elseif empty(closest)
+            let closest = [0, line, col, 0]
+        else
+            let closest = s:min_by_distance_from(getpos('.'), closest, [0, line, col, 0])
+        endif
+    endfor
+
+    return empty(closest) ? [0, 0, 0, 0] : closest
+endfunction
+
+" Position of start / end of current string: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in a string.
+"
+" We can't rely on va" or on searchpairpos() because they don't work well
+" on symmetric patterns. Also, we aren't searching for just double quotes
+" because then we can be generic at a small cost.
+"
+" We also use search() while moving the cursor because using simple column
+" arithmetic breaks on multibyte characters.
+function! s:current_string_terminal(end)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+
+    let [termline, termcol] = [cursorline, cursorcol]
+    let flags = a:end ? 'W' : 'bW'
+
+    while 1
+        let [line, col] = s:adjacent_pos(a:end)
+
+        " Beginning or end of file.
+        if line < 1 | break | endif
+
+        if s:is_string(line, col)
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call setpos('.', [0, cursorline, cursorcol, 0])
+    return [0, termline, termcol, 0]
+endfunction
+
+""" QUERIES AT POSITION {{{1
+
 function! s:pos_with_col_offset(pos, offset)
     let [b, l, c, o] = a:pos
     return [b, l, c + a:offset, o]
@@ -154,61 +211,6 @@ function! s:is_element_terminal(line, col, tail)
         call setpos('.', cursor)
         return getline(l)[c-1] =~ s:delimiter
     endif
-endfunction
-
-" Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
-" [0, 0, 0, 0] if none found.
-function! s:nearest_bracket(closing)
-    let closest = []
-    let flags = a:closing ? 'nW' : 'bnW'
-
-    for [start, end] in s:pairs
-        let [line, col] = searchpairpos(start, '', end, flags, 's:is_ignored_scope(line("."), col("."))')
-
-        if line < 1
-            continue
-        elseif empty(closest)
-            let closest = [0, line, col, 0]
-        else
-            let closest = s:min_by_distance_from(getpos('.'), closest, [0, line, col, 0])
-        endif
-    endfor
-
-    return empty(closest) ? [0, 0, 0, 0] : closest
-endfunction
-
-" Position of start / end of current string: 0 for start, 1 for end. Returns
-" [0, 0, 0, 0] if not currently in a string.
-"
-" We can't rely on va" or on searchpairpos() because they don't work well
-" on symmetric patterns. Also, we aren't searching for just double quotes
-" because then we can be generic at a small cost.
-"
-" We also use search() while moving the cursor because using simple column
-" arithmetic breaks on multibyte characters.
-function! s:current_string_terminal(end)
-    let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
-
-    let [termline, termcol] = [cursorline, cursorcol]
-    let flags = a:end ? 'W' : 'bW'
-
-    while 1
-        let [line, col] = s:adjacent_pos(a:end)
-
-        " Beginning or end of file.
-        if line < 1 | break | endif
-
-        if s:is_string(line, col)
-            let [termline, termcol] = [line, col]
-            call cursor(line, col)
-        else
-            break
-        endif
-    endwhile
-
-    call setpos('.', [0, cursorline, cursorcol, 0])
-    return [0, termline, termcol, 0]
 endfunction
 
 " Tries to move cursor to nearest _paired_ bracket.

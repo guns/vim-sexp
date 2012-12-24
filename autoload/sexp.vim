@@ -251,8 +251,9 @@ function! s:set_marks_around_current_form(mode, offset)
 
     if char =~ s:opening_bracket
         if visual_repeat
-            call s:move_to_nearest_bracket(1)
-            call s:move_to_nearest_bracket(1) " Expansion step
+            if s:move_to_nearest_bracket(1)[1] > 0
+                call s:move_to_nearest_bracket(1) " Expansion step
+            endif
             let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
             let close = s:pos_with_col_offset(getpos('.'), -a:offset)
         else

@@ -226,6 +226,8 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
+""" VISUAL MARKS {{{1
+
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
 " Will set both to [0, 0, 0, 0] if none are found, unless mode == 'v'.
@@ -292,6 +294,8 @@ function! s:set_marks_around_current_string(mode, offset)
         call setpos("'>", [0, 0, 0, 0])
     endif
 endfunction
+
+""" CHARACTER INSERTION {{{1
 
 " Insert bra and ket around current visual marks. If mark '< is invalid,
 " inserts brackets at cursor.

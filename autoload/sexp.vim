@@ -24,50 +24,51 @@ let g:sexp_autoloaded = 1
 " * Set stopline for searchpairpos()
 " * Next/prev element text object
 " * Top level sexp text object
+" * Don't ignore virtualedit mode
 
-" Clojure's brackets; other Lisps have a subset, which shouldn't be an issue.
+""" PATTERNS {{{1
+
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
-let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 let s:delimiter = s:bracket . '|\s'
 let s:element = s:bracket . '|\S'
+let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 
-" Does not return multibyte characters!
-function! s:current_char()
-    return getline('.')[col('.')-1]
-endfunction
-
-" Does not return multibyte characters!
-function! s:previous_char()
-    return getline('.')[col('.')-2]
-endfunction
+""" QUERIES AT CURSOR {{{1
 
 " Returns adjacent character position from cursor as [line, col]; 0 for
-" previous, 1 for next. The cursor will also be moved if move is 1.
-function! s:adjacent_position(next, move)
-    let flags = a:move ? '' : 'n'
-    let flags .= a:next ? 'W' : 'bW'
-
+" previous, 1 for next.
+function! s:adjacent_pos(next)
     " There is a bug in Vim where searching backwards from a multibyte
     " character moves the cursor too far, so we have to handle this
     " separately.
     "
     " https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
     if a:next
-        let [line, col] = searchpos('\v.', flags)
+        let [line, col] = searchpos('\v.', 'nW')
     else
         let [_b, line, col, _o] = getpos('.')
         " Backwards search from bol still works fine
         if col == 1
-            let [line, col] = searchpos('\v.', flags)
+            let [line, col] = searchpos('\v.', 'bnW')
         else
             let col -= 1
-            if a:move | call cursor(line, col) | endif
         endif
     endif
 
     return [line, col]
+endfunction
+
+" Return single-byte character at cursor.
+function! s:current_char()
+    return getline('.')[col('.')-1]
+endfunction
+
+" Return single-byte character behind cursor.
+function! s:previous_char()
+    let [line, col] = s:adjacent_pos(0)
+    return getline(line)[col-1]
 endfunction
 
 function! s:pos_with_col_offset(pos, offset)
@@ -129,7 +130,7 @@ function! s:is_string(line, col)
     endif
 endfunction
 
-" Deterimines if [line, col] is the head or tail of a form, string, or any
+" Determines if [line, col] is the head or tail of a form, string, or any
 " other element.
 function! s:is_element_terminal(line, col, tail)
     let char = getline(a:line)[a:col-1]
@@ -137,7 +138,7 @@ function! s:is_element_terminal(line, col, tail)
     if s:is_string(a:line, a:col)
         let cursor = getpos('.')
         call setpos('.', [0, a:line, a:col, 0])
-        let [l, c] = s:adjacent_position(a:tail, 0)
+        let [l, c] = s:adjacent_pos(a:tail)
         call setpos('.', cursor)
         return !s:is_string(l, c)
     elseif char =~ s:opening_bracket
@@ -149,7 +150,7 @@ function! s:is_element_terminal(line, col, tail)
         " parts of an element.
         let cursor = getpos('.')
         call setpos('.', [0, a:line, a:col, 0])
-        let [l, c] = s:adjacent_position(a:tail, 0)
+        let [l, c] = s:adjacent_pos(a:tail)
         call setpos('.', cursor)
         return getline(l)[c-1] =~ s:delimiter
     endif
@@ -193,13 +194,14 @@ function! s:current_string_terminal(end)
     let flags = a:end ? 'W' : 'bW'
 
     while 1
-        let [line, col] = s:adjacent_position(a:end, 1)
+        let [line, col] = s:adjacent_pos(a:end)
 
         " Beginning or end of file.
         if line < 1 | break | endif
 
         if s:is_string(line, col)
             let [termline, termcol] = [line, col]
+            call cursor(line, col)
         else
             break
         endif

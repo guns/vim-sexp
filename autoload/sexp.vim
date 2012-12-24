@@ -340,16 +340,27 @@ endfunction
 
 """ EXPORTED FUNCTIONS {{{1
 
+" Sets visual marks at current form's brackets, then enters visual mode with
+" that selection. If no brackets are found and mode == 'o', nothing is done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
-    execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
+    if getpos("'<")[1] > 0
+        normal! gv
+    elseif a:mode !=? 'o'
+        normal! v
+    endif
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
-" up to the next element. We will do that when moving elements.
+" up to the next element. We will do that when moving elements. If not
+" currently in string and mode == 'o', nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
-    execute 'normal! ' . (getpos("'<")[1] > 0 ? 'gv' : 'v')
+    if getpos("'<")[1] > 0
+        normal! gv
+    elseif a:mode !=? 'o'
+        normal! v
+    endif
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

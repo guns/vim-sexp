@@ -159,6 +159,10 @@ function! s:syntax_name(line, col)
     return synIDattr(synID(a:line, a:col, 0), 'name')
 endfunction
 
+""" PREDICATES {{{1
+
+" It is established Vim convention that grepping '\cstring|comment' and so on
+" is acceptable for syntax regions that are conventionally named.
 function! s:is_ignored_scope(line, col)
     return s:syntax_name(a:line, a:col) =~? '\vstring|comment|char'
 endfunction
@@ -213,10 +217,13 @@ function! s:is_element_terminal(line, col, tail)
     endif
 endfunction
 
-" Tries to move cursor to nearest _paired_ bracket.
+""" CURSOR MOVEMENT {{{1
+
+" Tries to move cursor to nearest _paired_ bracket, returning its position
 function! s:move_to_nearest_bracket(closing)
     let pos = s:nearest_bracket(a:closing)
     if pos[1] > 0 | call setpos('.', pos) | endif
+    return pos
 endfunction
 
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
@@ -329,6 +336,8 @@ function! s:insert_brackets_around_current_word(bra, ket, at_tail, headspace)
     execute "normal! viw\<Esc>"
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
+
+""" EXPORTED FUNCTIONS {{{1
 
 function! sexp#select_current_form(offset)
     call s:set_marks_around_current_form(a:offset)

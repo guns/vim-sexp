@@ -128,6 +128,7 @@ endfunction
 "   * Current form if and only if cursor is on a _paired_ bracket
 "   * Current string if cursor is in a string
 "   * TODO: Current comment if cursor is in a comment
+"   * Current contiguous region of whitespace if cursor is on whitespace
 "   * Current atom otherwise
 function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
@@ -142,6 +143,8 @@ function! s:current_element_terminal(end)
         else
             return s:nearest_bracket(a:end)
         end
+    elseif char =~ '\v\s'
+        return s:adjacent_whitespace([0, line, col, 0], 1)
     elseif !s:is_atom(line, col)
         return [0, 0, 0, 0]
     else
@@ -359,7 +362,7 @@ endfunction
 " Will set both to [0, 0, 0, 0] if not currently in an element and mode does
 " not equal 'v'.
 function! s:set_marks_around_current_element(mode, with_whitespace)
-    let start = [0, 0, 0, 0,]
+    let start = [0, 0, 0, 0]
     let end = s:current_element_terminal(1)
 
     if end[1] > 0
@@ -370,7 +373,6 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
         return
     endif
 
-    " TODO: Select whitespace
     if a:with_whitespace
         let wend = s:adjacent_whitespace(end, 1)
         if wend != end

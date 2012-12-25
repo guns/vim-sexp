@@ -359,20 +359,16 @@ function! s:set_marks_around_current_string(mode, offset)
 endfunction
 
 " Set visual marks
-function! s:set_marks_around_current_atom(mode, with_whitespace)
+function! s:set_marks_around_current_atom(mode, inner)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current element.
-" If offset is greater than 0, the end includes whitespace up to the next
-" element, or whitespace up to the previous element if no trailing whitespace
-" on the same line is present.
-"
-" If the current element is whitespace, the visual marks are placed around the
-" whitespace and also to the end of the next element if with_whitespace is 1.
+" If inner is 0, trailing or leading whitespace is included by way
+" of s:terminals_with_whitespace().
 "
 " Will set both to [0, 0, 0, 0] if not currently in an element and mode does
 " not equal 'v'.
-function! s:set_marks_around_current_element(mode, with_whitespace)
+function! s:set_marks_around_current_element(mode, inner)
     let start = [0, 0, 0, 0]
     let end = s:current_element_terminal(1)
 
@@ -386,25 +382,9 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
         return
     endif
 
-    if a:with_whitespace
-        if getline(start[1])[start[2]-1] =~ '\v\s'
-            let cursor = getpos('.')
-            let [l, c] = s:findpos('\v\S', 1)
-            call cursor(l, c)
-            let end = s:current_element_terminal(1)
-            call setpos('.', cursor)
-        else
-            let wend = s:adjacent_whitespace_terminal(end, 1)
-            if end != wend && end[1] == wend[1]
-                let end = wend
-            else
-                let wstart = s:adjacent_whitespace_terminal(start, 0)
-                if start != wstart && start[1] == wstart[1]
-                    let start = wstart
-                endif
-            endif
-        endif
-    endif
+    " if !a:inner
+    "     let [start, end] = s:terminals_with_whitespace(start, end)
+    " endif
 
     call setpos("'<", start)
     call setpos("'>", end)
@@ -488,15 +468,15 @@ endfunction
 
 " Set visual marks around current atom and enter visual mode. If not currently
 " in an atom and mode equals 'o', nothing is done.
-function! sexp#select_current_atom(mode, with_whitespace)
-    call s:set_marks_around_current_atom(a:mode, a:with_whitespace)
+function! sexp#select_current_atom(mode, inner)
+    call s:set_marks_around_current_atom(a:mode, a:inner)
     call s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current element and enter visual mode. If not
 " currently in an element and mode equals 'o', nothing is done.
-function! sexp#select_current_element(mode, with_whitespace)
-    call s:set_marks_around_current_element(a:mode, a:with_whitespace)
+function! sexp#select_current_element(mode, inner)
+    call s:set_marks_around_current_element(a:mode, a:inner)
     call s:select_current_marks(a:mode)
 endfunction
 

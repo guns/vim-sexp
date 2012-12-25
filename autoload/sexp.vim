@@ -387,8 +387,32 @@ function! s:set_marks_around_current_string(mode, offset)
     endif
 endfunction
 
-" Set visual marks
+" Set visual marks '< and '> to the start and end of the current atom.
+" If inner is 0, trailing or leading whitespace is included by way of
+" s:terminals_with_whitespace().
+"
+" Will set both to [0, 0, 0, 0] if not currently in an atom and mode does
+" not equal 'v'.
 function! s:set_marks_around_current_atom(mode, inner)
+    let start = [0, 0, 0, 0]
+    let end = s:current_atom_terminal(1)
+
+    if end[1] > 0
+        let start = s:current_atom_terminal(0)
+    else
+        if a:mode !=? 'v'
+            call setpos("'<", [0, 0, 0, 0])
+            call setpos("'>", [0, 0, 0, 0])
+        endif
+        return
+    endif
+
+    if !a:inner
+        let [start, end] = s:terminals_with_whitespace(start, end)
+    endif
+
+    call setpos("'<", start)
+    call setpos("'>", end)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current element.

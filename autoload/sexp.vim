@@ -168,7 +168,7 @@ function! s:current_element_terminal(end)
         else
             return s:nearest_bracket(a:end)
         end
-    elseif char =~ '\v\s'
+    elseif empty(char) || char =~ '\v\s'
         return s:adjacent_whitespace_terminal([0, line, col, 0], a:end)
     else
         return s:current_atom_terminal(a:end)
@@ -216,9 +216,11 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     let [_b, termline, termcol, _o] = getpos('.')
 
     while 1
-        let [line, col] = s:findpos('\v.', a:trailing)
+        " We want to include empty lines
+        let [line, col] = s:findpos('\v\_.', a:trailing)
         if line < 1 | break | endif
-        if getline(line)[col-1] =~ '\v\s'
+        let char = getline(line)[col-1]
+        if empty(char) || char =~ '\v\s'
             let [termline, termcol] = [line, col]
             call cursor(line, col)
         else

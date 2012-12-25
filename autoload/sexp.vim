@@ -395,7 +395,7 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
                 let end = wend
             else
                 let wstart = s:adjacent_whitespace_terminal(start, 0)
-                if start != wstart
+                if start != wstart && start[1] == wstart[1]
                     let start = wstart
                 endif
             endif

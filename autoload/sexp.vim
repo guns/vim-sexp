@@ -466,7 +466,7 @@ endfunction
 
 """ EXPORTED FUNCTIONS {{{1
 
-" Sets visual marks at current form's brackets, then enters visual mode with
+" Set visual marks at current form's brackets, then enter visual mode with
 " that selection. If no brackets are found and mode equals 'o', nothing is
 " done.
 function! sexp#select_current_form(mode, offset)
@@ -475,15 +475,15 @@ function! sexp#select_current_form(mode, offset)
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
-" up to the next element. If not currently in string and mode equals 'o',
-" nothing is done.
+" up to the next element. This can be done with sexp#select_current_element if
+" desired. If not currently in string and mode equals 'o', nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
     call s:select_current_marks(a:mode)
 endfunction
 
-" Imitates native text objects aw and iw, but for elements. If not
-" currently in an element and mode equals 'o', nothing is done.
+" Imitates native text objects aw and iw, but for elements. If not currently
+" in an element and mode equals 'o', nothing is done.
 function! sexp#select_current_element(mode, with_whitespace)
     call s:set_marks_around_current_element(a:mode, a:with_whitespace)
     call s:select_current_marks(a:mode)

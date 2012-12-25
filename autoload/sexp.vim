@@ -355,9 +355,8 @@ endfunction
 " element, or whitespace up to the previous element if no trailing whitespace
 " on the same line is present.
 "
-" If mode equals 'v' and '< is set to the beginning of an element, only the
-" '> mark is set to the next element terminal (with optional whitespace as
-" before).
+" If the current element is whitespace, the visual marks are placed around the
+" whitespace and also to the end of the next element if with_whitespace is 1.
 "
 " Will set both to [0, 0, 0, 0] if not currently in an element and mode does
 " not equal 'v'.
@@ -374,11 +373,22 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
     endif
 
     if a:with_whitespace
-        let wend = s:adjacent_whitespace(end, 1)
-        if end != wend && end[1] == wend[1]
-            let end = wend
+        if getline(start[1])[start[2]-1] =~ '\v\s'
+            let cursor = getpos('.')
+            let [l, c] = s:findpos('\v\S', 1)
+            call cursor(l, c)
+            let end = s:current_element_terminal(1)
+            call setpos('.', cursor)
         else
-            let start = s:adjacent_whitespace(start, 0)
+            let wend = s:adjacent_whitespace(end, 1)
+            if end != wend && end[1] == wend[1]
+                let end = wend
+            else
+                let wstart = s:adjacent_whitespace(start, 0)
+                if start != wstart
+                    let start = wstart
+                endif
+            endif
         endif
     endif
 

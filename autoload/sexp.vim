@@ -44,6 +44,8 @@ let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 " be in the middle of a multibyte sequence).
 "
 " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
+"
+" Does not move cursor.
 function! s:findpos(pattern, next)
     if a:next
         let [line, col] = searchpos(a:pattern, 'nW')
@@ -90,13 +92,6 @@ endfunction
 
 " Position of start / end of current string: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in a string.
-"
-" We can't rely on va" or on searchpairpos() because they don't work well
-" on symmetric patterns. Also, we aren't searching for just double quotes
-" because then we can be generic at a small cost.
-"
-" We also use search() while moving the cursor because using simple column
-" arithmetic breaks on multibyte characters.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
@@ -104,6 +99,12 @@ function! s:current_string_terminal(end)
     let [termline, termcol] = [cursorline, cursorcol]
     let flags = a:end ? 'W' : 'bW'
 
+    " We can't rely on va" or on searchpairpos() because they don't work well
+    " on symmetric patterns. Also, we aren't searching for just double quotes
+    " because then we can be generic at a small cost.
+    "
+    " We also use search() while moving the cursor because using simple column
+    " arithmetic breaks on multibyte characters.
     while 1
         let [line, col] = s:findpos('\v\S', a:end)
 
@@ -200,11 +201,12 @@ endfunction
 
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
-" Will set both to [0, 0, 0, 0] if none are found, unless mode == 'v'.
 "
-" If mode == 'v', the cursor is on an opening bracket, the mark '< is valid,
-" and the mark '< does not equal '>, the visual marks are set to the next
-" outer pair of brackets.
+" If mode equals 'v', the cursor is on an opening bracket, the mark '< is
+" valid, and the mark '< does not equal '>, the visual marks are set to the
+" next outer pair of brackets.
+"
+" Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
     " We may potentially move the cursor.
     let cursor = getpos('.')
@@ -254,7 +256,8 @@ function! s:set_marks_around_current_form(mode, offset)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current string. Will
-" set both to [0, 0, 0, 0] if not currently in a string, unless mode == 'v'.
+" set both to [0, 0, 0, 0] if not currently in a string and mode does not
+" equal 'v'.
 function! s:set_marks_around_current_string(mode, offset)
     let end = s:current_string_terminal(1)
     if end[1] > 0
@@ -317,7 +320,8 @@ endfunction
 """ EXPORTED FUNCTIONS {{{1
 
 " Sets visual marks at current form's brackets, then enters visual mode with
-" that selection. If no brackets are found and mode == 'o', nothing is done.
+" that selection. If no brackets are found and mode equals 'o', nothing is
+" done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
     if getpos("'<")[1] > 0
@@ -328,8 +332,8 @@ function! sexp#select_current_form(mode, offset)
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
-" up to the next element. We will do that when moving elements. If not
-" currently in string and mode == 'o', nothing is done.
+" up to the next element. If not currently in string and mode equals 'o',
+" nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
     if getpos("'<")[1] > 0

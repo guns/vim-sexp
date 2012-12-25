@@ -24,6 +24,7 @@ let g:sexp_autoloaded = 1
 " * Set stopline for searchpairpos()
 " * Next/prev element text object
 " * Top level sexp text object
+" * Comment text object
 " * Don't ignore virtualedit mode
 
 """ PATTERNS {{{1

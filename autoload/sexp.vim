@@ -269,6 +269,16 @@ function! s:set_marks_around_current_string(mode, offset)
     endif
 endfunction
 
+" Enter visual mode with current visual marks, unless '< is invalid and
+" mode equals 'o'
+function! s:select_current_marks(mode)
+    if getpos("'<")[1] > 0
+        normal! gv
+    elseif a:mode !=? 'o'
+        normal! v
+    endif
+endfunction
+
 """ CHARACTER INSERTION {{{1
 
 " Insert bra and ket around current visual marks. If mark '< is invalid,
@@ -324,11 +334,7 @@ endfunction
 " done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
-    if getpos("'<")[1] > 0
-        normal! gv
-    elseif a:mode !=? 'o'
-        normal! v
-    endif
+    call s:select_current_marks(a:mode)
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
@@ -336,11 +342,7 @@ endfunction
 " nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
-    if getpos("'<")[1] > 0
-        normal! gv
-    elseif a:mode !=? 'o'
-        normal! v
-    endif
+    call s:select_current_marks(a:mode)
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

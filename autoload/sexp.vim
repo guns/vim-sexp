@@ -358,6 +358,10 @@ function! s:set_marks_around_current_string(mode, offset)
     endif
 endfunction
 
+" Set visual marks
+function! s:set_marks_around_current_atom(mode, with_whitespace)
+endfunction
+
 " Set visual marks '< and '> to the start and end of the current element.
 " If offset is greater than 0, the end includes whitespace up to the next
 " element, or whitespace up to the previous element if no trailing whitespace
@@ -482,8 +486,15 @@ function! sexp#select_current_string(mode, offset)
     call s:select_current_marks(a:mode)
 endfunction
 
-" Imitates native text objects aw and iw, but for elements. If not currently
-" in an element and mode equals 'o', nothing is done.
+" Set visual marks around current atom and enter visual mode. If not currently
+" in an atom and mode equals 'o', nothing is done.
+function! sexp#select_current_atom(mode, with_whitespace)
+    call s:set_marks_around_current_atom(a:mode, a:with_whitespace)
+    call s:select_current_marks(a:mode)
+endfunction
+
+" Set visual marks around current element and enter visual mode. If not
+" currently in an element and mode equals 'o', nothing is done.
 function! sexp#select_current_element(mode, with_whitespace)
     call s:set_marks_around_current_element(a:mode, a:with_whitespace)
     call s:select_current_marks(a:mode)

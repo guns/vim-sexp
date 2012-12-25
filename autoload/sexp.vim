@@ -255,12 +255,12 @@ endfunction
 "
 " An atom is defined as:
 "   * A contiguous region of non-whitespace, non-bracket characters that are
-"     not part of a string, comment, or character literal
+"     not part of a string or comment.
 function! s:is_atom(line, col)
     if getline(a:line)[a:col-1] =~ s:delimiter
         return 0
     else
-        return !s:is_ignored_scope(a:line, a:col)
+        return s:syntax_name(a:line, a:col) !~? '\vstring|comment'
     endif
 endfunction
 

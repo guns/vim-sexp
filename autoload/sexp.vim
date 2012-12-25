@@ -353,7 +353,7 @@ endfunction
 " Set visual marks '< and '> to the start and end of the current element.
 " If offset is greater than 0, the end includes whitespace up to the next
 " element, or whitespace up to the previous element if no trailing whitespace
-" is present.
+" on the same line is present.
 "
 " If mode equals 'v' and '< is set to the beginning of an element, only the
 " '> mark is set to the next element terminal (with optional whitespace as
@@ -375,7 +375,7 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
 
     if a:with_whitespace
         let wend = s:adjacent_whitespace(end, 1)
-        if wend != end
+        if end != wend && end[1] == wend[1]
             let end = wend
         else
             let start = s:adjacent_whitespace(start, 0)

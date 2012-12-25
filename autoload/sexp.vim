@@ -218,7 +218,9 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     while 1
         " We want to include empty lines
         let [line, col] = s:findpos('\v\_.', a:trailing)
+
         if line < 1 | break | endif
+
         let char = getline(line)[col-1]
         if empty(char) || char =~ '\v\s'
             let [termline, termcol] = [line, col]

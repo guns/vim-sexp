@@ -121,6 +121,31 @@ function! s:current_string_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
+" Position of start / end of current atom: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
+" lines.
+function! s:current_atom_terminal(end)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    if !s:is_atom(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+
+    let [line, termline, termcol] = [cursorline, cursorline, cursorcol]
+
+    while 1
+        let [line, col] = s:findpos('\v.', a:end, line)
+        if line < 1 | break | endif
+
+        if s:is_atom(line, col)
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call cursor(cursorline, cursorcol)
+    return [0, termline, termcol, 0]
+endfunction
+
 " Position of start / end of current element: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in an element.
 "
@@ -145,25 +170,8 @@ function! s:current_element_terminal(end)
         end
     elseif char =~ '\v\s'
         return s:adjacent_whitespace_terminal([0, line, col, 0], a:end)
-    elseif !s:is_atom(line, col)
-        return [0, 0, 0, 0]
     else
-        let [cursorline, cursorcol, termline, termcol] = [line, col, line, col]
-
-        while 1
-            let [line, col] = s:findpos('\v.', a:end, line)
-            if line < 1 | break | endif
-
-            if s:is_atom(line, col)
-                let [termline, termcol] = [line, col]
-                call cursor(line, col)
-            else
-                break
-            endif
-        endwhile
-
-        call cursor(cursorline, cursorcol)
-        return [0, termline, termcol, 0]
+        return s:current_atom_terminal(a:end)
     endif
 endfunction
 

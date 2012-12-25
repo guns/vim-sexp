@@ -144,7 +144,7 @@ function! s:current_element_terminal(end)
             return s:nearest_bracket(a:end)
         end
     elseif char =~ '\v\s'
-        return s:adjacent_whitespace([0, line, col, 0], 1)
+        return s:adjacent_whitespace([0, line, col, 0], a:end)
     elseif !s:is_atom(line, col)
         return [0, 0, 0, 0]
     else

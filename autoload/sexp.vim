@@ -24,7 +24,9 @@ let g:sexp_autoloaded = 1
 " * Set stopline for searchpairpos()
 " * Next/prev element text object
 " * Top level sexp text object
+" * Comment text object
 " * Don't ignore virtualedit mode
+" * Check synstack() for syntax scope?
 
 """ PATTERNS {{{1
 
@@ -32,7 +34,6 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
-let s:element = s:bracket . '|\S'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 
 """ QUERIES AT CURSOR {{{1
@@ -43,14 +44,16 @@ let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 " be in the middle of a multibyte sequence).
 "
 " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
-function! s:findpos(pattern, next)
+"
+" One extra argument may be supplied: the stopline parameter of searchpos().
+function! s:findpos(pattern, next, ...)
     if a:next
-        let [line, col] = searchpos(a:pattern, 'nW')
+        let [line, col] = searchpos(a:pattern, 'nW', a:0 ? a:1 : 0)
     else
         let [_b, line, col, _o] = getpos('.')
         if col == 1
             " Backwards search from bol still works fine
-            let [line, col] = searchpos(a:pattern, 'bnW')
+            let [line, col] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         else
             " Note that this may not be the beginning of the character
             let col -= 1
@@ -60,10 +63,9 @@ function! s:findpos(pattern, next)
     return [line, col]
 endfunction
 
-" Return single-byte character behind cursor.
+" Return single-byte character behind cursor on the same line.
 function! s:previous_char()
-    let [line, col] = s:findpos('\v.', 0)
-    return getline(line)[col-1]
+    return getline('.')[col('.')-1]
 endfunction
 
 " Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
@@ -89,22 +91,20 @@ endfunction
 
 " Position of start / end of current string: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in a string.
-"
-" We can't rely on va" or on searchpairpos() because they don't work well
-" on symmetric patterns. Also, we aren't searching for just double quotes
-" because then we can be generic at a small cost.
-"
-" We also use search() while moving the cursor because using simple column
-" arithmetic breaks on multibyte characters.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
 
     let [termline, termcol] = [cursorline, cursorcol]
-    let flags = a:end ? 'W' : 'bW'
 
+    " We can't rely on va" or on searchpairpos() because they don't work well
+    " on symmetric patterns. Also, we aren't searching for just double quotes
+    " because then we can be generic at a small cost.
+    "
+    " We also use s:findpos() while moving the cursor because using simple
+    " column arithmetic breaks on multibyte characters.
     while 1
-        let [line, col] = s:findpos('\v\S', a:end)
+        let [line, col] = s:findpos('\v.', a:end)
 
         " Beginning or end of file.
         if line < 1 | break | endif
@@ -117,8 +117,62 @@ function! s:current_string_terminal(end)
         endif
     endwhile
 
-    call setpos('.', [0, cursorline, cursorcol, 0])
+    call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
+endfunction
+
+" Position of start / end of current atom: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
+" lines.
+function! s:current_atom_terminal(end)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    if !s:is_atom(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+
+    let [line, termline, termcol] = [cursorline, cursorline, cursorcol]
+
+    while 1
+        let [line, col] = s:findpos('\v.', a:end, line)
+        if line < 1 | break | endif
+
+        if s:is_atom(line, col)
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call cursor(cursorline, cursorcol)
+    return [0, termline, termcol, 0]
+endfunction
+
+" Position of start / end of current element: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in an element.
+"
+" An element is defined as:
+"   * Current form if and only if cursor is on a _paired_ bracket
+"   * Current string if cursor is in a string
+"   * TODO: Current comment if cursor is in a comment
+"   * Current contiguous region of whitespace if cursor is on whitespace
+"   * Current atom otherwise
+function! s:current_element_terminal(end)
+    let [_b, line, col, _o] = getpos('.')
+    let char = getline(line)[col-1]
+
+    if s:is_string(line, col)
+        return s:current_string_terminal(a:end)
+    " TODO: elseif s:is_comment()
+    elseif char =~ s:bracket
+        if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+            return [0, line, col, 0]
+        else
+            return s:nearest_bracket(a:end)
+        end
+    elseif char =~ '\v\s'
+        return s:adjacent_whitespace_terminal([0, line, col, 0], a:end)
+    else
+        return s:current_atom_terminal(a:end)
+    endif
 endfunction
 
 """ QUERIES AT POSITION {{{1
@@ -154,6 +208,28 @@ function! s:syntax_name(line, col)
     return synIDattr(synID(a:line, a:col, 0), 'name')
 endfunction
 
+" Return start of leading (0) or end of trailing (1) whitespace from pos.
+function! s:adjacent_whitespace_terminal(pos, trailing)
+    let cursor = getpos('.')
+
+    call setpos('.', a:pos)
+    let [_b, termline, termcol, _o] = getpos('.')
+
+    while 1
+        let [line, col] = s:findpos('\v.', a:trailing)
+        if line < 1 | break | endif
+        if getline(line)[col-1] =~ '\v\s'
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call setpos('.', cursor)
+    return [0, termline, termcol, 0]
+endfunction
+
 """ PREDICATES {{{1
 
 " It is established Vim convention that matching '\cstring|comment' and so on
@@ -173,9 +249,9 @@ function! s:is_string(line, col)
         " We may be on an empty line; check nearest pair of nonspace chars
         if col('$') == 1
             let cursor = getpos('.')
-            call setpos('.', [0, a:line, a:col, 0])
-            let [pline, pcol] = searchpos('\v\S', 'nW')
-            let [nline, ncol] = searchpos('\v\S', 'bnW')
+            call cursor(a:line, a:col)
+            let [pline, pcol] = s:findpos('\v\S', 0)
+            let [nline, ncol] = s:findpos('\v\S', 1)
             if s:syntax_name(pline, pcol) =~? 'string' && s:syntax_name(nline, ncol) =~? 'string'
                 let instring = 1
             endif
@@ -183,6 +259,19 @@ function! s:is_string(line, col)
         endif
 
         return instring
+    endif
+endfunction
+
+" Returns 1 if character at position is an atom.
+"
+" An atom is defined as:
+"   * A contiguous region of non-whitespace, non-bracket characters that are
+"     not part of a string or comment.
+function! s:is_atom(line, col)
+    if getline(a:line)[a:col-1] =~ s:delimiter
+        return 0
+    else
+        return s:syntax_name(a:line, a:col) !~? '\vstring|comment'
     endif
 endfunction
 
@@ -199,14 +288,16 @@ endfunction
 
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
-" Will set both to [0, 0, 0, 0] if none are found, unless mode == 'v'.
 "
-" If mode == 'v', the cursor is on an opening bracket, the mark '< is valid,
-" and the mark '< does not equal '>, the visual marks are set to the next
-" outer pair of brackets.
+" If mode equals 'v', the cursor is on an opening bracket, the mark '< is
+" valid, and the mark '< does not equal '>, the visual marks are set to the
+" next outer pair of brackets.
+"
+" Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
     " We may potentially move the cursor.
     let cursor = getpos('.')
+    let cursor_moved = 0
 
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
@@ -224,6 +315,7 @@ function! s:set_marks_around_current_form(mode, offset)
     if !ignored && char =~ s:opening_bracket
         if visual_repeat
             if s:move_to_nearest_bracket(1)[1] > 0
+                let cursor_moved = 1
                 call s:move_to_nearest_bracket(1) " Expansion step
             endif
             let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
@@ -249,11 +341,12 @@ function! s:set_marks_around_current_form(mode, offset)
         call setpos("'>", [0, 0, 0, 0])
     endif
 
-    call setpos('.', cursor)
+    if cursor_moved | call setpos('.', cursor) | endif
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current string. Will
-" set both to [0, 0, 0, 0] if not currently in a string, unless mode == 'v'.
+" set both to [0, 0, 0, 0] if not currently in a string and mode does not
+" equal 'v'.
 function! s:set_marks_around_current_string(mode, offset)
     let end = s:current_string_terminal(1)
     if end[1] > 0
@@ -262,6 +355,64 @@ function! s:set_marks_around_current_string(mode, offset)
     elseif a:mode !=? 'v'
         call setpos("'<", [0, 0, 0, 0])
         call setpos("'>", [0, 0, 0, 0])
+    endif
+endfunction
+
+" Set visual marks '< and '> to the start and end of the current element.
+" If offset is greater than 0, the end includes whitespace up to the next
+" element, or whitespace up to the previous element if no trailing whitespace
+" on the same line is present.
+"
+" If the current element is whitespace, the visual marks are placed around the
+" whitespace and also to the end of the next element if with_whitespace is 1.
+"
+" Will set both to [0, 0, 0, 0] if not currently in an element and mode does
+" not equal 'v'.
+function! s:set_marks_around_current_element(mode, with_whitespace)
+    let start = [0, 0, 0, 0]
+    let end = s:current_element_terminal(1)
+
+    if end[1] > 0
+        let start = s:current_element_terminal(0)
+    else
+        if a:mode !=? 'v'
+            call setpos("'<", [0, 0, 0, 0])
+            call setpos("'>", [0, 0, 0, 0])
+        endif
+        return
+    endif
+
+    if a:with_whitespace
+        if getline(start[1])[start[2]-1] =~ '\v\s'
+            let cursor = getpos('.')
+            let [l, c] = s:findpos('\v\S', 1)
+            call cursor(l, c)
+            let end = s:current_element_terminal(1)
+            call setpos('.', cursor)
+        else
+            let wend = s:adjacent_whitespace_terminal(end, 1)
+            if end != wend && end[1] == wend[1]
+                let end = wend
+            else
+                let wstart = s:adjacent_whitespace_terminal(start, 0)
+                if start != wstart && start[1] == wstart[1]
+                    let start = wstart
+                endif
+            endif
+        endif
+    endif
+
+    call setpos("'<", start)
+    call setpos("'>", end)
+endfunction
+
+" Enter visual mode with current visual marks, unless '< is invalid and
+" mode equals 'o'
+function! s:select_current_marks(mode)
+    if getpos("'<")[1] > 0
+        normal! gv
+    elseif a:mode !=? 'o'
+        normal! v
     endif
 endfunction
 
@@ -308,34 +459,34 @@ function! s:insert_brackets_around_current_string(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-function! s:insert_brackets_around_current_word(bra, ket, at_tail, headspace)
-    execute "normal! viw\<Esc>"
+function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
+    call s:set_marks_around_current_element('n', 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
 """ EXPORTED FUNCTIONS {{{1
 
-" Sets visual marks at current form's brackets, then enters visual mode with
-" that selection. If no brackets are found and mode == 'o', nothing is done.
+" Set visual marks at current form's brackets, then enter visual mode with
+" that selection. If no brackets are found and mode equals 'o', nothing is
+" done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
-    if getpos("'<")[1] > 0
-        normal! gv
-    elseif a:mode !=? 'o'
-        normal! v
-    endif
+    call s:select_current_marks(a:mode)
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
-" up to the next element. We will do that when moving elements. If not
-" currently in string and mode == 'o', nothing is done.
+" up to the next element. This can be done with sexp#select_current_element if
+" desired. If not currently in string and mode equals 'o', nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
-    if getpos("'<")[1] > 0
-        normal! gv
-    elseif a:mode !=? 'o'
-        normal! v
-    endif
+    call s:select_current_marks(a:mode)
+endfunction
+
+" Imitates native text objects aw and iw, but for elements. If not currently
+" in an element and mode equals 'o', nothing is done.
+function! sexp#select_current_element(mode, with_whitespace)
+    call s:set_marks_around_current_element(a:mode, a:with_whitespace)
+    call s:select_current_marks(a:mode)
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally
@@ -345,20 +496,10 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     let original_start = getpos("'<")
     let original_end = getpos("'>")
 
-    " Wrap form.
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
-    " Wrap form if on bracket, string if in string, word otherwise.
-    elseif a:scope ==# 'w'
-        let [_b, line, col, _o] = getpos('.')
-        if getline(line)[col-1] =~ s:bracket
-            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
-        elseif s:is_string(line, col)
-            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_tail, a:insert)
-        else
-            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_tail, a:insert)
-        endif
-    " Wrap current visual selection.
+    elseif a:scope ==# 'e'
+        call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
     elseif a:scope ==# 'v'
         call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
     endif

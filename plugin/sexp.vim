@@ -29,29 +29,31 @@ if !exists('g:sexp_wrap_insert')
 endif
 
 if !exists('g:sexp_textobj_mappings')
+    " TODO: Document that 's' mapping overrides inner/outer sentence
     let g:sexp_textobj_mappings = {
         \ 'form':         'f',
         \ 'string':       's',
+        \ 'element':      'e',
     \ }
 endif
 
 if !exists('g:sexp_mappings')
     " FIXME: Set to LocalLeader before release!
     let g:sexp_mappings = {
-        \ 'sexp_form_wrap_round_head':  '<Leader>i',
-        \ 'sexp_form_wrap_round_tail':  '<Leader>I',
-        \ 'sexp_form_wrap_square_head': '<Leader>[',
-        \ 'sexp_form_wrap_square_tail': '<Leader>]',
-        \ 'sexp_form_wrap_curly_head':  '<Leader>{',
-        \ 'sexp_form_wrap_curly_tail':  '<Leader>}',
-        \ 'sexp_word_wrap_round_head':  '<Leader>W',
-        \ 'sexp_word_wrap_round_tail':  '<Leader>w',
-        \ 'sexp_word_wrap_square_head': '',
-        \ 'sexp_word_wrap_square_tail': '',
-        \ 'sexp_word_wrap_curly_head':  '',
-        \ 'sexp_word_wrap_curly_tail':  '',
-        \ 'sexp_lift_form':             '<Leader>o',
-        \ 'sexp_splice_form':           '<Leader>O',
+        \ 'sexp_form_wrap_round_head':     '<Leader>i',
+        \ 'sexp_form_wrap_round_tail':     '<Leader>I',
+        \ 'sexp_form_wrap_square_head':    '<Leader>[',
+        \ 'sexp_form_wrap_square_tail':    '<Leader>]',
+        \ 'sexp_form_wrap_curly_head':     '<Leader>{',
+        \ 'sexp_form_wrap_curly_tail':     '<Leader>}',
+        \ 'sexp_element_wrap_round_head':  '<Leader>W',
+        \ 'sexp_element_wrap_round_tail':  '<Leader>w',
+        \ 'sexp_element_wrap_square_head': '',
+        \ 'sexp_element_wrap_square_tail': '',
+        \ 'sexp_element_wrap_curly_head':  '',
+        \ 'sexp_element_wrap_curly_tail':  '',
+        \ 'sexp_lift_form':                '<Leader>o',
+        \ 'sexp_splice_form':              '<Leader>O',
     \ }
 endif
 
@@ -84,8 +86,14 @@ omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current
 vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('v', 1)<CR>
 omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('o', 1)<CR>
 
+" Current element
+vnoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('v', 1)<CR>
+omap     <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('o', 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('v', 0)<CR>
+omap     <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 0)<CR>
+
 if !empty('g:sexp_textobj_mappings')
-    for s:key in ['form', 'string']
+    for s:key in ['form', 'string', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,
@@ -116,18 +124,18 @@ nnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('f', '{'
 vnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_wrap_insert)<CR>
 
 " Wrap word
-nnoremap <silent> <Plug>sexp_word_wrap_round_head  :<C-u>call sexp#wrap('w', '(', ')', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_word_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_word_wrap_round_tail  :<C-u>call sexp#wrap('w', '(', ')', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_word_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 1, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_word_wrap_square_head :<C-u>call sexp#wrap('w', '[', ']', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_word_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_word_wrap_square_tail :<C-u>call sexp#wrap('w', '[', ']', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_word_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 1, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('w', '{', '}', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_word_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('w', '{', '}', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_word_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_round_head  :<C-u>call sexp#wrap('e', '(', ')', 0, g:sexp_wrap_insert)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 0, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_round_tail  :<C-u>call sexp#wrap('e', '(', ')', 1, g:sexp_wrap_insert)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 1, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_square_head :<C-u>call sexp#wrap('e', '[', ']', 0, g:sexp_wrap_insert)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 0, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_square_tail :<C-u>call sexp#wrap('e', '[', ']', 1, g:sexp_wrap_insert)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 1, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_curly_head  :<C-u>call sexp#wrap('e', '{', '}', 0, g:sexp_wrap_insert)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 0, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_curly_tail  :<C-u>call sexp#wrap('e', '{', '}', 1, g:sexp_wrap_insert)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_wrap_insert)<CR>
 
 " Lift form
 nmap <silent> <Plug>sexp_lift_form d<Plug>sexp_textobj_outer_formv<Plug>sexp_textobj_outer_formp

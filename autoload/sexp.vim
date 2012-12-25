@@ -197,6 +197,28 @@ function! s:syntax_name(line, col)
     return synIDattr(synID(a:line, a:col, 0), 'name')
 endfunction
 
+" Return start of leading (0) or end of trailing (1) whitespace from pos.
+function! s:adjacent_whitespace(pos, trailing)
+    let cursor = getpos('.')
+
+    call setpos('.', a:pos)
+    let [_b, termline, termcol, _o] = getpos('.')
+
+    while 1
+        let [line, col] = s:findpos('\v.', a:trailing)
+        if line < 1 | break | endif
+        if getline(line)[col-1] =~ '\v\s'
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call setpos('.', cursor)
+    return [0, termline, termcol, 0]
+endfunction
+
 """ PREDICATES {{{1
 
 " It is established Vim convention that matching '\cstring|comment' and so on
@@ -349,8 +371,14 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
     endif
 
     " TODO: Select whitespace
-    " if a:with_whitespace > 0
-    " endif
+    if a:with_whitespace
+        let wend = s:adjacent_whitespace(end, 1)
+        if wend != end
+            let end = wend
+        else
+            let start = s:adjacent_whitespace(start, 0)
+        endif
+    endif
 
     call setpos("'<", start)
     call setpos("'>", end)

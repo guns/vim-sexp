@@ -86,10 +86,10 @@ vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current
 omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('o', 1)<CR>
 
 " Current element
-vnoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('v', 0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('o', 0)<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('v', 1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('v', 1)<CR>
+omap     <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('o', 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('v', 0)<CR>
+omap     <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 0)<CR>
 
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'string', 'element']

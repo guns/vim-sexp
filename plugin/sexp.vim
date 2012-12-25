@@ -33,6 +33,7 @@ if !exists('g:sexp_textobj_mappings')
     let g:sexp_textobj_mappings = {
         \ 'form':         'f',
         \ 'string':       's',
+        \ 'comment':      'c',
         \ 'atom':         'a',
         \ 'element':      'e',
     \ }
@@ -87,6 +88,12 @@ omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current
 vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('v', 1)<CR>
 omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('o', 1)<CR>
 
+" Current comment
+vnoremap <silent> <Plug>sexp_textobj_outer_comment :<C-u>call sexp#select_current_comment('v', 0)<CR>
+omap     <silent> <Plug>sexp_textobj_outer_comment :<C-u>call sexp#select_current_comment('o', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('v', 1)<CR>
+omap     <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('o', 1)<CR>
+
 " Current atom
 vnoremap <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('v', 0)<CR>
 omap     <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('o', 0)<CR>
@@ -100,7 +107,7 @@ vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_curren
 omap     <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
 
 if !empty('g:sexp_textobj_mappings')
-    for s:key in ['form', 'string', 'atom', 'element']
+    for s:key in ['form', 'string', 'comment', 'atom', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,

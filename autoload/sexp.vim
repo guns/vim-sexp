@@ -24,7 +24,6 @@ let g:sexp_autoloaded = 1
 " * Set stopline for searchpairpos()
 " * Next/prev element text object
 " * Top level sexp text object
-" * Comment text object
 " * Don't ignore virtualedit mode
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
@@ -41,8 +40,7 @@ let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 
 " Like searchpos(), return first pattern match from cursor as [line, col].
 " Unlike searchpos(), searching backwards when the cursor is on a multibyte
-" character does not move the cursor too far (but the position returned may
-" be in the middle of a multibyte sequence).
+" character does not move the cursor too far.
 "
 " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
 "
@@ -52,12 +50,12 @@ function! s:findpos(pattern, next, ...)
         let [line, col] = searchpos(a:pattern, 'nW', a:0 ? a:1 : 0)
     else
         let [_b, line, col, _o] = getpos('.')
-        if col == 1
-            " Backwards search from bol still works fine
-            let [line, col] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
+        let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
+        " Bug only occurs when match is on same line
+        if sline == line
+            let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
-            " Note that this may not be the beginning of the character
-            let col -= 1
+            let [line, col] = [sline, scol]
         endif
     endif
 
@@ -122,6 +120,31 @@ function! s:current_string_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
+" Position of start / end of current comment: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in a comment.
+function! s:current_comment_terminal(end)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    if !s:is_comment(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+
+    let [termline, termcol] = [cursorline, cursorcol]
+
+    while 1
+        let [line, col] = s:findpos('\v.', a:end)
+
+        if line < 1 | break | endif
+
+        if s:is_comment(line, col)
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call cursor(cursorline, cursorcol)
+    return [0, termline, termcol, 0]
+endfunction
+
 " Position of start / end of current atom: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
 " lines.
@@ -153,7 +176,7 @@ endfunction
 " An element is defined as:
 "   * Current form if and only if cursor is on a _paired_ bracket
 "   * Current string if cursor is in a string
-"   * TODO: Current comment if cursor is in a comment
+"   * Current comment if cursor is in a comment
 "   * Current contiguous region of whitespace if cursor is on whitespace
 "   * Current atom otherwise
 function! s:current_element_terminal(end)
@@ -162,7 +185,8 @@ function! s:current_element_terminal(end)
 
     if s:is_string(line, col)
         return s:current_string_terminal(a:end)
-    " TODO: elseif s:is_comment()
+    elseif s:is_comment(line, col)
+        return s:current_comment_terminal(a:end)
     elseif char =~ s:bracket
         if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
             return [0, line, col, 0]
@@ -294,6 +318,32 @@ function! s:is_string(line, col)
     endif
 endfunction
 
+" Returns 1 is character at position is in a comment, or is in the whitespace
+" between two line comments.
+function! s:is_comment(line, col)
+    if s:syntax_name(a:line, a:col) =~? 'comment'
+        return 1
+    else
+        let incomment = 0
+
+        " We may be in the whitespace between two line comments; check if the
+        " current line begins with a comment and the previous line ended with
+        " a comment.
+        if getline(a:line)[a:col-1] =~ '\v\s'
+            let cursor = getpos('.')
+            call cursor(a:line, a:col)
+            let [pline, pcol] = s:findpos('\v\S', 0, a:line-1)
+            let [cline, ccol] = s:findpos('\v\S', 1, a:line)
+            if s:syntax_name(pline, pcol) =~? 'comment' && s:syntax_name(cline, ccol) =~? 'comment'
+                let incomment = 1
+            endif
+            call setpos('.', cursor)
+        endif
+
+        return incomment
+    endif
+endfunction
+
 " Returns 1 if character at position is an atom.
 "
 " An atom is defined as:
@@ -388,6 +438,34 @@ function! s:set_marks_around_current_string(mode, offset)
         call setpos("'<", [0, 0, 0, 0])
         call setpos("'>", [0, 0, 0, 0])
     endif
+endfunction
+
+" Set visual marks '< and '> to the start and end of the current comment.
+" If inner is 0, trailing or leading whitespace is included by way of
+" s:terminals_with_whitespace().
+"
+" Will set both to [0, 0, 0, 0] if not currently in a comment and mode does
+" not equal 'v'.
+function! s:set_marks_around_current_comment(mode, inner)
+    let start = [0, 0, 0, 0]
+    let end = s:current_comment_terminal(1)
+
+    if end[1] > 0
+        let start = s:current_comment_terminal(0)
+    else
+        if a:mode !=? 'v'
+            call setpos("'<", [0, 0, 0, 0])
+            call setpos("'>", [0, 0, 0, 0])
+        endif
+        return
+    endif
+
+    if !a:inner
+        let [start, end] = s:terminals_with_whitespace(start, end)
+    endif
+
+    call setpos("'<", start)
+    call setpos("'>", end)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current atom.
@@ -522,6 +600,13 @@ function! sexp#select_current_string(mode, offset)
     call s:select_current_marks(a:mode)
 endfunction
 
+" Set visual marks around current comment and enter visual mode. If not
+" currently in a comment and mode equals 'o', nothing is done.
+function! sexp#select_current_comment(mode, inner)
+    call s:set_marks_around_current_comment(a:mode, a:inner)
+    call s:select_current_marks(a:mode)
+endfunction
+
 " Set visual marks around current atom and enter visual mode. If not currently
 " in an atom and mode equals 'o', nothing is done.
 function! sexp#select_current_atom(mode, inner)
@@ -529,8 +614,7 @@ function! sexp#select_current_atom(mode, inner)
     call s:select_current_marks(a:mode)
 endfunction
 
-" Set visual marks around current element and enter visual mode. If not
-" currently in an element and mode equals 'o', nothing is done.
+" Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner)
     call s:set_marks_around_current_element(a:mode, a:inner)
     call s:select_current_marks(a:mode)

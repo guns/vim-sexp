@@ -322,8 +322,8 @@ function! s:insert_brackets_around_current_string(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-function! s:insert_brackets_around_current_word(bra, ket, at_tail, headspace)
-    execute "normal! viw\<Esc>"
+function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
+    call s:set_marks_around_current_element('n', 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
@@ -345,6 +345,13 @@ function! sexp#select_current_string(mode, offset)
     call s:select_current_marks(a:mode)
 endfunction
 
+" Imitates native text objects aw and iw, but for elements. If not
+" currently in an element and mode equals 'o', nothing is done.
+function! sexp#select_current_element(mode, with_whitespace)
+    call s:set_marks_around_current_element(a:mode, a:with_whitespace)
+    call s:select_current_marks(a:mode)
+endfunction
+
 " Place brackets around scope, then place cursor at head or tail, finally
 " leaving off in insert mode if specified. Insert also sets the headspace
 " parameter when inserting brackets.
@@ -352,20 +359,10 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     let original_start = getpos("'<")
     let original_end = getpos("'>")
 
-    " Wrap form.
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
-    " Wrap form if on bracket, string if in string, word otherwise.
-    elseif a:scope ==# 'w'
-        let [_b, line, col, _o] = getpos('.')
-        if getline(line)[col-1] =~ s:bracket
-            call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
-        elseif s:is_string(line, col)
-            call s:insert_brackets_around_current_string(a:bra, a:ket, a:at_tail, a:insert)
-        else
-            call s:insert_brackets_around_current_word(a:bra, a:ket, a:at_tail, a:insert)
-        endif
-    " Wrap current visual selection.
+    elseif a:scope ==# 'e'
+        call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
     elseif a:scope ==# 'v'
         call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
     endif

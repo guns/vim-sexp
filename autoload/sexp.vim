@@ -33,7 +33,6 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
-let s:element = s:bracket . '|\S'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 
 """ QUERIES AT CURSOR {{{1
@@ -45,15 +44,15 @@ let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 "
 " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
 "
-" Does not move cursor.
-function! s:findpos(pattern, next)
+" One extra argument may be supplied: the stopline parameter of searchpos().
+function! s:findpos(pattern, next, ...)
     if a:next
-        let [line, col] = searchpos(a:pattern, 'nW')
+        let [line, col] = searchpos(a:pattern, 'nW', a:0 ? a:1 : 0)
     else
         let [_b, line, col, _o] = getpos('.')
         if col == 1
             " Backwards search from bol still works fine
-            let [line, col] = searchpos(a:pattern, 'bnW')
+            let [line, col] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         else
             " Note that this may not be the beginning of the character
             let col -= 1
@@ -102,8 +101,8 @@ function! s:current_string_terminal(end)
     " on symmetric patterns. Also, we aren't searching for just double quotes
     " because then we can be generic at a small cost.
     "
-    " We also use search() while moving the cursor because using simple column
-    " arithmetic breaks on multibyte characters.
+    " We also use s:findpos() while moving the cursor because using simple
+    " column arithmetic breaks on multibyte characters.
     while 1
         let [line, col] = s:findpos('\v\S', a:end)
 
@@ -120,6 +119,49 @@ function! s:current_string_terminal(end)
 
     call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
+endfunction
+
+" Position of start / end of current element: 0 for start, 1 for end. Returns
+" [0, 0, 0, 0] if not currently in an element.
+"
+" An element is defined as:
+"   * Current form if and only if cursor is on a _paired_ bracket
+"   * Current string if cursor is in a string
+"   * TODO: Current comment if cursor is in a comment
+"   * Current atom otherwise
+function! s:current_element_terminal(end)
+    let [_b, line, col, _o] = getpos('.')
+    let char = getline(line)[col-1]
+
+    if s:is_string(line, col)
+        return s:current_string_terminal(a:end)
+    " TODO: elseif s:is_comment()
+    elseif char =~ s:bracket
+        if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+            return [0, line, col, 0]
+        else
+            return s:nearest_bracket(a:end)
+        end
+    elseif !s:is_atom(line, col)
+        return [0, 0, 0, 0]
+    else
+        let [cursorline, cursorcol, termline, termcol] = [line, col, line, col]
+
+        while 1
+            let [line, col] = s:findpos('\v.', a:end, line)
+            if line < 1 | break | endif
+
+            if s:is_atom(line, col)
+                let [termline, termcol] = [line, col]
+                call cursor(line, col)
+            else
+                break
+            endif
+        endwhile
+
+        call cursor(cursorline, cursorcol)
+        return [0, termline, termcol, 0]
+    endif
 endfunction
 
 """ QUERIES AT POSITION {{{1
@@ -184,6 +226,19 @@ function! s:is_string(line, col)
         endif
 
         return instring
+    endif
+endfunction
+
+" Returns 1 if character at position is an atom.
+"
+" An atom is defined as:
+"   * A contiguous region of non-whitespace, non-bracket characters that are
+"     not part of a string, comment, or character literal
+function! s:is_atom(line, col)
+    if getline(a:line)[a:col-1] =~ s:delimiter
+        return 0
+    else
+        return !s:is_ignored_scope(a:line, a:col)
     endif
 endfunction
 
@@ -268,6 +323,37 @@ function! s:set_marks_around_current_string(mode, offset)
         call setpos("'<", [0, 0, 0, 0])
         call setpos("'>", [0, 0, 0, 0])
     endif
+endfunction
+
+" Set visual marks '< and '> to the start and end of the current element.
+" If offset is greater than 0, the end includes whitespace up to the next
+" element, or whitespace up to the previous element if no trailing whitespace
+" is present.
+"
+" If mode equals 'v' and '< is set to the beginning of an element, only the
+" '> mark is set to the next element terminal (with optional whitespace as
+" before).
+"
+" Will set both to [0, 0, 0, 0] if not currently in an element and mode does
+" not equal 'v'.
+function! s:set_marks_around_current_element(mode, with_whitespace)
+    let start = [0, 0, 0, 0,]
+    let end = s:current_element_terminal(1)
+
+    if end[1] > 0
+        let start = s:current_element_terminal(0)
+    elseif a:mode !=? 'v'
+        call setpos("'<", [0, 0, 0, 0])
+        call setpos("'>", [0, 0, 0, 0])
+        return
+    endif
+
+    " TODO: Select whitespace
+    " if a:with_whitespace > 0
+    " endif
+
+    call setpos("'<", start)
+    call setpos("'>", end)
 endfunction
 
 " Enter visual mode with current visual marks, unless '< is invalid and

@@ -26,6 +26,7 @@ let g:sexp_autoloaded = 1
 " * Top level sexp text object
 " * Comment text object
 " * Don't ignore virtualedit mode
+" * Check synstack() for syntax scope?
 
 """ PATTERNS {{{1
 

@@ -27,6 +27,7 @@ let g:sexp_autoloaded = 1
 " * Comment text object
 " * Don't ignore virtualedit mode
 " * Check synstack() for syntax scope?
+" * Extract common subroutines? (not if it impedes clarity)
 
 """ PATTERNS {{{1
 

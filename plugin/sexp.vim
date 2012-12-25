@@ -29,6 +29,7 @@ if !exists('g:sexp_wrap_insert')
 endif
 
 if !exists('g:sexp_textobj_mappings')
+    " TODO: Document that 's' mapping overrides inner/outer sentence
     let g:sexp_textobj_mappings = {
         \ 'form':         'f',
         \ 'string':       's',

@@ -52,7 +52,7 @@ function! s:findpos(pattern, next, ...)
         let [_b, line, col, _o] = getpos('.')
         let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         " Bug only occurs when match is on same line
-        if sline == line
+        if sline == line && &encoding ==? 'utf-8' && s:is_backwards_multibyte_search_broken()
             let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
             let [line, col] = [sline, scol]
@@ -287,6 +287,22 @@ function! s:terminals_with_whitespace(start, end)
 endfunction
 
 """ PREDICATES {{{1
+
+" See discussion at s:findpos()
+function! s:is_backwards_multibyte_search_broken()
+    if exists('s:backwards_multibyte_search_is_broken')
+        return s:backwards_multibyte_search_is_broken
+    else
+        let cursor = getpos('.')
+        call append(cursor[1], '123❤sexp-bugcheck')
+        call cursor(cursor[1]+1, 4)
+        let s:backwards_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
+        " FIXME: Remove this undo leaf!
+        earlier
+        call setpos('.', cursor)
+        return s:backwards_multibyte_search_is_broken
+    endif
+endfunction
 
 " It is established Vim convention that matching '\cstring|comment' and so on
 " is acceptable for syntax regions that are conventionally named.

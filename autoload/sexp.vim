@@ -366,9 +366,11 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
 
     if end[1] > 0
         let start = s:current_element_terminal(0)
-    elseif a:mode !=? 'v'
-        call setpos("'<", [0, 0, 0, 0])
-        call setpos("'>", [0, 0, 0, 0])
+    else
+        if a:mode !=? 'v'
+            call setpos("'<", [0, 0, 0, 0])
+            call setpos("'>", [0, 0, 0, 0])
+        endif
         return
     endif
 

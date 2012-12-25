@@ -96,7 +96,6 @@ function! s:current_string_terminal(end)
     if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
 
     let [termline, termcol] = [cursorline, cursorcol]
-    let flags = a:end ? 'W' : 'bW'
 
     " We can't rely on va" or on searchpairpos() because they don't work well
     " on symmetric patterns. Also, we aren't searching for just double quotes
@@ -145,7 +144,7 @@ function! s:current_element_terminal(end)
             return s:nearest_bracket(a:end)
         end
     elseif char =~ '\v\s'
-        return s:adjacent_whitespace([0, line, col, 0], a:end)
+        return s:adjacent_whitespace_terminal([0, line, col, 0], a:end)
     elseif !s:is_atom(line, col)
         return [0, 0, 0, 0]
     else
@@ -202,7 +201,7 @@ function! s:syntax_name(line, col)
 endfunction
 
 " Return start of leading (0) or end of trailing (1) whitespace from pos.
-function! s:adjacent_whitespace(pos, trailing)
+function! s:adjacent_whitespace_terminal(pos, trailing)
     let cursor = getpos('.')
 
     call setpos('.', a:pos)
@@ -383,11 +382,11 @@ function! s:set_marks_around_current_element(mode, with_whitespace)
             let end = s:current_element_terminal(1)
             call setpos('.', cursor)
         else
-            let wend = s:adjacent_whitespace(end, 1)
+            let wend = s:adjacent_whitespace_terminal(end, 1)
             if end != wend && end[1] == wend[1]
                 let end = wend
             else
-                let wstart = s:adjacent_whitespace(start, 0)
+                let wstart = s:adjacent_whitespace_terminal(start, 0)
                 if start != wstart
                     let start = wstart
                 endif

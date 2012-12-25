@@ -104,7 +104,7 @@ function! s:current_string_terminal(end)
     " We also use s:findpos() while moving the cursor because using simple
     " column arithmetic breaks on multibyte characters.
     while 1
-        let [line, col] = s:findpos('\v\S', a:end)
+        let [line, col] = s:findpos('\v.', a:end)
 
         " Beginning or end of file.
         if line < 1 | break | endif

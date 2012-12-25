@@ -63,10 +63,9 @@ function! s:findpos(pattern, next)
     return [line, col]
 endfunction
 
-" Return single-byte character behind cursor.
+" Return single-byte character behind cursor on the same line.
 function! s:previous_char()
-    let [line, col] = s:findpos('\v.', 0)
-    return getline(line)[col-1]
+    return getline('.')[col('.')-1]
 endfunction
 
 " Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
@@ -119,7 +118,7 @@ function! s:current_string_terminal(end)
         endif
     endwhile
 
-    call setpos('.', [0, cursorline, cursorcol, 0])
+    call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
 endfunction
 
@@ -175,9 +174,9 @@ function! s:is_string(line, col)
         " We may be on an empty line; check nearest pair of nonspace chars
         if col('$') == 1
             let cursor = getpos('.')
-            call setpos('.', [0, a:line, a:col, 0])
-            let [pline, pcol] = searchpos('\v\S', 'nW')
-            let [nline, ncol] = searchpos('\v\S', 'bnW')
+            call cursor(a:line, a:col)
+            let [pline, pcol] = s:findpos('\v\S', 0)
+            let [nline, ncol] = s:findpos('\v\S', 1)
             if s:syntax_name(pline, pcol) =~? 'string' && s:syntax_name(nline, ncol) =~? 'string'
                 let instring = 1
             endif
@@ -210,6 +209,7 @@ endfunction
 function! s:set_marks_around_current_form(mode, offset)
     " We may potentially move the cursor.
     let cursor = getpos('.')
+    let cursor_moved = 0
 
     " If we already have some text selected, we assume that we are trying to
     " expand our selection.
@@ -227,6 +227,7 @@ function! s:set_marks_around_current_form(mode, offset)
     if !ignored && char =~ s:opening_bracket
         if visual_repeat
             if s:move_to_nearest_bracket(1)[1] > 0
+                let cursor_moved = 1
                 call s:move_to_nearest_bracket(1) " Expansion step
             endif
             let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
@@ -252,7 +253,7 @@ function! s:set_marks_around_current_form(mode, offset)
         call setpos("'>", [0, 0, 0, 0])
     endif
 
-    call setpos('.', cursor)
+    if cursor_moved | call setpos('.', cursor) | endif
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current string. Will

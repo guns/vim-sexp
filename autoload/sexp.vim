@@ -232,6 +232,33 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     return [0, termline, termcol, 0]
 endfunction
 
+" Given start and end positions, returns new positions [start', end']:
+"   * If trailing whitespace after end, end' is set to include the trailing
+"     whitespace up to the next element
+"   * If no trailing whitespace after end, start' is set to include leading
+"     whitespace up to the the previous element
+"   * Otherwise start and end are returned verbatim
+"
+" This behavior diverges from the behavior of native text object aw in that it
+" allows multiline whitespace selections. Also unlike aw, we do not include
+" the next element if currently in whitespace, because this is somewhat
+" confusing.
+function! s:terminals_with_whitespace(start, end)
+    let [start, end] = [a:start, a:end]
+
+    let ws_end = s:adjacent_whitespace_terminal(end, 1)
+    if end != ws_end
+        let end = ws_end
+    else
+        let ws_start = s:adjacent_whitespace_terminal(start, 0)
+        if start != ws_start
+            let start = ws_start
+        endif
+    endif
+
+    return [start, end]
+endfunction
+
 """ PREDICATES {{{1
 
 " It is established Vim convention that matching '\cstring|comment' and so on
@@ -384,9 +411,9 @@ function! s:set_marks_around_current_element(mode, inner)
         return
     endif
 
-    " if !a:inner
-    "     let [start, end] = s:terminals_with_whitespace(start, end)
-    " endif
+    if !a:inner
+        let [start, end] = s:terminals_with_whitespace(start, end)
+    endif
 
     call setpos("'<", start)
     call setpos("'>", end)

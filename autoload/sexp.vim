@@ -234,6 +234,7 @@ function! s:syntax_name(line, col)
 endfunction
 
 " Return start of leading (0) or end of trailing (1) whitespace from pos.
+" Returns pos if no such whitespace exists.
 function! s:adjacent_whitespace_terminal(pos, trailing)
     let cursor = getpos('.')
 
@@ -261,7 +262,9 @@ endfunction
 
 " Given start and end positions, returns new positions [start', end']:
 "   * If trailing whitespace after end, end' is set to include the trailing
-"     whitespace up to the next element
+"     whitespace up to the next element, unless start is preceded on its line
+"     by something other than whitespace, in which case end' is set to include
+"     only the trailing whitespace to the end of line.
 "   * If no trailing whitespace after end, start' is set to include leading
 "     whitespace up to the the previous element
 "   * Otherwise start and end are returned verbatim
@@ -272,15 +275,26 @@ endfunction
 " confusing.
 function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
-
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
+
+    " There is trailing whitespace
     if end != ws_end
-        let end = ws_end
-    else
-        let ws_start = s:adjacent_whitespace_terminal(start, 0)
-        if start != ws_start
-            let start = ws_start
+        " Trailing WS is on the same line as end, so accept it
+        if end[1] == ws_end[1]
+            let end = ws_end
+        " Start begins its line, so include all of ws_end
+        elseif getline(start[1])[:start[2]][:-3] =~ '\v^\s*$'
+            let end = ws_end
+        " Include any trailing whitespace to eol
+        elseif getline(end[1])[end[2]] =~ '\v\s'
+            let end = s:pos_with_col_offset(end, col([end[1], '$']) - 1 - end[2])
+        " No trailing whitespace on current line, use leading whitespace
+        else
+            let start = s:adjacent_whitespace_terminal(start, 0)
         endif
+    " Otherwise include leading whitespace
+    else
+        let start = s:adjacent_whitespace_terminal(start, 0)
     endif
 
     return [start, end]

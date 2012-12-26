@@ -608,7 +608,7 @@ function! s:insert_brackets_around_current_string(bra, ket, at_tail, headspace)
 endfunction
 
 function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
-    call s:set_marks_around_current_element('n', 0)
+    call s:set_marks_around_current_element('n', 1)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 

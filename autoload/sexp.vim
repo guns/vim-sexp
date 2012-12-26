@@ -226,7 +226,7 @@ function! s:min_by_distance_from(pos, a, b)
     " below the cursor, proximity is closest to bol and vice versa.
     else
         let op = a:pos[1] - a:a[1] < 0 ? '<' : '>'
-        execute 'let a_is_closer = ' . a:a[2] . op . a:b[2]
+        let a_is_closer = eval(a:a[2] . op . a:b[2])
         return a_is_closer ? a:a : a:b
     endif
 endfunction

@@ -27,6 +27,8 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
+" * Do we really care to balance bracket types in s:nearest_bracket()? We
+"   should determine if this correctness is worth the performance hit.
 
 """ PATTERNS {{{1
 

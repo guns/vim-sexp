@@ -402,12 +402,19 @@ endfunction
 
 """ VISUAL MARKS {{{1
 
+" Set start and end visual marks to [0, 0, 0, 0]
+function! s:clear_visual_marks()
+    call setpos("'<", [0, 0, 0, 0])
+    call setpos("'>", [0, 0, 0, 0])
+endfunction
+
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
 "
 " If mode equals 'v', the cursor is on an opening bracket, the mark '< is
 " valid, and the mark '< does not equal '>, the visual marks are set to the
-" next outer pair of brackets.
+" next outer pair of brackets. This set of circumstances occurs when trying to
+" expand a currently selected form.
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
@@ -453,8 +460,7 @@ function! s:set_marks_around_current_form(mode, offset)
         call setpos("'>", close)
     " Don't erase marks when in visual mode
     elseif !visual
-        call setpos("'<", [0, 0, 0, 0])
-        call setpos("'>", [0, 0, 0, 0])
+        call s:clear_visual_marks()
     endif
 
     if cursor_moved | call setpos('.', cursor) | endif
@@ -469,8 +475,7 @@ function! s:set_marks_around_current_string(mode, offset)
         call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
         call setpos("'>", s:pos_with_col_offset(end, -a:offset))
     elseif a:mode !=? 'v'
-        call setpos("'<", [0, 0, 0, 0])
-        call setpos("'>", [0, 0, 0, 0])
+        call s:clear_visual_marks()
     endif
 endfunction
 
@@ -488,8 +493,7 @@ function! s:set_marks_around_current_comment(mode, inner)
         let start = s:current_comment_terminal(0)
     else
         if a:mode !=? 'v'
-            call setpos("'<", [0, 0, 0, 0])
-            call setpos("'>", [0, 0, 0, 0])
+            call s:clear_visual_marks()
         endif
         return
     endif
@@ -516,8 +520,7 @@ function! s:set_marks_around_current_atom(mode, inner)
         let start = s:current_atom_terminal(0)
     else
         if a:mode !=? 'v'
-            call setpos("'<", [0, 0, 0, 0])
-            call setpos("'>", [0, 0, 0, 0])
+            call s:clear_visual_marks()
         endif
         return
     endif
@@ -544,8 +547,7 @@ function! s:set_marks_around_current_element(mode, inner)
         let start = s:current_element_terminal(0)
     else
         if a:mode !=? 'v'
-            call setpos("'<", [0, 0, 0, 0])
-            call setpos("'>", [0, 0, 0, 0])
+            call s:clear_visual_marks()
         endif
         return
     endif
@@ -599,9 +601,8 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
 endfunction
 
 function! s:insert_brackets_around_current_form(bra, ket, at_tail, headspace)
-    " Clear visual start mark to signal that we are not trying to expand the
-    " selection.
-    call setpos("'<", [0, 0, 0, 0])
+    " Clear marks to ensure brackets are not placed around old marks.
+    call s:clear_visual_marks()
     call s:set_marks_around_current_form('n', 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
@@ -681,7 +682,8 @@ function! sexp#splice_form()
     let original_end = getpos("'>")
     let cursor = getpos('.')
 
-    call setpos("'<", [0, 0, 0, 0])
+    " We want to ensure we are not deleting chars at old marks
+    call s:clear_visual_marks()
     call s:set_marks_around_current_form('n', 0)
 
     let start = getpos("'<")

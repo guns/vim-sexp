@@ -39,6 +39,7 @@ let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
+let s:repeat = 0
 
 """ QUERIES AT CURSOR {{{1
 
@@ -615,6 +616,19 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
 endfunction
 
 """ EXPORTED FUNCTIONS {{{1
+
+" Evaluate expr count times. Will evaluate expr at least once. Stores current
+" repeat iteration (from 0 to count, exclusive) in s:repeat.
+function! sexp#repeat(count, expr)
+    try
+        for n in range(a:count > 0 ? a:count : 1)
+            let s:repeat = n
+            call eval(a:expr)
+        endfor
+    finally
+        let s:repeat = 0
+    endtry
+endfunction
 
 " Set visual marks at current form's brackets, then enter visual mode with
 " that selection. If no brackets are found and mode equals 'o', nothing is

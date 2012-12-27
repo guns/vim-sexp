@@ -425,6 +425,8 @@ function! s:set_marks_around_current_form(mode, offset)
     " Native text objects expand when repeating inner motions too
     if visual_repeat && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
         normal! h
+        let cursor = getpos('.')
+        let cursor_moved = 1
     endif
 
     let ignored = s:is_ignored_scope(cursor[1], cursor[2])

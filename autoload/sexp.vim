@@ -32,14 +32,14 @@ let g:sexp_autoloaded = 1
 " * Ensure repeat command '.' works for text object commands
 " * Text object should handle counts
 
-""" PATTERNS {{{1
+""" PATTERNS AND STATE {{{1
 
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
-let s:repeat = 0
+let s:repeat = 0 " Stores current repeat level when using counts
 
 """ QUERIES AT CURSOR {{{1
 
@@ -288,7 +288,7 @@ function! s:terminals_with_whitespace(start, end)
         " Include any trailing whitespace to eol
         elseif getline(end[1])[end[2]] =~ '\v\s'
             let end = s:pos_with_col_offset(end, col([end[1], '$']) - 1 - end[2])
-        " No trailing whitespace on current line, use leading whitespace
+        " No trailing whitespace on end's line, use leading whitespace
         else
             let start = s:adjacent_whitespace_terminal(start, 0)
         endif

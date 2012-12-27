@@ -66,11 +66,6 @@ function! s:findpos(pattern, next, ...)
     return [line, col]
 endfunction
 
-" Return single-byte character behind cursor on the same line.
-function! s:previous_char()
-    return getline('.')[col('.')-1]
-endfunction
-
 " Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
 " [0, 0, 0, 0] if none found.
 function! s:nearest_bracket(closing)
@@ -185,7 +180,7 @@ endfunction
 "   * Current atom otherwise
 function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
-    let char = getline(line)[col-1]
+    let char = getline(line)[col - 1]
 
     if s:is_string(line, col)
         return s:current_string_terminal(a:end)
@@ -251,7 +246,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
 
         if line < 1 | break | endif
 
-        let char = getline(line)[col-1]
+        let char = getline(line)[col - 1]
         if empty(char) || char =~ '\v\s'
             let [termline, termcol] = [line, col]
             call cursor(line, col)
@@ -287,7 +282,7 @@ function! s:terminals_with_whitespace(start, end)
         if end[1] == ws_end[1]
             let end = ws_end
         " Start begins its line, so include all of ws_end
-        elseif getline(start[1])[:start[2]][:-3] =~ '\v^\s*$'
+        elseif getline(start[1])[: start[2]][: -3] =~ '\v^\s*$'
             let end = ws_end
         " Include any trailing whitespace to eol
         elseif getline(end[1])[end[2]] =~ '\v\s'
@@ -313,7 +308,7 @@ function! s:is_backwards_multibyte_search_broken()
     else
         let cursor = getpos('.')
         call append(cursor[1], '123❤sexp-bugcheck')
-        call cursor(cursor[1]+1, 4)
+        call cursor(cursor[1] + 1, 4)
         let s:backwards_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
         " FIXME: Remove this undo leaf!
         earlier
@@ -363,10 +358,10 @@ function! s:is_comment(line, col)
         " We may be in the whitespace between two line comments; check if the
         " current line begins with a comment and the previous line ended with
         " a comment.
-        if getline(a:line)[a:col-1] =~ '\v\s'
+        if getline(a:line)[a:col - 1] =~ '\v\s'
             let cursor = getpos('.')
             call cursor(a:line, a:col)
-            let [pline, pcol] = s:findpos('\v\S', 0, a:line-1)
+            let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
             let [cline, ccol] = s:findpos('\v\S', 1, a:line)
             if s:syntax_name(pline, pcol) =~? 'comment' && s:syntax_name(cline, ccol) =~? 'comment'
                 let incomment = 1
@@ -384,7 +379,7 @@ endfunction
 "   * A contiguous region of non-whitespace, non-bracket characters that are
 "     not part of a string or comment.
 function! s:is_atom(line, col)
-    if getline(a:line)[a:col-1] =~ s:delimiter
+    if getline(a:line)[a:col - 1] =~ s:delimiter
         return 0
     else
         return s:syntax_name(a:line, a:col) !~? '\vstring|comment'
@@ -428,12 +423,12 @@ function! s:set_marks_around_current_form(mode, offset)
     let visual_repeat = visual && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
 
     " Native text objects expand when repeating inner motions too
-    if visual_repeat && a:offset == 1 && s:previous_char() =~ s:opening_bracket
+    if visual_repeat && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
         normal! h
     endif
 
     let ignored = s:is_ignored_scope(cursor[1], cursor[2])
-    let char = getline(cursor[1])[cursor[2]-1]
+    let char = getline(cursor[1])[cursor[2] - 1]
 
     if !ignored && char =~ s:opening_bracket
         if visual_repeat

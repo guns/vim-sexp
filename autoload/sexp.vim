@@ -669,7 +669,7 @@ endfunction
 
 " Evaluate expr count times. Will evaluate expr at least once. Stores current
 " evaluation iteration (from 0 to count, exclusive) in s:countindex.
-function! sexp#docount(count, expr)
+function! sexp#docount(expr, count)
     try
         for n in range(a:count > 0 ? a:count : 1)
             let s:countindex = n

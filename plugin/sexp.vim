@@ -32,6 +32,7 @@ if !exists('g:sexp_textobj_mappings')
     " TODO: Document that 's' mapping overrides inner/outer sentence
     let g:sexp_textobj_mappings = {
         \ 'form':         'f',
+        \ 'topform':      'F',
         \ 'string':       's',
         \ 'comment':      'c',
         \ 'atom':         'a',
@@ -82,6 +83,12 @@ omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#docount(v:count,
 vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('v', 1)")<CR>
 omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('o', 1)")<CR>
 
+" Current top-level form
+vnoremap <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('v', 0)<CR>
+omap     <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('o', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('v', 1)<CR>
+omap     <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('o', 1)<CR>
+
 " Current string
 vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('v', 0)<CR>
 omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('o', 0)<CR>
@@ -107,7 +114,7 @@ vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_curren
 omap     <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
 
 if !empty('g:sexp_textobj_mappings')
-    for s:key in ['form', 'string', 'comment', 'atom', 'element']
+    for s:key in ['form', 'topform', 'string', 'comment', 'atom', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,

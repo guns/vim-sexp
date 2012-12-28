@@ -23,7 +23,6 @@ let g:sexp_autoloaded = 1
 " * Deliberately set jump marks so users can `` back after undo.
 " * Set stopline for searchpairpos()
 " * Next/prev element text object
-" * Top level sexp text object
 " * Don't ignore virtualedit mode
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
@@ -481,6 +480,40 @@ function! s:set_marks_around_current_form(mode, offset)
     if cursor_moved | call setpos('.', cursor) | endif
 endfunction
 
+" Set visual marks '< and '> to the positions of the outermost paired brackets
+" from the current location. Will set both to [0, 0, 0, 0] if none are found
+" and mode does not equal 'v'.
+function! s:set_marks_around_current_topform(mode, offset)
+    let [_b, line, col, _o] = getpos('.')
+    let skip = 's:is_ignored_scope(line("."), col("."))'
+
+    " searchpairpos() fails to find the matching closing bracket when on the
+    " outermost opening bracket and vice versa, so we decide on the search
+    " directions based on the current char.
+    if getline(line)[col-1] =~ s:opening_bracket
+        let flags = 'bcnr'
+        let dir = 1
+    else
+        let flags = 'cnr'
+        let dir = 0
+    endif
+
+    let [el, ec] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip)
+
+    if el > 0
+        " Calling searchpairpos() is faster when you start from an end
+        let cursor = getpos('.')
+        call cursor(el, ec)
+        let start = s:nearest_bracket(dir)
+        call setpos('.', cursor)
+
+        call setpos("'<", s:pos_with_col_offset(start, a:offset))
+        call setpos("'>", s:pos_with_col_offset([0, el, ec, 0], -a:offset))
+    elseif a:mode !=? 'v'
+        call s:clear_visual_marks()
+    endif
+endfunction
+
 " Set visual marks '< and '> to the start and end of the current string. Will
 " set both to [0, 0, 0, 0] if not currently in a string and mode does not
 " equal 'v'.
@@ -652,6 +685,14 @@ endfunction
 " done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
+    call s:select_current_marks(a:mode)
+endfunction
+
+" Set visual marks at current outermost form's brackets, then enter visual
+" mode with that selection. If no brackets are found and mode equals 'o',
+" nothing is done.
+function! sexp#select_current_topform(mode, offset)
+    call s:set_marks_around_current_topform(a:mode, a:offset)
     call s:select_current_marks(a:mode)
 endfunction
 

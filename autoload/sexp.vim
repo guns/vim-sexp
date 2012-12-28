@@ -779,35 +779,33 @@ endfunction
 " Moves cursor to adjacent element; 0 for previous, 1 for next. If no such
 " adjacent element exists, moves to beginning or end of element respectively.
 " Analogous to native w and b commands.
-function! sexp#move_to_adjacent_element(next)
-    let cursor = getpos('.')
-    let terminal = s:current_element_terminal(a:next)
-    if cursor != terminal
-        call setpos('.', terminal)
-        " b command moves to head of the current word if not on the head
-        if !a:next | return | endif
+function! sexp#move_to_adjacent_element(mode, next)
+    if a:mode ==? 'v'
+        " Break out of visual mode, preserving cursor position
+        if s:countindex > 0
+            execute "normal! \<C-Bslash>\<C-n>"
+        endif
         let cursor = getpos('.')
+        let start = getpos("'<")
+        let end = getpos("'>")
+        let omode = cursor == start
+        call setpos('.', omode ? start : end)
     endif
 
-    let [l, c] = s:findpos('\v\S', a:next)
-    let adj = [0, l, c, 0]
-    " We are at the beginning or end of file
-    if adj[1] < 1 || cursor == adj
-        return
+    let pos = s:nearest_element_head(a:next)
+
+    if a:mode ==? 'v'
+        if omode
+            call setpos("'<", pos)
+            call setpos("'>", end)
+            execute 'normal! gvo'
+        else
+            call setpos("'<", start)
+            call setpos("'>", pos)
+            execute 'normal! gv'
+        endif
     else
-        call setpos('.', adj)
-        let cursor = getpos('.')
-    endif
-
-    " Cursor ends on the head of an element, unless on a closing bracket while
-    " moving forward.
-    if a:next && getline(cursor[1])[cursor[2] - 1] =~ s:closing_bracket
-        return
-    endif
-
-    let final = s:current_element_terminal(0)
-    if final[1] > 0
-        call setpos('.', final)
+        call setpos('.', pos)
     endif
 endfunction
 

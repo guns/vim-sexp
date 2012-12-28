@@ -116,11 +116,15 @@ vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_curren
 onoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
 
 " Adjacent element
+"
+" Note that Ctrl-\_Ctrl-N breaks us directly out of visual mode into normal
+" mode without setting the cursor position to '<. This is necessary to detect
+" which end the user is using to adjust the selection.
 nnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 0)", v:count)<CR>
-vnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0)", v:prevcount)<CR>
 onoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 0)", v:count)<CR>
 nnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 1)", v:count)<CR>
-vnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1)", v:prevcount)<CR>
 onoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1)", v:count)<CR>
 
 if !empty('g:sexp_textobj_mappings')

@@ -32,13 +32,14 @@ let g:sexp_autoloaded = 1
 " * Ensure repeat command '.' works for text object commands
 " * Text object should handle counts
 
-""" PATTERNS {{{1
+""" PATTERNS AND STATE {{{1
 
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
+let s:repeat = 0 " Stores current repeat level when using counts
 
 """ QUERIES AT CURSOR {{{1
 
@@ -287,7 +288,7 @@ function! s:terminals_with_whitespace(start, end)
         " Include any trailing whitespace to eol
         elseif getline(end[1])[end[2]] =~ '\v\s'
             let end = s:pos_with_col_offset(end, col([end[1], '$']) - 1 - end[2])
-        " No trailing whitespace on current line, use leading whitespace
+        " No trailing whitespace on end's line, use leading whitespace
         else
             let start = s:adjacent_whitespace_terminal(start, 0)
         endif
@@ -406,10 +407,12 @@ endfunction
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
 "
-" If mode equals 'v', the cursor is on an opening bracket, the mark '< is
-" valid, and the mark '< does not equal '>, the visual marks are set to the
-" next outer pair of brackets. This set of circumstances occurs when trying to
-" expand a currently selected form.
+" Under the following circumstances the visual marks are set to the next outer
+" pair of brackets:
+"
+"   * Mode equals 'v', the cursor is on an opening bracket, the mark '< is
+"     valid, and the marks '< and '> are not equal. This occurs when calling
+"     this function while already having a form selected in visual mode.
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
@@ -417,13 +420,26 @@ function! s:set_marks_around_current_form(mode, offset)
     let cursor = getpos('.')
     let cursor_moved = 0
 
-    " If we already have some text selected, we assume that we are trying to
-    " expand our selection.
+    " Prepare the entrails
+    let start = getpos("'<")
     let visual = a:mode ==? 'v'
-    let visual_repeat = visual && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
+    let opmode = a:mode ==? 'o'
+    let repeating = s:repeat > 0
+    let start_is_valid = start[1] > 0
+    let have_selection = start_is_valid && start != getpos("'>")
+    let expanding = repeating || (visual && have_selection)
+
+    " When repeating the cursor position will not be updated to '<, so we do
+    " it now so we won't have to change the rest of the procedure
+    if repeating && start_is_valid
+        if mode() ==? 'v' | execute "normal! \<Esc>" | endif
+        call setpos('.', start)
+        let cursor = start
+        let cursor_moved = 1
+    endif
 
     " Native text objects expand when repeating inner motions too
-    if visual_repeat && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
+    if expanding && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
         normal! h
         let cursor = getpos('.')
         let cursor_moved = 1
@@ -433,7 +449,7 @@ function! s:set_marks_around_current_form(mode, offset)
     let char = getline(cursor[1])[cursor[2] - 1]
 
     if !ignored && char =~ s:opening_bracket
-        if visual_repeat
+        if expanding
             if s:move_to_nearest_bracket(1)[1] > 0
                 let cursor_moved = 1
                 call s:move_to_nearest_bracket(1) " Expansion step
@@ -615,6 +631,19 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
 endfunction
 
 """ EXPORTED FUNCTIONS {{{1
+
+" Evaluate expr count times. Will evaluate expr at least once. Stores current
+" repeat iteration (from 0 to count, exclusive) in s:repeat.
+function! sexp#repeat(count, expr)
+    try
+        for n in range(a:count > 0 ? a:count : 1)
+            let s:repeat = n
+            call eval(a:expr)
+        endfor
+    finally
+        let s:repeat = 0
+    endtry
+endfunction
 
 " Set visual marks at current form's brackets, then enter visual mode with
 " that selection. If no brackets are found and mode equals 'o', nothing is

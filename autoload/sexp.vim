@@ -39,7 +39,7 @@ let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
-let s:repeat = 0 " Stores current repeat level when using counts
+let s:docount = 0 " Stores current count index during sexp#docount
 
 """ QUERIES AT CURSOR {{{1
 
@@ -414,8 +414,8 @@ endfunction
 "     valid, and the marks '< and '> are not equal. This occurs when calling
 "     this function while already having a form selected in visual mode.
 "
-"   * s:repeat is greater than 0 and the mark '< is valid. Occurs when called
-"     by sexp#repeat()
+"   * s:docount is greater than 0 and the mark '< is valid. Occurs when called
+"     by sexp#docount()
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
@@ -427,14 +427,14 @@ function! s:set_marks_around_current_form(mode, offset)
     let start = getpos("'<")
     let visual = a:mode ==? 'v'
     let opmode = a:mode ==? 'o'
-    let repeating = s:repeat > 0
+    let counting = s:docount > 0
     let start_is_valid = start[1] > 0
     let have_selection = start_is_valid && start != getpos("'>")
-    let expanding = repeating || (visual && have_selection)
+    let expanding = counting || (visual && have_selection)
 
-    " When repeating the cursor position will not be updated to '<, so we do
-    " it now so we won't have to change the rest of the procedure
-    if repeating && start_is_valid
+    " When evaluating via sexp#docount the cursor position will not be updated
+    " to '<, so we do it now to simplify the following.
+    if counting && start_is_valid
         if mode() ==? 'v' | execute "normal! \<Esc>" | endif
         call setpos('.', start)
         let cursor = start
@@ -636,15 +636,15 @@ endfunction
 """ EXPORTED FUNCTIONS {{{1
 
 " Evaluate expr count times. Will evaluate expr at least once. Stores current
-" repeat iteration (from 0 to count, exclusive) in s:repeat.
-function! sexp#repeat(count, expr)
+" evaluation iteration (from 0 to count, exclusive) in s:docount.
+function! sexp#docount(count, expr)
     try
         for n in range(a:count > 0 ? a:count : 1)
-            let s:repeat = n
+            let s:docount = n
             call eval(a:expr)
         endfor
     finally
-        let s:repeat = 0
+        let s:docount = 0
     endtry
 endfunction
 

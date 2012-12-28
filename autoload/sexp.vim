@@ -30,7 +30,6 @@ let g:sexp_autoloaded = 1
 " * Do we really care to balance bracket types in s:nearest_bracket()? We
 "   should determine if this correctness is worth the performance hit.
 " * Ensure repeat command '.' works for text object commands
-" * Text object should handle counts
 
 """ PATTERNS AND STATE {{{1
 

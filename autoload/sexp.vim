@@ -306,11 +306,11 @@ function! s:is_backwards_multibyte_search_broken()
         return s:backwards_multibyte_search_is_broken
     else
         let cursor = getpos('.')
-        call append(cursor[1], '123❤sexp-bugcheck')
+        silent! call append(cursor[1], '123❤sexp-bugcheck')
         call cursor(cursor[1] + 1, 4)
         let s:backwards_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
         " FIXME: Remove this undo leaf!
-        normal! u
+        silent! normal! u
         call setpos('.', cursor)
         return s:backwards_multibyte_search_is_broken
     endif

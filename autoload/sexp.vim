@@ -407,10 +407,12 @@ endfunction
 " Set visual marks '< and '> to the positions of the nearest paired brackets.
 " Offset is the number of columns inwards from the brackets to set the marks.
 "
-" If mode equals 'v', the cursor is on an opening bracket, the mark '< is
-" valid, and the mark '< does not equal '>, the visual marks are set to the
-" next outer pair of brackets. This set of circumstances occurs when trying to
-" expand a currently selected form.
+" Under the following circumstances the visual marks are set to the next outer
+" pair of brackets:
+"
+"   * Mode equals 'v', the cursor is on an opening bracket, the mark '< is
+"     valid, and the marks '< and '> are not equal. This occurs when calling
+"     this function while already having a form selected in visual mode.
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
@@ -418,13 +420,17 @@ function! s:set_marks_around_current_form(mode, offset)
     let cursor = getpos('.')
     let cursor_moved = 0
 
-    " If we already have some text selected, we assume that we are trying to
-    " expand our selection.
+    " Prepare the entrails
+    let start = getpos("'<")
     let visual = a:mode ==? 'v'
-    let visual_repeat = visual && getpos("'<")[1] > 0 && getpos("'<") != getpos("'>")
+    let opmode = a:mode ==? 'o'
+    let repeating = s:repeat > 0
+    let start_is_valid = start[1] > 0
+    let have_selection = start_is_valid && start != getpos("'>")
+    let expanding = visual && have_selection
 
     " Native text objects expand when repeating inner motions too
-    if visual_repeat && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
+    if expanding && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
         normal! h
         let cursor = getpos('.')
         let cursor_moved = 1
@@ -434,7 +440,7 @@ function! s:set_marks_around_current_form(mode, offset)
     let char = getline(cursor[1])[cursor[2] - 1]
 
     if !ignored && char =~ s:opening_bracket
-        if visual_repeat
+        if expanding
             if s:move_to_nearest_bracket(1)[1] > 0
                 let cursor_moved = 1
                 call s:move_to_nearest_bracket(1) " Expansion step

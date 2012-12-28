@@ -38,7 +38,7 @@ let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
-let s:docount = 0 " Stores current count index during sexp#docount
+let s:countindex = 0 " Stores current count index during sexp#docount
 
 """ QUERIES AT CURSOR {{{1
 
@@ -413,8 +413,8 @@ endfunction
 "     valid, and the marks '< and '> are not equal. This occurs when calling
 "     this function while already having a form selected in visual mode.
 "
-"   * s:docount is greater than 0 and the mark '< is valid. Occurs when called
-"     by sexp#docount()
+"   * s:countindex is greater than 0 and the mark '< is valid. Occurs when
+"     called by sexp#docount()
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
@@ -426,7 +426,7 @@ function! s:set_marks_around_current_form(mode, offset)
     let start = getpos("'<")
     let visual = a:mode ==? 'v'
     let opmode = a:mode ==? 'o'
-    let counting = s:docount > 0
+    let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
     let have_selection = start_is_valid && start != getpos("'>")
     let expanding = counting || (visual && have_selection)
@@ -635,15 +635,15 @@ endfunction
 """ EXPORTED FUNCTIONS {{{1
 
 " Evaluate expr count times. Will evaluate expr at least once. Stores current
-" evaluation iteration (from 0 to count, exclusive) in s:docount.
+" evaluation iteration (from 0 to count, exclusive) in s:countindex.
 function! sexp#docount(count, expr)
     try
         for n in range(a:count > 0 ? a:count : 1)
-            let s:docount = n
+            let s:countindex = n
             call eval(a:expr)
         endfor
     finally
-        let s:docount = 0
+        let s:countindex = 0
     endtry
 endfunction
 

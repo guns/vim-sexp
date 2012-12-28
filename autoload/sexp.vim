@@ -427,7 +427,16 @@ function! s:set_marks_around_current_form(mode, offset)
     let repeating = s:repeat > 0
     let start_is_valid = start[1] > 0
     let have_selection = start_is_valid && start != getpos("'>")
-    let expanding = visual && have_selection
+    let expanding = repeating || (visual && have_selection)
+
+    " When repeating the cursor position will not be updated to '<, so we do
+    " it now so we won't have to change the rest of the procedure
+    if repeating && start_is_valid
+        if mode() ==? 'v' | execute "normal! \<Esc>" | endif
+        call setpos('.', start)
+        let cursor = start
+        let cursor_moved = 1
+    endif
 
     " Native text objects expand when repeating inner motions too
     if expanding && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket

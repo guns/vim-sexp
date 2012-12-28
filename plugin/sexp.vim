@@ -79,39 +79,39 @@ endfunction
 
 " Current form
 vnoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('v', 0)")<CR>
-omap     <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('o', 0)")<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('o', 0)")<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('v', 1)")<CR>
-omap     <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('o', 1)")<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount(v:count, "sexp#select_current_form('o', 1)")<CR>
 
 " Current top-level form
 vnoremap <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('v', 0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('o', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('o', 0)<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('v', 1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('o', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('o', 1)<CR>
 
 " Current string
 vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('v', 0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('o', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('o', 0)<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('v', 1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('o', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_string :<C-u>call sexp#select_current_string('o', 1)<CR>
 
 " Current comment
 vnoremap <silent> <Plug>sexp_textobj_outer_comment :<C-u>call sexp#select_current_comment('v', 0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_comment :<C-u>call sexp#select_current_comment('o', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_comment :<C-u>call sexp#select_current_comment('o', 0)<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('v', 1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('o', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('o', 1)<CR>
 
 " Current atom
 vnoremap <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('v', 0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('o', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('o', 0)<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_atom :<C-u>call sexp#select_current_atom('v', 1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_atom :<C-u>call sexp#select_current_atom('o', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_atom :<C-u>call sexp#select_current_atom('o', 1)<CR>
 
 " Current element
 vnoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('v', 0)<CR>
-omap     <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('o', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('o', 0)<CR>
 vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('v', 1)<CR>
-omap     <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
 
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'topform', 'string', 'comment', 'atom', 'element']

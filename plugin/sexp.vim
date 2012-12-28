@@ -37,6 +37,8 @@ if !exists('g:sexp_textobj_mappings')
         \ 'comment':      'c',
         \ 'atom':         'a',
         \ 'element':      'e',
+        \ 'prev_element': '[w',
+        \ 'next_element': ']w'
     \ }
 endif
 
@@ -113,6 +115,14 @@ onoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_curren
 vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('v', 1)<CR>
 onoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
 
+" Adjacent element
+nnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, "sexp#move_to_adjacent_element(0)")<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, "sexp#select_adjacent_element('v', 0)")<CR>
+onoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, "sexp#select_adjacent_element('o', 0)")<CR>
+nnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount(v:count, "sexp#move_to_adjacent_element(1)")<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount(v:count, "sexp#select_adjacent_element('v', 1)")<CR>
+onoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount(v:count, "sexp#select_adjacent_element('o', 1)")<CR>
+
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'topform', 'string', 'comment', 'atom', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
@@ -121,6 +131,15 @@ if !empty('g:sexp_textobj_mappings')
                 \ 'omap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,
                 \ 'vmap <silent><buffer> i' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_inner_' . s:key,
                 \ 'omap <silent><buffer> i' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_inner_' . s:key)
+        endif
+    endfor
+
+    for s:key in ['next_element', 'prev_element']
+        if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
+            call s:filetype_autocmd(
+                \ 'nmap <silent><buffer> ' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_' . s:key,
+                \ 'vmap <silent><buffer> ' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_' . s:key,
+                \ 'omap <silent><buffer> ' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_' . s:key)
         endif
     endfor
 endif

@@ -724,6 +724,49 @@ function! sexp#select_current_element(mode, inner)
     call s:select_current_marks(a:mode)
 endfunction
 
+" Set visual marks around adjacent element and enter visual mode; 0 for
+" previous, 1 for next. If no such adjacent element exists, selects current
+" element.
+function! sexp#select_adjacent_element(mode, next)
+    call s:set_marks_around_adjacent_element(a:mode, a:next)
+    call s:select_current_marks(a:mode)
+endfunction
+
+" Moves cursor to adjacent element; 0 for previous, 1 for next. If no such
+" adjacent element exists, moves to beginning or end of element respectively.
+" Analogous to native w and b commands.
+function! sexp#move_to_adjacent_element(next)
+    let cursor = getpos('.')
+    let terminal = s:current_element_terminal(a:next)
+    if cursor != terminal
+        call setpos('.', terminal)
+        " b command moves to head of the current word if not on the head
+        if !a:next | return | endif
+        let cursor = getpos('.')
+    endif
+
+    let [l, c] = s:findpos('\v\S', a:next)
+    let adj = [0, l, c, 0]
+    " We are at the beginning or end of file
+    if adj[1] < 1 || cursor == adj
+        return
+    else
+        call setpos('.', adj)
+        let cursor = getpos('.')
+    endif
+
+    " Cursor ends on the head of an element, unless on a closing bracket while
+    " moving forward.
+    if a:next && getline(cursor[1])[cursor[2] - 1] =~ s:closing_bracket
+        return
+    endif
+
+    let final = s:current_element_terminal(0)
+    if final[1] > 0
+        call setpos('.', final)
+    endif
+endfunction
+
 " Place brackets around scope, then place cursor at head or tail, finally
 " leaving off in insert mode if specified. Insert also sets the headspace
 " parameter when inserting brackets.

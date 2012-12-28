@@ -29,7 +29,7 @@ let g:sexp_autoloaded = 1
 " * Extract common subroutines? (not if it impedes clarity)
 " * Do we really care to balance bracket types in s:nearest_bracket()? We
 "   should determine if this correctness is worth the performance hit.
-" * Ensure repeat command '.' works for text object commands
+" * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 
 """ PATTERNS AND STATE {{{1
 

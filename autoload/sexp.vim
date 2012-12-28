@@ -414,6 +414,9 @@ endfunction
 "     valid, and the marks '< and '> are not equal. This occurs when calling
 "     this function while already having a form selected in visual mode.
 "
+"   * s:repeat is greater than 0 and the mark '< is valid. Occurs when called
+"     by sexp#repeat()
+"
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
 function! s:set_marks_around_current_form(mode, offset)
     " We may potentially move the cursor.

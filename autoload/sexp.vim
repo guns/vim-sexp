@@ -198,6 +198,50 @@ function! s:current_element_terminal(end)
     endif
 endfunction
 
+" Returns position of previous / next element head. Returns current position
+" if no such element exists. There is one exception: if next is 1 and the next
+" element is the parent form, the form's closing bracket position is returned
+" instead.
+function! s:nearest_element_head(next)
+    let cursor = getpos('.')
+    let pos = cursor
+
+    " This is a goto disguised as a foreach loop.
+    for _ in [0]
+        let terminal = s:current_element_terminal(a:next)
+        if pos != terminal
+            let pos = terminal
+            call setpos('.', pos)
+            " b command moves to head of the current word if not on the head
+            if !a:next | break | endif
+        endif
+
+        let [l, c] = s:findpos('\v\S', a:next)
+        let adjacent = [0, l, c, 0]
+        " We are at the beginning or end of file
+        if adjacent[1] < 1 || pos == adjacent
+            break
+        else
+            let pos = adjacent
+            call setpos('.', pos)
+        endif
+
+        " Cursor ends on the head of an element, unless on a closing bracket
+        " while moving forward.
+        if a:next && getline(pos[1])[pos[2] - 1] =~ s:closing_bracket
+            break
+        endif
+
+        let final = s:current_element_terminal(0)
+        if final[1] > 0
+            let pos = final
+        endif
+    endfor
+
+    call setpos('.', cursor)
+    return pos
+endfunction
+
 """ QUERIES AT POSITION {{{1
 
 function! s:pos_with_col_offset(pos, offset)

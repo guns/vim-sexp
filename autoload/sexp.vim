@@ -21,12 +21,14 @@ let g:sexp_autoloaded = 1
 " TODO:
 "
 " * Deliberately set jump marks so users can `` back after undo.
-" * Don't ignore virtualedit mode
+" * Don't ignore virtualedit mode?
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
 " * Do we really care to balance bracket types in s:nearest_bracket()? We
 "   should determine if this correctness is worth the performance hit.
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
+" * Select adjacent element (as opposed to move selection cursor to adjacent)
+" * Insert cursor at head/tail of form
 
 """ PATTERNS AND STATE {{{1
 

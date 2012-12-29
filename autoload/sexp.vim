@@ -527,7 +527,7 @@ endfunction
 " Set visual marks '< and '> to the positions of the outermost paired brackets
 " from the current location. Will set both to [0, 0, 0, 0] if none are found
 " and mode does not equal 'v'.
-function! s:set_marks_around_current_topform(mode, offset)
+function! s:set_marks_around_current_top_form(mode, offset)
     let [_b, line, col, _o] = getpos('.')
     let skip = 's:is_ignored_scope(line("."), col("."))'
 
@@ -735,8 +735,8 @@ endfunction
 " Set visual marks at current outermost form's brackets, then enter visual
 " mode with that selection. If no brackets are found and mode equals 'o',
 " nothing is done.
-function! sexp#select_current_topform(mode, offset)
-    call s:set_marks_around_current_topform(a:mode, a:offset)
+function! sexp#select_current_top_form(mode, offset)
+    call s:set_marks_around_current_top_form(a:mode, a:offset)
     call s:select_current_marks(a:mode)
 endfunction
 

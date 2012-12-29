@@ -130,12 +130,12 @@ vnoremap <silent> <Plug>sexp_textobj_next_element <C-Bslash><C-n>:<C-u>call sexp
 onoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 0)", v:count)<CR>
 
 " Adjacent top element
-nmap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 0, 1)", v:count)<CR>
-vmap <silent> <Plug>sexp_textobj_prev_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0, 1)", v:prevcount)<CR>
-omap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 0, 1)", v:count)<CR>
-nmap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 1, 1)", v:count)<CR>
-vmap <silent> <Plug>sexp_textobj_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1, 1)", v:prevcount)<CR>
-omap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 1)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 0, 1)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0, 1)", v:prevcount)<CR>
+onoremap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 0, 1)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 1, 1)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1, 1)", v:prevcount)<CR>
+onoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 1)", v:count)<CR>
 
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'top_form', 'string', 'comment', 'atom', 'element']

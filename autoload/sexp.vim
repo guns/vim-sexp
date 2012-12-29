@@ -21,7 +21,6 @@ let g:sexp_autoloaded = 1
 " TODO:
 "
 " * Deliberately set jump marks so users can `` back after undo.
-" * Set stopline for searchpairpos()
 " * Don't ignore virtualedit mode
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
@@ -30,6 +29,10 @@ let g:sexp_autoloaded = 1
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 
 """ PATTERNS AND STATE {{{1
+
+if !exists('g:sexp_maxlines')
+    let g:sexp_maxlines = 100 " For searchpairpos() calls
+endif
 
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
@@ -69,9 +72,10 @@ endfunction
 function! s:nearest_bracket(closing)
     let closest = []
     let flags = a:closing ? 'nW' : 'bnW'
+    let stopline = g:sexp_maxlines ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
 
     for [start, end] in s:pairs
-        let [line, col] = searchpairpos(start, '', end, flags, 's:is_ignored_scope(line("."), col("."))')
+        let [line, col] = searchpairpos(start, '', end, flags, 's:is_ignored_scope(line("."), col("."))', stopline)
 
         if line < 1
             continue
@@ -97,12 +101,14 @@ function! s:current_top_form_bracket(closing)
     if getline(line)[col-1] =~ s:opening_bracket
         let flags = 'bcnr'
         let dir = 0
+        let stopline = g:sexp_maxlines ? line('.') - g:sexp_maxlines : 0
     else
         let flags = 'cnr'
         let dir = 1
+        let stopline = g:sexp_maxlines ? line('.') + g:sexp_maxlines : 0
     endif
 
-    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip)
+    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
 
     if line < 1
         return [0, 0, 0, 0]

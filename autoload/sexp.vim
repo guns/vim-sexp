@@ -470,6 +470,15 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
+" Tries to move cursor to outermost form's opening or closing bracket,
+" returning its position; 0 for opening, 1 for closing. Does not move cursor
+" if not in a form.
+function! s:move_to_top_bracket(closing)
+    let pos = s:current_top_form_bracket(a:closing)
+    if pos[1] > 0 | call setpos('.', pos) | endif
+    return pos
+endfunction
+
 """ VISUAL MARKS {{{1
 
 " Set start and end visual marks to [0, 0, 0, 0]
@@ -797,20 +806,34 @@ endfunction
 " Moves cursor to adjacent element; 0 for previous, 1 for next. If no such
 " adjacent element exists, moves to beginning or end of element respectively.
 " Analogous to native w and b commands.
-function! sexp#move_to_adjacent_element(mode, next)
+function! sexp#move_to_adjacent_element(mode, next, top)
+    let cursor = getpos('.')
+
     if a:mode ==? 'v'
         " Break out of visual mode, preserving cursor position
         if s:countindex > 0
             execute "normal! \<C-Bslash>\<C-n>"
         endif
-        let cursor = getpos('.')
+
+        " Record visual state now before moving the cursor
         let start = getpos("'<")
         let end = getpos("'>")
         let omode = cursor == start
-        call setpos('.', omode ? start : end)
     endif
 
-    let pos = s:nearest_element_head(a:next)
+    if a:top
+        let top = s:move_to_top_bracket(a:next)
+
+        " Stop at current top element head if moving backwards and did not
+        " start on a top element head.
+        if !a:next && top[1] > 0 && top != cursor
+            let pos = top
+        else
+            let pos = s:nearest_element_head(a:next)
+        endif
+    else
+        let pos = s:nearest_element_head(a:next)
+    endif
 
     if a:mode ==? 'v'
         if omode

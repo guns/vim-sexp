@@ -86,6 +86,38 @@ function! s:nearest_bracket(closing)
     return empty(closest) ? [0, 0, 0, 0] : closest
 endfunction
 
+" Position of outermost _paired_ bracket: 0 for opening, 1 for closing.
+" Returns [0, 0, 0, 0] if none found.
+function! s:current_top_form_bracket(closing)
+    let [_b, line, col, _o] = getpos('.')
+    let skip = 's:is_ignored_scope(line("."), col("."))'
+
+    " searchpairpos() fails to find the matching closing bracket when on the
+    " outermost opening bracket and vice versa, so we decide on the search
+    " directions based on the current char.
+    if getline(line)[col-1] =~ s:opening_bracket
+        let flags = 'bcnr'
+        let dir = 0
+    else
+        let flags = 'cnr'
+        let dir = 1
+    endif
+
+    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip)
+
+    if line < 1
+        return [0, 0, 0, 0]
+    elseif dir == a:closing
+        return [0, line, col, 0]
+    else
+        let cursor = getpos('.')
+        call cursor(line, col)
+        let pos = s:nearest_bracket(!dir)
+        call setpos('.', cursor)
+        return pos[1] > 0 ? pos : [0, 0, 0, 0]
+    endif
+endfunction
+
 " Position of start / end of current string: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
@@ -528,31 +560,17 @@ endfunction
 " from the current location. Will set both to [0, 0, 0, 0] if none are found
 " and mode does not equal 'v'.
 function! s:set_marks_around_current_top_form(mode, offset)
-    let [_b, line, col, _o] = getpos('.')
-    let skip = 's:is_ignored_scope(line("."), col("."))'
+    let closing = s:current_top_form_bracket(1)
 
-    " searchpairpos() fails to find the matching closing bracket when on the
-    " outermost opening bracket and vice versa, so we decide on the search
-    " directions based on the current char.
-    if getline(line)[col-1] =~ s:opening_bracket
-        let flags = 'bcnr'
-        let dir = 1
-    else
-        let flags = 'cnr'
-        let dir = 0
-    endif
-
-    let [el, ec] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip)
-
-    if el > 0
+    if closing[1] > 0
         " Calling searchpairpos() is faster when you start from an end
         let cursor = getpos('.')
-        call cursor(el, ec)
-        let start = s:nearest_bracket(dir)
+        call setpos('.', closing)
+        let opening = s:nearest_bracket(0)
         call setpos('.', cursor)
 
-        call setpos("'<", s:pos_with_col_offset(start, a:offset))
-        call setpos("'>", s:pos_with_col_offset([0, el, ec, 0], -a:offset))
+        call setpos("'<", s:pos_with_col_offset(opening, a:offset))
+        call setpos("'>", s:pos_with_col_offset(closing, -a:offset))
     elseif a:mode !=? 'v'
         call s:clear_visual_marks()
     endif

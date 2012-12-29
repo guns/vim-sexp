@@ -31,14 +31,16 @@ endif
 if !exists('g:sexp_textobj_mappings')
     " TODO: Document that 's' mapping overrides inner/outer sentence
     let g:sexp_textobj_mappings = {
-        \ 'form':         'f',
-        \ 'topform':      'F',
-        \ 'string':       's',
-        \ 'comment':      'c',
-        \ 'atom':         'a',
-        \ 'element':      'e',
-        \ 'prev_element': '[w',
-        \ 'next_element': ']w'
+        \ 'form':             'f',
+        \ 'top_form':         'F',
+        \ 'string':           's',
+        \ 'comment':          'c',
+        \ 'atom':             'a',
+        \ 'element':          'e',
+        \ 'prev_element':     '[w',
+        \ 'next_element':     ']w',
+        \ 'prev_top_element': '[[',
+        \ 'next_top_element': ']]',
     \ }
 endif
 
@@ -86,10 +88,10 @@ vnoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount("sexp#se
 onoremap <silent> <Plug>sexp_textobj_inner_form :<C-u>call sexp#docount("sexp#select_current_form('o', 1)", v:count)<CR>
 
 " Current top-level form
-vnoremap <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('v', 0)<CR>
-onoremap <silent> <Plug>sexp_textobj_outer_topform :<C-u>call sexp#select_current_topform('o', 0)<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('v', 1)<CR>
-onoremap <silent> <Plug>sexp_textobj_inner_topform :<C-u>call sexp#select_current_topform('o', 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_outer_top_form :<C-u>call sexp#select_current_top_form('v', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_outer_top_form :<C-u>call sexp#select_current_top_form('o', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_inner_top_form :<C-u>call sexp#select_current_top_form('v', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_inner_top_form :<C-u>call sexp#select_current_top_form('o', 1)<CR>
 
 " Current string
 vnoremap <silent> <Plug>sexp_textobj_outer_string :<C-u>call sexp#select_current_string('v', 0)<CR>
@@ -120,15 +122,23 @@ onoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_curren
 " Note that Ctrl-\_Ctrl-N breaks us directly out of visual mode into normal
 " mode without setting the cursor position to '<. This is necessary to detect
 " which end the user is using to adjust the selection.
-nnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 0)", v:count)<CR>
-vnoremap <silent> <Plug>sexp_textobj_prev_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0)", v:prevcount)<CR>
-onoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 0)", v:count)<CR>
-nnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 1)", v:count)<CR>
-vnoremap <silent> <Plug>sexp_textobj_next_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1)", v:prevcount)<CR>
-onoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 0, 0)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0, 0)", v:prevcount)<CR>
+onoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 0, 0)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 1, 0)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1, 0)", v:prevcount)<CR>
+onoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 0)", v:count)<CR>
+
+" Adjacent top element
+nmap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 0, 1)", v:count)<CR>
+vmap <silent> <Plug>sexp_textobj_prev_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 0, 1)", v:prevcount)<CR>
+omap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 0, 1)", v:count)<CR>
+nmap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('n', 1, 1)", v:count)<CR>
+vmap <silent> <Plug>sexp_textobj_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1, 1)", v:prevcount)<CR>
+omap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 1)", v:count)<CR>
 
 if !empty('g:sexp_textobj_mappings')
-    for s:key in ['form', 'topform', 'string', 'comment', 'atom', 'element']
+    for s:key in ['form', 'top_form', 'string', 'comment', 'atom', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,
@@ -138,7 +148,7 @@ if !empty('g:sexp_textobj_mappings')
         endif
     endfor
 
-    for s:key in ['next_element', 'prev_element']
+    for s:key in ['next_element', 'prev_element', 'prev_top_element', 'next_top_element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'nmap <silent><buffer> ' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_' . s:key,

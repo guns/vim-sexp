@@ -86,6 +86,38 @@ function! s:nearest_bracket(closing)
     return empty(closest) ? [0, 0, 0, 0] : closest
 endfunction
 
+" Position of outermost _paired_ bracket: 0 for opening, 1 for closing.
+" Returns [0, 0, 0, 0] if none found.
+function! s:current_top_form_bracket(closing)
+    let [_b, line, col, _o] = getpos('.')
+    let skip = 's:is_ignored_scope(line("."), col("."))'
+
+    " searchpairpos() fails to find the matching closing bracket when on the
+    " outermost opening bracket and vice versa, so we decide on the search
+    " directions based on the current char.
+    if getline(line)[col-1] =~ s:opening_bracket
+        let flags = 'bcnr'
+        let dir = 0
+    else
+        let flags = 'cnr'
+        let dir = 1
+    endif
+
+    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip)
+
+    if line < 1
+        return [0, 0, 0, 0]
+    elseif dir == a:closing
+        return [0, line, col, 0]
+    else
+        let cursor = getpos('.')
+        call cursor(line, col)
+        let pos = s:nearest_bracket(!dir)
+        call setpos('.', cursor)
+        return pos[1] > 0 ? pos : [0, 0, 0, 0]
+    endif
+endfunction
+
 " Position of start / end of current string: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
@@ -438,6 +470,15 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
+" Tries to move cursor to outermost form's opening or closing bracket,
+" returning its position; 0 for opening, 1 for closing. Does not move cursor
+" if not in a form.
+function! s:move_to_top_bracket(closing)
+    let pos = s:current_top_form_bracket(a:closing)
+    if pos[1] > 0 | call setpos('.', pos) | endif
+    return pos
+endfunction
+
 """ VISUAL MARKS {{{1
 
 " Set start and end visual marks to [0, 0, 0, 0]
@@ -527,32 +568,18 @@ endfunction
 " Set visual marks '< and '> to the positions of the outermost paired brackets
 " from the current location. Will set both to [0, 0, 0, 0] if none are found
 " and mode does not equal 'v'.
-function! s:set_marks_around_current_topform(mode, offset)
-    let [_b, line, col, _o] = getpos('.')
-    let skip = 's:is_ignored_scope(line("."), col("."))'
+function! s:set_marks_around_current_top_form(mode, offset)
+    let closing = s:current_top_form_bracket(1)
 
-    " searchpairpos() fails to find the matching closing bracket when on the
-    " outermost opening bracket and vice versa, so we decide on the search
-    " directions based on the current char.
-    if getline(line)[col-1] =~ s:opening_bracket
-        let flags = 'bcnr'
-        let dir = 1
-    else
-        let flags = 'cnr'
-        let dir = 0
-    endif
-
-    let [el, ec] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip)
-
-    if el > 0
+    if closing[1] > 0
         " Calling searchpairpos() is faster when you start from an end
         let cursor = getpos('.')
-        call cursor(el, ec)
-        let start = s:nearest_bracket(dir)
+        call setpos('.', closing)
+        let opening = s:nearest_bracket(0)
         call setpos('.', cursor)
 
-        call setpos("'<", s:pos_with_col_offset(start, a:offset))
-        call setpos("'>", s:pos_with_col_offset([0, el, ec, 0], -a:offset))
+        call setpos("'<", s:pos_with_col_offset(opening, a:offset))
+        call setpos("'>", s:pos_with_col_offset(closing, -a:offset))
     elseif a:mode !=? 'v'
         call s:clear_visual_marks()
     endif
@@ -735,8 +762,8 @@ endfunction
 " Set visual marks at current outermost form's brackets, then enter visual
 " mode with that selection. If no brackets are found and mode equals 'o',
 " nothing is done.
-function! sexp#select_current_topform(mode, offset)
-    call s:set_marks_around_current_topform(a:mode, a:offset)
+function! sexp#select_current_top_form(mode, offset)
+    call s:set_marks_around_current_top_form(a:mode, a:offset)
     call s:select_current_marks(a:mode)
 endfunction
 
@@ -779,20 +806,34 @@ endfunction
 " Moves cursor to adjacent element; 0 for previous, 1 for next. If no such
 " adjacent element exists, moves to beginning or end of element respectively.
 " Analogous to native w and b commands.
-function! sexp#move_to_adjacent_element(mode, next)
+function! sexp#move_to_adjacent_element(mode, next, top)
+    let cursor = getpos('.')
+
     if a:mode ==? 'v'
         " Break out of visual mode, preserving cursor position
         if s:countindex > 0
             execute "normal! \<C-Bslash>\<C-n>"
         endif
-        let cursor = getpos('.')
+
+        " Record visual state now before moving the cursor
         let start = getpos("'<")
         let end = getpos("'>")
         let omode = cursor == start
-        call setpos('.', omode ? start : end)
     endif
 
-    let pos = s:nearest_element_head(a:next)
+    if a:top
+        let top = s:move_to_top_bracket(a:next)
+
+        " Stop at current top element head if moving backwards and did not
+        " start on a top element head.
+        if !a:next && top[1] > 0 && top != cursor
+            let pos = top
+        else
+            let pos = s:nearest_element_head(a:next)
+        endif
+    else
+        let pos = s:nearest_element_head(a:next)
+    endif
 
     if a:mode ==? 'v'
         if omode

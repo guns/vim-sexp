@@ -22,7 +22,6 @@ let g:sexp_autoloaded = 1
 "
 " * Deliberately set jump marks so users can `` back after undo.
 " * Set stopline for searchpairpos()
-" * Next/prev element text object
 " * Don't ignore virtualedit mode
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)

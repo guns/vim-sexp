@@ -125,7 +125,7 @@ endfunction
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if s:syntax_name(cursorline, cursorcol) !~? 'string' | return [0, 0, 0, 0] | endif
+    if !s:syntax_match('string', cursorline, cursorcol) | return [0, 0, 0, 0] | endif
 
     let [termline, termcol] = [cursorline, cursorcol]
 
@@ -141,7 +141,7 @@ function! s:current_string_terminal(end)
         " Beginning or end of file.
         if line < 1 | break | endif
 
-        if s:syntax_name(line, col) =~? 'string'
+        if s:syntax_match('string', line, col)
             let [termline, termcol] = [line, col]
             call cursor(line, col)
         else
@@ -216,7 +216,7 @@ function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
 
-    if s:syntax_name(line, col) =~? 'string'
+    if s:syntax_match('string', line, col)
         return s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
         return s:current_comment_terminal(a:end)
@@ -284,6 +284,8 @@ function! s:pos_with_col_offset(pos, offset)
     return [b, l, c + a:offset, o]
 endfunction
 
+" Return case insensitive match of the top syntax group at position with pat.
+"
 " Version 7.2.446 introduced synstack(), which shows the entire stack of
 " syntax groups for a given position. It also shows the syntax groups of the
 " position under the cursor, even if on a blank line, unlike synIDattr, which
@@ -293,13 +295,13 @@ endfunction
 " that case, even though it will return false values for empty lines within
 " strings, etc.
 if exists('*synstack')
-    function! s:syntax_name(line, col)
+    function! s:syntax_match(pat, line, col)
         let stack = synstack(a:line, a:col)
-        return empty(stack) ? '' : synIDattr(stack[-1], 'name')
+        return (empty(stack) ? '' : synIDattr(stack[-1], 'name')) =~? a:pat
     endfunction
 else
-    function! s:syntax_name(line, col)
-        return synIDattr(synID(a:line, a:col, 0), 'name')
+    function! s:syntax_match(pat, line, col)
+        return synIDattr(synID(a:line, a:col, 0), 'name') =~? a:pat
     endfunction
 endif
 
@@ -391,13 +393,13 @@ endfunction
 " It is established Vim convention that matching '\cstring|comment' and so on
 " is acceptable for syntax regions that are conventionally named.
 function! s:is_ignored_scope(line, col)
-    return s:syntax_name(a:line, a:col) =~? '\vstring|comment|char'
+    return s:syntax_match('\vstring|comment|char', a:line, a:col)
 endfunction
 
 " Returns 1 is character at position is in a comment, or is in the whitespace
 " between two line comments.
 function! s:is_comment(line, col)
-    if s:syntax_name(a:line, a:col) =~? 'comment'
+    if s:syntax_match('comment', a:line, a:col)
         return 1
     else
         let incomment = 0
@@ -410,7 +412,7 @@ function! s:is_comment(line, col)
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
             let [cline, ccol] = s:findpos('\v\S', 1, a:line)
-            if s:syntax_name(pline, pcol) =~? 'comment' && s:syntax_name(cline, ccol) =~? 'comment'
+            if s:syntax_match('comment', pline, pcol) && s:syntax_match('comment', cline, ccol)
                 let incomment = 1
             endif
             call setpos('.', cursor)
@@ -429,7 +431,7 @@ function! s:is_atom(line, col)
     if getline(a:line)[a:col - 1] =~ s:delimiter
         return 0
     else
-        return s:syntax_name(a:line, a:col) !~? '\vstring|comment'
+        return !s:syntax_match('\vstring|comment', a:line, a:col)
     endif
 endfunction
 

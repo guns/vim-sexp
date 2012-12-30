@@ -161,7 +161,7 @@ function! s:current_comment_terminal(end)
     let [termline, termcol] = [cursorline, cursorcol]
 
     while 1
-        let [line, col] = s:findpos('\v.', a:end)
+        let [line, col] = s:findpos('\v\_.', a:end)
 
         if line < 1 | break | endif
 
@@ -257,18 +257,18 @@ function! s:nearest_element_head(next)
             break
         else
             let pos = adjacent
-            call setpos('.', pos)
         endif
 
-        " Cursor ends on the head of an element, unless on a closing bracket
-        " while moving forward.
-        if a:next && getline(pos[1])[pos[2] - 1] =~ s:closing_bracket
+        " We are at a head if moving forward
+        if a:next
             break
-        endif
-
-        let final = s:current_element_terminal(0)
-        if final[1] > 0
-            let pos = final
+        " Or at a tail if moving backward
+        else
+            call setpos('.', pos)
+            let final = s:current_element_terminal(0)
+            if final[1] > 0
+                let pos = final
+            endif
         endif
     endfor
 
@@ -387,7 +387,7 @@ function! s:is_string(line, col)
         let instring = 0
 
         " We may be on an empty line; check nearest pair of nonspace chars
-        if col('$') == 1
+        if col([a:line, '$']) == 1
             let cursor = getpos('.')
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0)

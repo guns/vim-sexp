@@ -826,11 +826,11 @@ function! sexp#move_to_adjacent_element(mode, next, top)
         if omode
             call setpos("'<", pos)
             call setpos("'>", end)
-            execute 'normal! gvo'
+            normal! gvo
         else
             call setpos("'<", start)
             call setpos("'>", pos)
-            execute 'normal! gv'
+            normal! gv
         endif
     else
         call setpos('.', pos)

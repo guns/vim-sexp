@@ -38,7 +38,6 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
-let s:pairs = [['\V(','\V)'], ['\V[','\V]'], ['\V{','\V}']]
 let s:countindex = 0 " Stores current count index during sexp#docount
 
 """ QUERIES AT CURSOR {{{1
@@ -282,28 +281,6 @@ endfunction
 function! s:pos_with_col_offset(pos, offset)
     let [b, l, c, o] = a:pos
     return [b, l, c + a:offset, o]
-endfunction
-
-function! s:min_by_distance_from(pos, a, b)
-    " First return closest by line difference
-    let line_delta_a = abs(a:pos[1] - a:a[1])
-    let line_delta_b = abs(a:pos[1] - a:b[1])
-    if line_delta_a > line_delta_b
-        return a:b
-    elseif line_delta_a < line_delta_b
-        return a:a
-    " They are on the same line as the cursor
-    elseif line_delta_a == 0
-        let col_delta_a = abs(a:pos[2] - a:a[2])
-        let col_delta_b = abs(a:pos[2] - a:b[2])
-        return col_delta_a > col_delta_b ? a:b : a:a
-    " They are on the same line, but not on the same line as the cursor. If
-    " below the cursor, proximity is closest to bol and vice versa.
-    else
-        let op = a:pos[1] - a:a[1] < 0 ? '<' : '>'
-        let a_is_closer = eval(a:a[2] . op . a:b[2])
-        return a_is_closer ? a:a : a:b
-    endif
 endfunction
 
 function! s:syntax_name(line, col)

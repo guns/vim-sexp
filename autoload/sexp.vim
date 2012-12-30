@@ -26,7 +26,6 @@ let g:sexp_autoloaded = 1
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Select adjacent element (as opposed to move selection cursor to adjacent)
 " * Insert cursor at head/tail of form
-" * Don't select contiguous whitespace only with s:set_marks_around_current_element
 " * Optimize top_form calls
 
 """ PATTERNS AND STATE {{{1
@@ -396,7 +395,7 @@ function! s:is_ignored_scope(line, col)
     return s:syntax_match('\vstring|comment|char', a:line, a:col)
 endfunction
 
-" Returns 1 is character at position is in a comment, or is in the whitespace
+" Returns 1 if character at position is in a comment, or is in the whitespace
 " between two line comments.
 function! s:is_comment(line, col)
     if s:syntax_match('comment', a:line, a:col)
@@ -630,9 +629,21 @@ endfunction
 " If inner is 0, trailing or leading whitespace is included by way
 " of s:terminals_with_whitespace().
 "
+" If cursor is on whitespace, the current element is defined as the next
+" non-whitespace element.
+"
 " Will set both to [0, 0, 0, 0] if not currently in an element and mode does
 " not equal 'v'.
 function! s:set_marks_around_current_element(mode, inner)
+    let cursor = getpos('.')
+    let cursor_moved = 0
+
+    let char = getline(cursor[1])[cursor[2] - 1]
+    if empty(char) || char =~? '\v\s'
+        call sexp#move_to_adjacent_element(mode(), 1, 0)
+        let cursor_moved = 1
+    endif
+
     let start = [0, 0, 0, 0]
     let end = s:current_element_terminal(1)
 
@@ -642,6 +653,7 @@ function! s:set_marks_around_current_element(mode, inner)
         if a:mode !=? 'v'
             call s:clear_visual_marks()
         endif
+        if cursor_moved | call setpos('.', cursor) | endif
         return
     endif
 
@@ -651,6 +663,7 @@ function! s:set_marks_around_current_element(mode, inner)
 
     call setpos("'<", start)
     call setpos("'>", end)
+    if cursor_moved | call setpos('.', cursor) | endif
 endfunction
 
 " Enter visual mode with current visual marks, unless '< is invalid and

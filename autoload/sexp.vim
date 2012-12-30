@@ -24,8 +24,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
-" * Do we really care to balance bracket types in s:nearest_bracket()? We
-"   should determine if this correctness is worth the performance hit.
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Select adjacent element (as opposed to move selection cursor to adjacent)
 " * Insert cursor at head/tail of form
@@ -33,7 +31,7 @@ let g:sexp_autoloaded = 1
 """ PATTERNS AND STATE {{{1
 
 if !exists('g:sexp_maxlines')
-    let g:sexp_maxlines = 100 " For searchpairpos() calls
+    let g:sexp_maxlines = 0
 endif
 
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
@@ -69,29 +67,27 @@ function! s:findpos(pattern, next, ...)
     return [line, col]
 endfunction
 
-" Position of nearest _paired_ bracket: 0 for opening, 1 for closing. Returns
+" Position of nearest paired bracket: 0 for opening, 1 for closing. Returns
 " [0, 0, 0, 0] if none found.
+"
+" In interest of performance (40x faster in some pathological cases!),
+" mismatched brackets are not treated as errors. The following mess will be
+" treated as if all brackets are of the same type:
+"
+"   [defn foo (bar]
+"     {baz quux))
+"
+" However, your syntax engine should clearly highlight the errors. If you have
+" a good argument for why this is not a good tradeoff, contact me.
 function! s:nearest_bracket(closing)
-    let closest = []
     let flags = a:closing ? 'nW' : 'bnW'
+    let skip = 's:is_ignored_scope(line("."), col("."))'
     let stopline = g:sexp_maxlines ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
-
-    for [start, end] in s:pairs
-        let [line, col] = searchpairpos(start, '', end, flags, 's:is_ignored_scope(line("."), col("."))', stopline)
-
-        if line < 1
-            continue
-        elseif empty(closest)
-            let closest = [0, line, col, 0]
-        else
-            let closest = s:min_by_distance_from(getpos('.'), closest, [0, line, col, 0])
-        endif
-    endfor
-
-    return empty(closest) ? [0, 0, 0, 0] : closest
+    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+    return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
-" Position of outermost _paired_ bracket: 0 for opening, 1 for closing.
+" Position of outermost paired bracket: 0 for opening, 1 for closing.
 " Returns [0, 0, 0, 0] if none found.
 function! s:current_top_form_bracket(closing)
     let [_b, line, col, _o] = getpos('.')
@@ -211,7 +207,7 @@ endfunction
 " [0, 0, 0, 0] if not currently in an element.
 "
 " An element is defined as:
-"   * Current form if and only if cursor is on a _paired_ bracket
+"   * Current form if and only if cursor is on a paired bracket
 "   * Current string if cursor is in a string
 "   * Current comment if cursor is in a comment
 "   * Current contiguous region of whitespace if cursor is on whitespace
@@ -470,7 +466,7 @@ endfunction
 
 """ CURSOR MOVEMENT {{{1
 
-" Tries to move cursor to nearest _paired_ bracket, returning its position
+" Tries to move cursor to nearest paired bracket, returning its position
 function! s:move_to_nearest_bracket(closing)
     let pos = s:nearest_bracket(a:closing)
     if pos[1] > 0 | call setpos('.', pos) | endif

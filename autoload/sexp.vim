@@ -22,7 +22,6 @@ let g:sexp_autoloaded = 1
 "
 " * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
-" * Check synstack() for syntax scope?
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Select adjacent element (as opposed to move selection cursor to adjacent)
@@ -126,7 +125,7 @@ endfunction
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if !s:is_string(cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+    if s:syntax_name(cursorline, cursorcol) !~? 'string' | return [0, 0, 0, 0] | endif
 
     let [termline, termcol] = [cursorline, cursorcol]
 
@@ -142,7 +141,7 @@ function! s:current_string_terminal(end)
         " Beginning or end of file.
         if line < 1 | break | endif
 
-        if s:is_string(line, col)
+        if s:syntax_name(line, col) =~? 'string'
             let [termline, termcol] = [line, col]
             call cursor(line, col)
         else
@@ -217,7 +216,7 @@ function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
 
-    if s:is_string(line, col)
+    if s:syntax_name(line, col) =~? 'string'
         return s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
         return s:current_comment_terminal(a:end)
@@ -285,9 +284,24 @@ function! s:pos_with_col_offset(pos, offset)
     return [b, l, c + a:offset, o]
 endfunction
 
-function! s:syntax_name(line, col)
-    return synIDattr(synID(a:line, a:col, 0), 'name')
-endfunction
+" Version 7.2.446 introduced synstack(), which shows the entire stack of
+" syntax groups for a given position. It also shows the syntax groups of the
+" position under the cursor, even if on a blank line, unlike synIDattr, which
+" returns 0 on a blank line.
+"
+" Instead of requiring that synstack() exist, we will simply use synIDattr in
+" that case, even though it will return false values for empty lines within
+" strings, etc.
+if exists('*synstack')
+    function! s:syntax_name(line, col)
+        let stack = synstack(a:line, a:col)
+        return empty(stack) ? '' : synIDattr(stack[-1], 'name')
+    endfunction
+else
+    function! s:syntax_name(line, col)
+        return synIDattr(synID(a:line, a:col, 0), 'name')
+    endfunction
+endif
 
 " Return start of leading (0) or end of trailing (1) whitespace from pos.
 " Returns pos if no such whitespace exists.
@@ -378,30 +392,6 @@ endfunction
 " is acceptable for syntax regions that are conventionally named.
 function! s:is_ignored_scope(line, col)
     return s:syntax_name(a:line, a:col) =~? '\vstring|comment|char'
-endfunction
-
-" Returns 1 if character at position is a string; handles empty lines, which
-" always return a synID of 0.
-function! s:is_string(line, col)
-    if s:syntax_name(a:line, a:col) =~? 'string'
-        return 1
-    else
-        let instring = 0
-
-        " We may be on an empty line; check nearest pair of nonspace chars
-        if col([a:line, '$']) == 1
-            let cursor = getpos('.')
-            call cursor(a:line, a:col)
-            let [pline, pcol] = s:findpos('\v\S', 0)
-            let [nline, ncol] = s:findpos('\v\S', 1)
-            if s:syntax_name(pline, pcol) =~? 'string' && s:syntax_name(nline, ncol) =~? 'string'
-                let instring = 1
-            endif
-            call setpos('.', cursor)
-        endif
-
-        return instring
-    endif
 endfunction
 
 " Returns 1 is character at position is in a comment, or is in the whitespace

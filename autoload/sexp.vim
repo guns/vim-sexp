@@ -282,12 +282,19 @@ function! s:pos_with_col_offset(pos, offset)
     return [b, l, c + a:offset, o]
 endfunction
 
-" Return case insensitive match of the top syntax group at position with pat.
+" Return case insensitive match of the syntax group at position with pat.
 "
 " Version 7.2.446 introduced synstack(), which shows the entire stack of
 " syntax groups for a given position. It also shows the syntax groups of the
 " position under the cursor, even if on a blank line, unlike synIDattr, which
 " returns 0 on a blank line.
+"
+" This also solves the problem of "contained" syntax groups. For example,
+" a syntax file or colorscheme may define custom groups like todo items or
+" trailing whitespace in a comment. In these regions the top syntax group name
+" will not match 'comment', even though they are semantically still comments.
+" If we know the underlying syntax group name however, we will be able to
+" successfully match it.
 "
 " Instead of requiring that synstack() exist, we will simply use synIDattr in
 " that case, even though it will return false values for empty lines within
@@ -295,7 +302,8 @@ endfunction
 if exists('*synstack')
     function! s:syntax_match(pat, line, col)
         let stack = synstack(a:line, a:col)
-        return (empty(stack) ? '' : synIDattr(stack[-1], 'name')) =~? a:pat
+        return (synIDattr(get(stack, -1, ''), 'name') =~? a:pat) ||
+            \  (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
     endfunction
 else
     function! s:syntax_match(pat, line, col)

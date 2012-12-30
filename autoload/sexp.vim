@@ -27,6 +27,8 @@ let g:sexp_autoloaded = 1
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Select adjacent element (as opposed to move selection cursor to adjacent)
 " * Insert cursor at head/tail of form
+" * Don't select contiguous whitespace only with s:set_marks_around_current_element
+" * Optimize top_form calls
 
 """ PATTERNS AND STATE {{{1
 

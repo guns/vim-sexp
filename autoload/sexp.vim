@@ -25,7 +25,6 @@ let g:sexp_autoloaded = 1
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Select adjacent element (as opposed to move selection cursor to adjacent)
-" * Insert cursor at head/tail of form
 " * Optimize top_form calls
 
 """ PATTERNS AND STATE {{{1
@@ -882,4 +881,37 @@ function! sexp#splice_form()
 
     call setpos("'<", original_start)
     call setpos("'>", original_end)
+endfunction
+
+" Move cursor to current form start or end and enter insert mode. Inserts
+" a leading space after opening bracket if inserting at head, unless there
+" already is one.
+function! sexp#insert_at_form_terminal(end)
+    let cursor = getpos('.')
+    let char = getline(cursor[1])[cursor[2] - 1]
+
+    if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+        let pos = cursor
+    else
+        let pos = s:move_to_nearest_bracket(a:end)
+    endif
+
+    " Handle opening bracket edge cases
+    if !a:end && pos[1] > 0
+        let nextchar = getline(pos[1])[pos[2]]
+
+        " This is the eol, so start insert at eol
+        if empty(nextchar)
+            startinsert!
+            return
+        " Add headspace unless there's already some there
+        elseif nextchar !~ '\v\s'
+            execute 'normal! a '
+        " Else start after the bracket
+        else
+            normal! l
+        endif
+    endif
+
+    startinsert
 endfunction

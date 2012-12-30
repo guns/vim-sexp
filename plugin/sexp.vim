@@ -61,6 +61,8 @@ if !exists('g:sexp_mappings')
         \ 'sexp_element_wrap_curly_tail':  '',
         \ 'sexp_lift_form':                '<Leader>o',
         \ 'sexp_splice_form':              '<Leader>O',
+        \ 'sexp_insert_at_form_head':      '<Leader>h',
+        \ 'sexp_insert_at_form_tail':      '<Leader>l',
     \ }
 endif
 
@@ -198,6 +200,12 @@ vmap <silent> <Plug>sexp_lift_form dv<Plug>sexp_textobj_outer_formp
 " Splice form
 nnoremap <silent> <Plug>sexp_splice_form :<C-u>call sexp#splice_form()<CR>
 vnoremap <silent> <Plug>sexp_splice_form :<C-u>call sexp#splice_form()<CR>
+
+" Insert at form terminal
+nnoremap <silent> <Plug>sexp_insert_at_form_head :<C-u>call sexp#insert_at_form_terminal(0)<CR>
+vnoremap <silent> <Plug>sexp_insert_at_form_head :<C-u>call sexp#insert_at_form_terminal(0)<CR>
+nnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
+vnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)

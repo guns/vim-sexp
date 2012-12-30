@@ -42,7 +42,7 @@ let s:countindex = 0 " Stores current count index during sexp#docount
 """ QUERIES AT CURSOR {{{1
 
 " Like searchpos(), return first pattern match from cursor as [line, col].
-" Unlike searchpos(), searching backwards when the cursor is on a multibyte
+" Unlike searchpos(), searching backward when the cursor is on a multibyte
 " character does not move the cursor too far.
 "
 " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
@@ -55,7 +55,7 @@ function! s:findpos(pattern, next, ...)
         let [_b, line, col, _o] = getpos('.')
         let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         " Bug only occurs when match is on same line
-        if sline == line && &encoding ==? 'utf-8' && s:is_backwards_multibyte_search_broken()
+        if sline == line && &encoding ==? 'utf-8' && s:is_backward_multibyte_search_broken()
             let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
             let [line, col] = [sline, scol]
@@ -373,18 +373,18 @@ endfunction
 """ PREDICATES {{{1
 
 " See discussion at s:findpos()
-function! s:is_backwards_multibyte_search_broken()
-    if exists('s:backwards_multibyte_search_is_broken')
-        return s:backwards_multibyte_search_is_broken
+function! s:is_backward_multibyte_search_broken()
+    if exists('s:backward_multibyte_search_is_broken')
+        return s:backward_multibyte_search_is_broken
     else
         let cursor = getpos('.')
         silent! call append(cursor[1], '123❤sexp-bugcheck')
         call cursor(cursor[1] + 1, 4)
-        let s:backwards_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
+        let s:backward_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
         " FIXME: Remove this undo leaf!
         silent! normal! u
         call setpos('.', cursor)
-        return s:backwards_multibyte_search_is_broken
+        return s:backward_multibyte_search_is_broken
     endif
 endfunction
 
@@ -810,7 +810,7 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     if a:top
         let top = s:move_to_top_bracket(a:next)
 
-        " Stop at current top element head if moving backwards and did not
+        " Stop at current top element head if moving backward and did not
         " start on a top element head.
         if !a:next && top[1] > 0 && top != cursor
             let pos = top

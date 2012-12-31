@@ -35,7 +35,7 @@ if !exists('g:sexp_textobj_mappings')
         \ 'top_form':                         'F',
         \ 'string':                           's',
         \ 'comment':                          'c',
-        \ 'atom':                             'a',
+        \ 'atom':                             '',
         \ 'element':                          'e',
         \ 'prev_element':                     '[w',
         \ 'next_element':                     ']w',

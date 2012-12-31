@@ -919,8 +919,9 @@ endfunction
 function! sexp#insert_at_form_terminal(end)
     let cursor = getpos('.')
     let char = getline(cursor[1])[cursor[2] - 1]
+    let on_bracket = (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
 
-    if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+    if on_bracket && !s:is_ignored_scope(cursor[1], cursor[2])
         let pos = cursor
     else
         let pos = s:move_to_nearest_bracket(a:end)

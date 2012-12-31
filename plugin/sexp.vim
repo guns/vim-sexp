@@ -141,16 +141,18 @@ nnoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("s
 vnoremap <silent> <Plug>sexp_textobj_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1, 1)", v:prevcount)<CR>
 onoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 1)", v:count)<CR>
 
-" Adjacent element exclusive selection. Unlike other text objects, calling
-" this from normal moves us to visual mode, with the adjacent element as our
-" selection. I opted to make this a text object instead of a command since it
-" makes sense to have an operator pending version of this movement.
-nnoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#select_adjacent_element('n', 0)<CR>
-vnoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#select_adjacent_element('v', 0)<CR>
-onoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#select_adjacent_element('o', 0)<CR>
-nnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#select_adjacent_element('n', 1)<CR>
-vnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#select_adjacent_element('v', 1)<CR>
-onoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#select_adjacent_element('o', 1)<CR>
+" Adjacent element exclusive selection.
+"
+" Unlike other text objects, calling this from normal moves us to visual mode,
+" with the adjacent element as our selection. I opted to make this a text
+" object instead of a command since it makes sense to have an operator pending
+" version of this movement.
+nnoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#docount("sexp#select_adjacent_element('n', 0)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#select_adjacent_element('v', 0)", v:prevcount)<CR>
+onoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#docount("sexp#select_adjacent_element('o', 0)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#docount("sexp#select_adjacent_element('n', 1)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#select_adjacent_element('v', 1)", v:prevcount)<CR>
+onoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#docount("sexp#select_adjacent_element('o', 1)", v:count)<CR>
 
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'top_form', 'string', 'comment', 'atom', 'element']

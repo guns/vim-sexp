@@ -678,7 +678,7 @@ function! s:set_marks_around_adjacent_element(mode, next)
     let cursor = getpos('.')
 
     if a:mode ==? 'v'
-        execute "normal! \<Esc>"
+        execute "normal! \<C-Bslash>\<C-n>"
     endif
 
     " If moving backward, first position ourselves at the head of the current

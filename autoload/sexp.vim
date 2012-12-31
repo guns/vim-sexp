@@ -24,7 +24,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
-" * Select adjacent element (as opposed to move selection cursor to adjacent)
 " * Optimize top_form calls
 
 """ PATTERNS AND STATE {{{1
@@ -669,6 +668,29 @@ function! s:set_marks_around_current_element(mode, inner)
 
     call setpos("'<", start)
     call setpos("'>", end)
+endfunction
+
+" Set visual marks '< and '> to the start and end of the adjacent inner
+" element. If no element is adjacent in the direction specified, the marks are
+" set around the current element instead via
+" s:set_marks_around_adjacent_element().
+function! s:set_marks_around_adjacent_element(mode, next)
+    let cursor = getpos('.')
+
+    if a:mode ==? 'v'
+        execute "normal! \<Esc>"
+    endif
+
+    " If moving backward, first position ourselves at the head of the current
+    " element.
+    if !a:next
+        let head = s:current_element_terminal(0)
+        if head[1] > 0 | call setpos('.', head) | endif
+    endif
+
+    call sexp#move_to_adjacent_element('n', a:next, 0)
+    call s:set_marks_around_current_element(a:mode, 1)
+    call setpos('.', cursor)
 endfunction
 
 " Enter visual mode with current visual marks, unless '< is invalid and

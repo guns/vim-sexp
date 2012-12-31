@@ -205,10 +205,9 @@ endfunction
 " [0, 0, 0, 0] if not currently in an element.
 "
 " An element is defined as:
-"   * Current form if and only if cursor is on a paired bracket
 "   * Current string if cursor is in a string
 "   * Current comment if cursor is in a comment
-"   * Current contiguous region of whitespace if cursor is on whitespace
+"   * Current form if and only if cursor is on a paired bracket
 "   * Current atom otherwise
 function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
@@ -224,8 +223,6 @@ function! s:current_element_terminal(end)
         else
             return s:nearest_bracket(a:end)
         end
-    elseif empty(char) || char =~ '\v\s'
-        return s:adjacent_whitespace_terminal([0, line, col, 0], a:end)
     else
         return s:current_atom_terminal(a:end)
     endif
@@ -242,7 +239,7 @@ function! s:nearest_element_head(next)
     " This is a goto disguised as a foreach loop.
     for _ in [0]
         let terminal = s:current_element_terminal(a:next)
-        if pos != terminal
+        if terminal[1] > 0 && pos != terminal
             let pos = terminal
             call setpos('.', pos)
             " b command moves to head of the current word if not on the head
@@ -636,31 +633,31 @@ endfunction
 " If inner is 0, trailing or leading whitespace is included by way
 " of s:terminals_with_whitespace().
 "
-" If cursor is on whitespace, the current element is defined as the next
-" non-whitespace element.
+" If cursor is on whitespace that is not in a string or comment, the marks are
+" set around the next element.
 "
-" Will set both to [0, 0, 0, 0] if not currently in an element and mode does
+" Will set both to [0, 0, 0, 0] an element could not be found and mode does
 " not equal 'v'.
 function! s:set_marks_around_current_element(mode, inner)
-    let cursor = getpos('.')
-    let cursor_moved = 0
-
-    let char = getline(cursor[1])[cursor[2] - 1]
-    if empty(char) || char =~? '\v\s'
-        call sexp#move_to_adjacent_element(mode(), 1, 0)
-        let cursor_moved = 1
-    endif
-
     let start = [0, 0, 0, 0]
     let end = s:current_element_terminal(1)
 
     if end[1] > 0
         let start = s:current_element_terminal(0)
     else
-        if a:mode !=? 'v'
-            call s:clear_visual_marks()
+        " We are on whitespace; move to next element and recurse.
+        let cursor = getpos('.')
+        let next = sexp#move_to_adjacent_element('n', 1, 0)
+
+        " No next element! We are at the eof or in a blank buffer.
+        if next == cursor
+            if a:mode !=? 'v'
+                call s:clear_visual_marks()
+            endif
+        else
+            call s:set_marks_around_current_element(a:mode, a:inner)
+            call setpos('.', cursor)
         endif
-        if cursor_moved | call setpos('.', cursor) | endif
         return
     endif
 
@@ -670,7 +667,6 @@ function! s:set_marks_around_current_element(mode, inner)
 
     call setpos("'<", start)
     call setpos("'>", end)
-    if cursor_moved | call setpos('.', cursor) | endif
 endfunction
 
 " Enter visual mode with current visual marks, unless '< is invalid and
@@ -797,9 +793,9 @@ function! sexp#select_adjacent_element(mode, next)
     call s:select_current_marks(a:mode)
 endfunction
 
-" Moves cursor to adjacent element; 0 for previous, 1 for next. If no such
-" adjacent element exists, moves to beginning or end of element respectively.
-" Analogous to native w and b commands.
+" Moves cursor to adjacent element, returning its position; 0 for previous, 1
+" for next. If no such adjacent element exists, moves to beginning or end of
+" element respectively. Analogous to native w and b commands.
 function! sexp#move_to_adjacent_element(mode, next, top)
     let cursor = getpos('.')
 
@@ -842,6 +838,8 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     else
         call setpos('.', pos)
     endif
+
+    return pos
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

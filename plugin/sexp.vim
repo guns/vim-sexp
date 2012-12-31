@@ -31,16 +31,18 @@ endif
 if !exists('g:sexp_textobj_mappings')
     " TODO: Document that 's' mapping overrides inner/outer sentence
     let g:sexp_textobj_mappings = {
-        \ 'form':             'f',
-        \ 'top_form':         'F',
-        \ 'string':           's',
-        \ 'comment':          'c',
-        \ 'atom':             'a',
-        \ 'element':          'e',
-        \ 'prev_element':     '[w',
-        \ 'next_element':     ']w',
-        \ 'prev_top_element': '[[',
-        \ 'next_top_element': ']]',
+        \ 'form':                             'f',
+        \ 'top_form':                         'F',
+        \ 'string':                           's',
+        \ 'comment':                          'c',
+        \ 'atom':                             'a',
+        \ 'element':                          'e',
+        \ 'prev_element':                     '[w',
+        \ 'next_element':                     ']w',
+        \ 'prev_top_element':                 '[[',
+        \ 'next_top_element':                 ']]',
+        \ 'exclusive_prev_element_selection': '[W',
+        \ 'exclusive_next_element_selection': ']W',
     \ }
 endif
 
@@ -63,8 +65,6 @@ if !exists('g:sexp_mappings')
         \ 'sexp_splice_form':              '<Leader>O',
         \ 'sexp_insert_at_form_head':      '<Leader>h',
         \ 'sexp_insert_at_form_tail':      '<Leader>l',
-        \ 'sexp_select_prev_element':      '[W',
-        \ 'sexp_select_next_element':      ']W',
     \ }
 endif
 
@@ -141,6 +141,17 @@ nnoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("s
 vnoremap <silent> <Plug>sexp_textobj_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount("sexp#move_to_adjacent_element('v', 1, 1)", v:prevcount)<CR>
 onoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount("sexp#move_to_adjacent_element('o', 1, 1)", v:count)<CR>
 
+" Adjacent element exclusive selection. Unlike other text objects, calling
+" this from normal moves us to visual mode, with the adjacent element as our
+" selection. I opted to make this a text object instead of a command since it
+" makes sense to have an operator pending version of this movement.
+nnoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#select_adjacent_element('n', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#select_adjacent_element('v', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_exclusive_prev_element_selection :<C-u>call sexp#select_adjacent_element('o', 0)<CR>
+nnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#select_adjacent_element('n', 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#select_adjacent_element('v', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#select_adjacent_element('o', 1)<CR>
+
 if !empty('g:sexp_textobj_mappings')
     for s:key in ['form', 'top_form', 'string', 'comment', 'atom', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
@@ -152,7 +163,8 @@ if !empty('g:sexp_textobj_mappings')
         endif
     endfor
 
-    for s:key in ['next_element', 'prev_element', 'prev_top_element', 'next_top_element']
+    for s:key in ['next_element', 'prev_element', 'prev_top_element', 'next_top_element',
+                \ 'exclusive_prev_element_selection', 'exclusive_next_element_selection']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'nmap <silent><buffer> ' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_' . s:key,
@@ -208,12 +220,6 @@ nnoremap <silent> <Plug>sexp_insert_at_form_head :<C-u>call sexp#insert_at_form_
 vnoremap <silent> <Plug>sexp_insert_at_form_head :<C-u>call sexp#insert_at_form_terminal(0)<CR>
 nnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
 vnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
-
-" Select adjacent element
-nnoremap <silent> <Plug>sexp_select_prev_element :<C-u>call sexp#select_adjacent_element('n', 0)<CR>
-vnoremap <silent> <Plug>sexp_select_prev_element :<C-u>call sexp#select_adjacent_element('v', 0)<CR>
-nnoremap <silent> <Plug>sexp_select_next_element :<C-u>call sexp#select_adjacent_element('n', 1)<CR>
-vnoremap <silent> <Plug>sexp_select_next_element :<C-u>call sexp#select_adjacent_element('v', 1)<CR>
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)

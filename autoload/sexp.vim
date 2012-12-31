@@ -431,7 +431,9 @@ endfunction
 "   * A contiguous region of non-whitespace, non-bracket characters that are
 "     not part of a string or comment.
 function! s:is_atom(line, col)
-    if getline(a:line)[a:col - 1] =~ s:delimiter
+    let char = getline(a:line)[a:col - 1]
+
+    if empty(char) || char =~ s:delimiter
         return 0
     else
         return !s:syntax_match('\vstring|comment', a:line, a:col)

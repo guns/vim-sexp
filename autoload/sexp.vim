@@ -25,6 +25,7 @@ let g:sexp_autoloaded = 1
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Optimize top_form calls
+" * Perhaps reader macro characters behind a form should be selected with the form
 
 """ PATTERNS AND STATE {{{1
 
@@ -374,7 +375,7 @@ function! s:terminals_with_whitespace(start, end)
     return [start, end]
 endfunction
 
-""" PREDICATES {{{1
+""" PREDICATES AND COMPARATORS {{{1
 
 " See discussion at s:findpos()
 function! s:is_backward_multibyte_search_broken()
@@ -436,6 +437,21 @@ function! s:is_atom(line, col)
         return 0
     else
         return !s:syntax_match('\vstring|comment', a:line, a:col)
+    endif
+endfunction
+
+" Returns -1 if position a is before position b, 1 if position a is after
+" position b, and 0 if they are the same position. Only compares the line and
+" column and ignores the first and last arguments.
+function! s:compare_pos(a, b)
+    let [a, b] = [a:a, a:b]
+
+    if a[1] == b[1] && a[2] == b[2]
+        return 0
+    elseif a[1] != b[1]
+        return a[1] < b[1] ? -1 : 1
+    else
+        return a[2] < b[2] ? -1 : 1
     endif
 endfunction
 
@@ -863,6 +879,58 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     endif
 
     return pos
+endfunction
+
+" Exchange the current element or selection with an adjacent sibling element.
+" Does nothing if there is no such sibling element.
+function! sexp#swap_element(mode, next)
+    let reg_a = @a
+    let reg_b = @b
+    let cursor = getpos('.')
+    let marks = {}
+
+    " Record the current element
+    call sexp#select_current_element('n', 1)
+    normal! "ayma
+    let marks['a'] = [getpos("'<"), getpos("'>")]
+
+    " Record the sibling element
+    call sexp#select_adjacent_element('n', a:next)
+    normal! "bymb
+    let marks['b'] = [getpos("'<"), getpos("'>")]
+
+    " We want to abort if we are already at the head or tail of the current
+    " form; we can determine this by seeing if the adjacent element envelops
+    " the original element.
+    if (a:next  && s:compare_pos(marks['b'][0], marks['a'][0]) < 0) ||
+     \ (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
+        call setpos('.', cursor)
+        return
+    endif
+
+    " We want to change the buffer from the bottom up so that the marks remain
+    " accurate.
+    let b = a:next ? 'b' : 'a'
+    let a = a:next ? 'a' : 'b'
+
+    call setpos("'<", marks[b][0])
+    call setpos("'>", marks[b][1])
+    call s:select_current_marks('n')
+    execute 'normal! "' . a . 'p'
+
+    call setpos("'<", marks[a][0])
+    call setpos("'>", marks[a][1])
+    call s:select_current_marks('n')
+    execute 'normal! "' . b . 'p'
+
+    " Move to head of first item, then to head of next item if necessary
+    call setpos('.', marks[a][0])
+    if a:next
+        call sexp#move_to_adjacent_element('n', 1, 0)
+    endif
+
+    let @a = reg_a
+    let @b = reg_b
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

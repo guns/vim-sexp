@@ -25,9 +25,11 @@ let g:sexp_autoloaded = 1
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Optimize top_form calls
-" * Perhaps reader macro characters behind a form should be selected with the form
 " * Visual mode swap elements
 " * Comments should always be swapped to their own line
+" * When selecting non-atoms as elements, include all non-delimiter chars that
+"   are adjacent to them, like reader macro characters and Clojure's
+"   spacing comma.
 
 """ PATTERNS AND STATE {{{1
 

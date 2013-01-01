@@ -713,8 +713,12 @@ endfunction
 function! s:select_current_marks(mode)
     if getpos("'<")[1] > 0
         normal! gv
+        return 1
     elseif a:mode !=? 'o'
         normal! v
+        return 1
+    else
+        return 0
     endif
 endfunction
 
@@ -785,7 +789,7 @@ endfunction
 " done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks at current outermost form's brackets, then enter visual
@@ -793,7 +797,7 @@ endfunction
 " nothing is done.
 function! sexp#select_current_top_form(mode, offset)
     call s:set_marks_around_current_top_form(a:mode, a:offset)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
@@ -801,27 +805,27 @@ endfunction
 " desired. If not currently in string and mode equals 'o', nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current comment and enter visual mode. If not
 " currently in a comment and mode equals 'o', nothing is done.
 function! sexp#select_current_comment(mode, inner)
     call s:set_marks_around_current_comment(a:mode, a:inner)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current atom and enter visual mode. If not currently
 " in an atom and mode equals 'o', nothing is done.
 function! sexp#select_current_atom(mode, inner)
     call s:set_marks_around_current_atom(a:mode, a:inner)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner)
     call s:set_marks_around_current_element(a:mode, a:inner)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around adjacent element and enter visual mode; 0 for
@@ -829,7 +833,7 @@ endfunction
 " element.
 function! sexp#select_adjacent_element(mode, next)
     call s:set_marks_around_adjacent_element(a:mode, a:next)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Moves cursor to adjacent element, returning its position; 0 for previous, 1
@@ -881,8 +885,10 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     return pos
 endfunction
 
-" Exchange the current element or selection with an adjacent sibling element.
-" Does nothing if there is no such sibling element.
+" Exchange the current element with an adjacent sibling element. Does nothing
+" if there is no current or sibling element.
+"
+" If form is 1, the current form is treated as the current element.
 "
 " This implementation is verbose and conservative because I found that the
 " syntax state of the buffer is not updated while doing quick successions of
@@ -895,10 +901,14 @@ function! sexp#swap_element(mode, next, form)
 
     " Record the current element
     if a:form
-        call sexp#select_current_form('n', 0)
+        let selected = sexp#select_current_form('o', 0)
     else
-        call sexp#select_current_element('n', 1)
+        let selected = sexp#select_current_element('o', 1)
     endif
+
+    " Abort if nothing selected
+    if !selected | return | endif
+
     normal! "ayma
     let marks['a'] = [getpos("'<"), getpos("'>")]
 

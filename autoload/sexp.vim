@@ -887,14 +887,18 @@ endfunction
 " This implementation is verbose and conservative because I found that the
 " syntax state of the buffer is not updated while doing quick successions of
 " normal! commands, which is the obvious and concise implementation method.
-function! sexp#swap_element(mode, next)
+function! sexp#swap_element(mode, next, form)
     let reg_a = @a
     let reg_b = @b
     let cursor = getpos('.')
     let marks = {}
 
     " Record the current element
-    call sexp#select_current_element('n', 1)
+    if a:form
+        call sexp#select_current_form('n', 0)
+    else
+        call sexp#select_current_element('n', 1)
+    endif
     normal! "ayma
     let marks['a'] = [getpos("'<"), getpos("'>")]
 

@@ -26,6 +26,8 @@ let g:sexp_autoloaded = 1
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Optimize top_form calls
 " * Perhaps reader macro characters behind a form should be selected with the form
+" * Visual mode swap elements
+" * Comments should always be swapped to their own line
 
 """ PATTERNS AND STATE {{{1
 
@@ -317,7 +319,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     let [_b, termline, termcol, _o] = getpos('.')
 
     while 1
-        " We want to include empty lines
+        " Include empty lines
         let [line, col] = s:findpos('\v\_.', a:trailing)
 
         if line < 1 | break | endif
@@ -917,16 +919,16 @@ function! sexp#swap_element(mode, next, form)
     normal! "bymb
     let marks['b'] = [getpos("'<"), getpos("'>")]
 
-    " We want to abort if we are already at the head or tail of the current
-    " form; we can determine this by seeing if the adjacent element envelops
-    " the original element.
+    " Abort if we are already at the head or tail of the current form; we can
+    " determine this by seeing if the adjacent element envelops the original
+    " element.
     if (a:next  && s:compare_pos(marks['b'][0], marks['a'][0]) < 0) ||
      \ (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
         call setpos('.', cursor)
         return
     endif
 
-    " We want to change the buffer from the bottom up so that the marks remain
+    " We change the buffer from the bottom up so that the marks remain
     " accurate.
     let b = a:next ? 'b' : 'a'
     let a = a:next ? 'a' : 'b'
@@ -976,7 +978,7 @@ function! sexp#splice_form()
     let original_end = getpos("'>")
     let cursor = getpos('.')
 
-    " We want to ensure we are not deleting chars at old marks
+    " Ensure we are not deleting chars at old marks
     call s:clear_visual_marks()
     call s:set_marks_around_current_form('n', 0)
 

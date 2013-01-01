@@ -893,7 +893,11 @@ endfunction
 "
 " If form is 1, the current form is treated as the current element.
 "
-" This implementation is verbose and conservative because I found that the
+" Note that swapping comments with other elements can lead to structural
+" imbalance since trailing brackets may be included as part of a comment after
+" a swap. Fixing this is on the TODO list.
+"
+" This implementation is conservative and verbose because I found that the
 " syntax state of the buffer is not updated while doing quick successions of
 " normal! commands, which is the obvious and concise implementation method.
 function! sexp#swap_element(mode, next, form)

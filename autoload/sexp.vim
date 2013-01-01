@@ -487,7 +487,6 @@ function! s:set_marks_around_current_form(mode, offset)
     " Prepare the entrails
     let start = getpos("'<")
     let visual = a:mode ==? 'v'
-    let opmode = a:mode ==? 'o'
     let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
     let have_selection = start_is_valid && start != getpos("'>")

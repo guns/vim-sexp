@@ -919,13 +919,11 @@ function! sexp#swap_element(mode, next)
 
     call setpos("'<", marks[b][0])
     call setpos("'>", marks[b][1])
-    call s:select_current_marks('n')
-    execute 'normal! "' . a . 'p'
+    execute 'normal! gv"' . a . 'p'
 
     call setpos("'<", marks[a][0])
     call setpos("'>", marks[a][1])
-    call s:select_current_marks('n')
-    execute 'normal! "' . b . 'p'
+    execute 'normal! gv"' . b . 'p'
 
     " Move to head of first item, then to head of next item if necessary
     call setpos('.', marks[a][0])

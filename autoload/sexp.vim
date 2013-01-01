@@ -883,6 +883,10 @@ endfunction
 
 " Exchange the current element or selection with an adjacent sibling element.
 " Does nothing if there is no such sibling element.
+"
+" This implementation is verbose and conservative because I found that the
+" syntax state of the buffer is not updated while doing quick successions of
+" normal! commands, which is the obvious and concise implementation method.
 function! sexp#swap_element(mode, next)
     let reg_a = @a
     let reg_b = @b

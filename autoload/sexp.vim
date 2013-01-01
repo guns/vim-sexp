@@ -57,7 +57,8 @@ function! s:findpos(pattern, next, ...)
         let [_b, line, col, _o] = getpos('.')
         let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         " Bug only occurs when match is on same line
-        if sline == line && &encoding ==? 'utf-8' && s:is_backward_multibyte_search_broken()
+        let possible = sline == line && &encoding ==? 'utf-8' && char2nr(getline(sline)[scol - 1]) > 0x7f
+        if possible && s:is_backward_multibyte_search_broken()
             let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
             let [line, col] = [sline, scol]

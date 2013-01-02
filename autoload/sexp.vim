@@ -970,6 +970,7 @@ function! sexp#insert_at_form_terminal(end)
 
     startinsert
 endfunction
+
 " Exchange the current element with an adjacent sibling element. Does nothing
 " if there is no current or sibling element.
 "
@@ -1000,46 +1001,54 @@ function! sexp#swap_element(mode, next, form)
         let vmarks = [getpos("'<"), getpos("'>")]
     endif
 
-    " Extend both ends of visual selection to nearest element. Moving formwise
-    " with a:mode 'v' will be treated like a regular formwise swap from the
-    " cursor position.
+    " Extend both ends of visual selection to nearest element. If there exist
+    " any unpaired brackets in the resulting selection, the selection is
+    " extended to include those forms.
+    "
+    " Moving formwise with a:mode 'v' will be treated like a regular formwise
+    " swap from the cursor position.
     if visual && !a:form
         call setpos('.', vmarks[0])
         let head = s:current_element_terminal(0)
-        let head_tail = [0, 0, 0, 0]
-        let tail = [0, 0, 0, 0]
-        let tail_head = [0, 0, 0, 0]
-
-        if head[1] > 0
-            call setpos("'<", head)
-            " We don't want to partially select a form
-            if getline(head[1])[head[2] - 1] =~ s:bracket
-                call setpos('.', head)
-                let head_tail = s:nearest_bracket(1)
-                call setpos("'>", head_tail)
-            endif
-        endif
+        if head[1] > 0 | call setpos("'<", head) | endif
 
         call setpos('.', vmarks[1])
         let tail = s:current_element_terminal(1)
+        if tail[1] > 0 | call setpos("'>", tail) | endif
 
-        if tail[1] > 0
-            " Only set tail if it is below the previously set tail
-            if head_tail[1] > 0
-                if s:compare_pos(tail, head_tail) == 1
-                    call setpos("'>", tail)
+        if head[1] > 0 && tail[1] > 0
+            " Find any unbalanced brackets in our selection
+            normal! gv"ay
+            let bcount = { 'bra': 0, 'ket': 0 }
+            let str = @a
+            let idx = -1
+            while 1
+                let idx = match(str, s:bracket, idx + 1)
+
+                if idx == -1 | break | endif
+
+                if str[idx] =~ s:opening_bracket
+                    let bcount['bra'] += 1
+                else
+                    if bcount['bra'] > 0
+                        let bcount['bra'] -= 1
+                    else
+                        let bcount['ket'] += 1
+                    endif
                 endif
-            else
-                call setpos("'>", tail)
+            endwhile
+
+            " Expand head for every ket and tail for every bra.
+            if bcount['ket'] > 0
+                call setpos('.', head)
+                call sexp#docount('s:move_to_nearest_bracket(0)', bcount['ket'])
+                call setpos("'<", getpos('.'))
             endif
 
-            if getline(tail[1])[tail[2] - 1] =~ s:bracket
+            if bcount['bra'] > 0
                 call setpos('.', tail)
-                let tail_head = s:nearest_bracket(0)
-                " Similarly only set head if it is above the previous head
-                if s:compare_pos(tail_head, head) == -1
-                    call setpos("'<", tail_head)
-                endif
+                call sexp#docount('s:move_to_nearest_bracket(1)', bcount['bra'])
+                call setpos("'>", getpos('.'))
             endif
         endif
 

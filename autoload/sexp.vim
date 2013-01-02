@@ -1090,9 +1090,12 @@ function! sexp#swap_element(mode, next, form)
 
     " Abort if we are already at the head or tail of the current form; we can
     " determine this by seeing if the adjacent element envelops the original
-    " element.
-    if (a:next  && s:compare_pos(marks['b']['start'], marks['a']['start']) < 0) ||
-     \ (!a:next && s:compare_pos(marks['b']['end'  ], marks['a']['end'  ]) > 0)
+    " element. Also abort if the selections are the same, which indicates that
+    " we are at the top or bottom of the file.
+    let b_cmp_a = s:compare_pos(marks['b']['start'], marks['a']['start'])
+    if b_cmp_a == 0
+       \ || (a:next && b_cmp_a < 0)
+       \ || (!a:next && s:compare_pos(marks['b']['end'], marks['a']['end']) > 0)
         if visual
             " Restore visual state
             call setpos("'<", vmarks[0])

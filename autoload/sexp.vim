@@ -25,7 +25,6 @@ let g:sexp_autoloaded = 1
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Optimize top_form calls
-" * Visual mode swap elements
 " * Comments should always be swapped to their own line
 " * When selecting non-atoms as elements, include all non-delimiter chars that
 "   are adjacent to them, like reader macro characters and Clojure's
@@ -1076,7 +1075,10 @@ function! sexp#swap_element(mode, next, form)
         return
     endif
 
+    " Yank selection and mark with START OF TEXT and END OF TEXT if necessary
     normal! "ay
+    if a:next | let @a = nr2char(0x02) . @a . nr2char(0x03) | endif
+
     let marks = {}
     let marks['a'] = { 'start': getpos("'<"), 'end': getpos("'>")}
 
@@ -1114,11 +1116,26 @@ function! sexp#swap_element(mode, next, form)
     call setpos("'>", marks[a]['end'  ])
     execute 'normal! gv"' . b . 'p'
 
-    " Move to head of first item, then to head of next item if necessary
-    " call setpos('.', marks[a][0])
-    " if a:next
-    "     call sexp#move_to_adjacent_element('n', 1, 0)
-    " endif
+    " Set marks around next element using the ^B and ^C markers
+    if a:next
+        call setpos('.', marks[a]['start'])
+
+        let [sl, sc] = s:findpos(nr2char(0x02), 1)
+        call setpos('.', [0, sl, sc, 0])
+        normal! x
+        call setpos("'<", [0, sl, sc, 0])
+
+        let [el, ec] = s:findpos(nr2char(0x03), 1)
+        call setpos('.', [0, el, ec, 0])
+        normal! x
+        call setpos("'>", [0, el, ec - 1, 0])
+    endif
+
+    if visual
+        normal! gv
+    elseif a:next
+        call setpos('.', getpos("'<"))
+    endif
 
     let @a = reg_a
     let @b = reg_b

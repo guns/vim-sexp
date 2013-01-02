@@ -995,7 +995,6 @@ function! sexp#swap_element(mode, next, form)
     let reg_b = @b
     let visual = a:mode ==? 'v'
     let cursor = getpos('.')
-    let marks = {}
 
     if visual
         let vmarks = [getpos("'<"), getpos("'>")]
@@ -1078,19 +1077,20 @@ function! sexp#swap_element(mode, next, form)
     endif
 
     normal! "ay
-    let marks['a'] = [getpos("'<"), getpos("'>")]
+    let marks = {}
+    let marks['a'] = { 'start': getpos("'<"), 'end': getpos("'>")}
 
     " Record the sibling element
-    call setpos('.', marks['a'][a:next])
+    call setpos('.', marks['a'][a:next ? 'end' : 'start'])
     call sexp#select_adjacent_element('n', a:next)
     normal! "by
-    let marks['b'] = [getpos("'<"), getpos("'>")]
+    let marks['b'] = { 'start': getpos("'<"), 'end': getpos("'>")}
 
     " Abort if we are already at the head or tail of the current form; we can
     " determine this by seeing if the adjacent element envelops the original
     " element.
-    if (a:next  && s:compare_pos(marks['b'][0], marks['a'][0]) < 0) ||
-     \ (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
+    if (a:next  && s:compare_pos(marks['b']['start'], marks['a']['start']) < 0) ||
+     \ (!a:next && s:compare_pos(marks['b']['end'  ], marks['a']['end'  ]) > 0)
         if visual
             " Restore visual state
             call setpos("'<", vmarks[0])
@@ -1106,12 +1106,12 @@ function! sexp#swap_element(mode, next, form)
     let b = a:next ? 'b' : 'a'
     let a = a:next ? 'a' : 'b'
 
-    call setpos("'<", marks[b][0])
-    call setpos("'>", marks[b][1])
+    call setpos("'<", marks[b]['start'])
+    call setpos("'>", marks[b]['end'  ])
     execute 'normal! gv"' . a . 'p'
 
-    call setpos("'<", marks[a][0])
-    call setpos("'>", marks[a][1])
+    call setpos("'<", marks[a]['start'])
+    call setpos("'>", marks[a]['end'  ])
     execute 'normal! gv"' . b . 'p'
 
     " Move to head of first item, then to head of next item if necessary

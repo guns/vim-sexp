@@ -25,6 +25,10 @@ let g:sexp_autoloaded = 1
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Optimize top_form calls
+" * Comments should always be swapped to their own line
+" * When selecting non-atoms as elements, include all non-delimiter chars that
+"   are adjacent to them, like reader macro characters and Clojure's
+"   spacing comma.
 
 """ PATTERNS AND STATE {{{1
 
@@ -54,7 +58,8 @@ function! s:findpos(pattern, next, ...)
         let [_b, line, col, _o] = getpos('.')
         let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         " Bug only occurs when match is on same line
-        if sline == line && &encoding ==? 'utf-8' && s:is_backward_multibyte_search_broken()
+        let possible = sline == line && &encoding ==? 'utf-8' && char2nr(getline(sline)[scol - 1]) > 0x7f
+        if possible && s:is_backward_multibyte_search_broken()
             let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
             let [line, col] = [sline, scol]
@@ -316,7 +321,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     let [_b, termline, termcol, _o] = getpos('.')
 
     while 1
-        " We want to include empty lines
+        " Include empty lines
         let [line, col] = s:findpos('\v\_.', a:trailing)
 
         if line < 1 | break | endif
@@ -374,7 +379,7 @@ function! s:terminals_with_whitespace(start, end)
     return [start, end]
 endfunction
 
-""" PREDICATES {{{1
+""" PREDICATES AND COMPARATORS {{{1
 
 " See discussion at s:findpos()
 function! s:is_backward_multibyte_search_broken()
@@ -439,6 +444,21 @@ function! s:is_atom(line, col)
     endif
 endfunction
 
+" Returns -1 if position a is before position b, 1 if position a is after
+" position b, and 0 if they are the same position. Only compares the line and
+" column and ignores the first and last arguments.
+function! s:compare_pos(a, b)
+    let [a, b] = [a:a, a:b]
+
+    if a[1] == b[1] && a[2] == b[2]
+        return 0
+    elseif a[1] != b[1]
+        return a[1] < b[1] ? -1 : 1
+    else
+        return a[2] < b[2] ? -1 : 1
+    endif
+endfunction
+
 """ CURSOR MOVEMENT {{{1
 
 " Tries to move cursor to nearest paired bracket, returning its position
@@ -487,7 +507,6 @@ function! s:set_marks_around_current_form(mode, offset)
     " Prepare the entrails
     let start = getpos("'<")
     let visual = a:mode ==? 'v'
-    let opmode = a:mode ==? 'o'
     let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
     let have_selection = start_is_valid && start != getpos("'>")
@@ -698,8 +717,12 @@ endfunction
 function! s:select_current_marks(mode)
     if getpos("'<")[1] > 0
         normal! gv
+        return 1
     elseif a:mode !=? 'o'
         normal! v
+        return 1
+    else
+        return 0
     endif
 endfunction
 
@@ -770,7 +793,7 @@ endfunction
 " done.
 function! sexp#select_current_form(mode, offset)
     call s:set_marks_around_current_form(a:mode, a:offset)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks at current outermost form's brackets, then enter visual
@@ -778,7 +801,7 @@ endfunction
 " nothing is done.
 function! sexp#select_current_top_form(mode, offset)
     call s:set_marks_around_current_top_form(a:mode, a:offset)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Unlike the native text object a" we do not try to select all the whitespace
@@ -786,27 +809,27 @@ endfunction
 " desired. If not currently in string and mode equals 'o', nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current comment and enter visual mode. If not
 " currently in a comment and mode equals 'o', nothing is done.
 function! sexp#select_current_comment(mode, inner)
     call s:set_marks_around_current_comment(a:mode, a:inner)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current atom and enter visual mode. If not currently
 " in an atom and mode equals 'o', nothing is done.
 function! sexp#select_current_atom(mode, inner)
     call s:set_marks_around_current_atom(a:mode, a:inner)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner)
     call s:set_marks_around_current_element(a:mode, a:inner)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks around adjacent element and enter visual mode; 0 for
@@ -814,7 +837,7 @@ endfunction
 " element.
 function! sexp#select_adjacent_element(mode, next)
     call s:set_marks_around_adjacent_element(a:mode, a:next)
-    call s:select_current_marks(a:mode)
+    return s:select_current_marks(a:mode)
 endfunction
 
 " Moves cursor to adjacent element, returning its position; 0 for previous, 1
@@ -893,7 +916,7 @@ function! sexp#splice_form()
     let original_end = getpos("'>")
     let cursor = getpos('.')
 
-    " We want to ensure we are not deleting chars at old marks
+    " Ensure we are not deleting chars at old marks
     call s:clear_visual_marks()
     call s:set_marks_around_current_form('n', 0)
 
@@ -945,4 +968,175 @@ function! sexp#insert_at_form_terminal(end)
     endif
 
     startinsert
+endfunction
+
+" Exchange the current element with an adjacent sibling element. Does nothing
+" if there is no current or sibling element.
+"
+" If form equals 1, the current form is treated as the current element.
+"
+" If mode equals 'v', the current selection is expanded to include any
+" partially selected elements, then is swapped with the next element as a
+" unit. The marks are set to the new position and visual mode is re-entered.
+"
+" If mode equals 'v' and form equals 1, then (for implementation simplicity)
+" the form at the cursor position at time call is used as the selection.
+"
+" Note that swapping comments with other elements can lead to structural
+" imbalance since trailing brackets may be included as part of a comment after
+" a swap. Fixing this is on the TODO list.
+"
+" This implementation is conservative and verbose because I found that the
+" syntax state of the buffer is not updated while doing quick successions of
+" normal! commands, which is the obvious and concise implementation method.
+function! sexp#swap_element(mode, next, form)
+    let reg_a = @a
+    let reg_b = @b
+    let visual = a:mode ==? 'v'
+    let cursor = getpos('.')
+
+    if visual
+        let vmarks = [getpos("'<"), getpos("'>")]
+    endif
+
+    " Extend both ends of visual selection to nearest element. If there exist
+    " any unpaired brackets in the resulting selection, the selection is
+    " extended to include those forms.
+    "
+    " Moving formwise with a:mode 'v' will be treated like a regular formwise
+    " swap from the cursor position.
+    if visual && !a:form
+        call setpos('.', vmarks[0])
+        if getline(vmarks[0][1])[vmarks[0][2] - 1] =~ '\v\s'
+            call sexp#move_to_adjacent_element('n', 1, 0)
+        endif
+        let head = s:current_element_terminal(0)
+        if head[1] > 0 | call setpos("'<", head) | endif
+
+        call setpos('.', vmarks[1])
+        if getline(vmarks[1][1])[vmarks[1][2] - 1] =~ '\v\s'
+            call sexp#move_to_adjacent_element('n', 1, 0)
+        endif
+        let tail = s:current_element_terminal(1)
+        if tail[1] > 0 | call setpos("'>", tail) | endif
+
+        if head[1] > 0 && tail[1] > 0
+            " Find any unbalanced brackets in our selection
+            normal! gv"ay
+            let bcount = { 'bra': 0, 'ket': 0 }
+            let str = @a
+            let idx = -1
+            while 1
+                let idx = match(str, s:bracket, idx + 1)
+
+                if idx == -1 | break | endif
+
+                if str[idx] =~ s:opening_bracket
+                    let bcount['bra'] += 1
+                else
+                    if bcount['bra'] > 0
+                        let bcount['bra'] -= 1
+                    else
+                        let bcount['ket'] += 1
+                    endif
+                endif
+            endwhile
+
+            " Expand head for every ket and tail for every bra.
+            if bcount['ket'] > 0
+                call setpos('.', head)
+                call sexp#docount('s:move_to_nearest_bracket(0)', bcount['ket'])
+                call setpos("'<", getpos('.'))
+            endif
+
+            if bcount['bra'] > 0
+                call setpos('.', tail)
+                call sexp#docount('s:move_to_nearest_bracket(1)', bcount['bra'])
+                call setpos("'>", getpos('.'))
+            endif
+        endif
+
+        let selected = s:select_current_marks('v')
+    " Otherwise select the current form or element
+    elseif a:form
+        let selected = sexp#select_current_form('o', 0)
+    else
+        let selected = sexp#select_current_element('o', 1)
+    endif
+
+    " Abort if nothing selected
+    if !selected
+        if visual
+            " Restore visual state
+            call setpos("'<", vmarks[0])
+            call setpos("'>", vmarks[1])
+            normal! gv
+        endif
+        return
+    endif
+
+    " Yank selection and mark with START OF TEXT and END OF TEXT if necessary
+    normal! "ay
+    if a:next | let @a = nr2char(0x02) . @a . nr2char(0x03) | endif
+
+    let marks = {}
+    let marks['a'] = { 'start': getpos("'<"), 'end': getpos("'>")}
+
+    " Record the sibling element
+    call setpos('.', marks['a'][a:next ? 'end' : 'start'])
+    call sexp#select_adjacent_element('n', a:next)
+    normal! "by
+    let marks['b'] = { 'start': getpos("'<"), 'end': getpos("'>")}
+
+    " Abort if we are already at the head or tail of the current form; we can
+    " determine this by seeing if the adjacent element envelops the original
+    " element.
+    if (a:next  && s:compare_pos(marks['b']['start'], marks['a']['start']) < 0) ||
+     \ (!a:next && s:compare_pos(marks['b']['end'  ], marks['a']['end'  ]) > 0)
+        if visual
+            " Restore visual state
+            call setpos("'<", vmarks[0])
+            call setpos("'>", vmarks[1])
+            normal! gv
+        endif
+        call setpos('.', cursor)
+        return
+    endif
+
+    " We change the buffer from the bottom up so that the marks remain
+    " accurate.
+    let b = a:next ? 'b' : 'a'
+    let a = a:next ? 'a' : 'b'
+
+    call setpos("'<", marks[b]['start'])
+    call setpos("'>", marks[b]['end'  ])
+    execute 'normal! gv"' . a . 'p'
+
+    call setpos("'<", marks[a]['start'])
+    call setpos("'>", marks[a]['end'  ])
+    execute 'normal! gv"' . b . 'p'
+
+    " Set marks around next element using the ^B and ^C markers
+    if a:next
+        call setpos('.', marks[a]['start'])
+
+        let [sl, sc] = s:findpos(nr2char(0x02), 1)
+        call setpos('.', [0, sl, sc, 0])
+        normal! x
+        call setpos("'<", [0, sl, sc, 0])
+
+        let [el, ec] = s:findpos(nr2char(0x03), 1)
+        call setpos('.', [0, el, ec, 0])
+        normal! x
+        call setpos("'>", [0, el, ec - 1, 0])
+    endif
+
+    if visual
+        normal! gv
+    elseif a:next
+        call setpos('.', getpos("'<"))
+    endif
+
+    let @a = reg_a
+    let @b = reg_b
 endfunction

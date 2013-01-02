@@ -656,7 +656,7 @@ endfunction
 " If cursor is on whitespace that is not in a string or comment, the marks are
 " set around the next element.
 "
-" Will set both to [0, 0, 0, 0] an element could not be found and mode does
+" Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
 function! s:set_marks_around_current_element(mode, inner)
     let start = [0, 0, 0, 0]
@@ -678,6 +678,7 @@ function! s:set_marks_around_current_element(mode, inner)
             call s:set_marks_around_current_element(a:mode, a:inner)
             call setpos('.', cursor)
         endif
+
         return
     endif
 

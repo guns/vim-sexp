@@ -1016,7 +1016,7 @@ function! sexp#swap_element(mode, next, form)
 
         call setpos('.', vmarks[1])
         if getline(vmarks[1][1])[vmarks[1][2] - 1] =~ '\v\s'
-            call sexp#move_to_adjacent_element('n', 0, 0)
+            call sexp#move_to_adjacent_element('n', 1, 0)
         endif
         let tail = s:current_element_terminal(1)
         if tail[1] > 0 | call setpos("'>", tail) | endif

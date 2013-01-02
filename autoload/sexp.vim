@@ -1009,10 +1009,16 @@ function! sexp#swap_element(mode, next, form)
     " swap from the cursor position.
     if visual && !a:form
         call setpos('.', vmarks[0])
+        if getline(vmarks[0][1])[vmarks[0][2] - 1] =~ '\v\s'
+            call sexp#move_to_adjacent_element('n', 1, 0)
+        endif
         let head = s:current_element_terminal(0)
         if head[1] > 0 | call setpos("'<", head) | endif
 
         call setpos('.', vmarks[1])
+        if getline(vmarks[1][1])[vmarks[1][2] - 1] =~ '\v\s'
+            call sexp#move_to_adjacent_element('n', 0, 0)
+        endif
         let tail = s:current_element_terminal(1)
         if tail[1] > 0 | call setpos("'>", tail) | endif
 

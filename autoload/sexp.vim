@@ -927,6 +927,9 @@ function! sexp#swap_element(mode, next, form)
         call setpos('.', vmarks[0])
         let head = s:current_element_terminal(0)
         let head_tail = [0, 0, 0, 0]
+        let tail = [0, 0, 0, 0]
+        let tail_head = [0, 0, 0, 0]
+
         if head[1] > 0
             call setpos("'<", head)
             " We don't want to partially select a form
@@ -939,17 +942,23 @@ function! sexp#swap_element(mode, next, form)
 
         call setpos('.', vmarks[1])
         let tail = s:current_element_terminal(1)
+
         if tail[1] > 0
             " Only set tail if it is below the previously set tail
-            if head_tail[1] > 0 && s:compare_pos(tail, head_tail) == 1
+            if head_tail[1] > 0
+                if s:compare_pos(tail, head_tail) == 1
+                    call setpos("'>", tail)
+                endif
+            else
                 call setpos("'>", tail)
-                if getline(tail[1])[tail[2] - 1] =~ s:bracket
-                    call setpos('.', tail)
-                    let tail_head = s:nearest_bracket(0)
-                    " Similarly only set head if it is above the previous head
-                    if s:compare_pos(tail_head, head) == -1
-                        call setpos("'<", tail_head)
-                    endif
+            endif
+
+            if getline(tail[1])[tail[2] - 1] =~ s:bracket
+                call setpos('.', tail)
+                let tail_head = s:nearest_bracket(0)
+                " Similarly only set head if it is above the previous head
+                if s:compare_pos(tail_head, head) == -1
+                    call setpos("'<", tail_head)
                 endif
             endif
         endif

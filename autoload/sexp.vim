@@ -1062,13 +1062,13 @@ function! sexp#swap_element(mode, next, form)
         return
     endif
 
-    normal! "ayma
+    normal! "ay
     let marks['a'] = [getpos("'<"), getpos("'>")]
 
     " Record the sibling element
     call setpos('.', marks['a'][a:next])
     call sexp#select_adjacent_element('n', a:next)
-    normal! "bymb
+    normal! "by
     let marks['b'] = [getpos("'<"), getpos("'>")]
 
     " Abort if we are already at the head or tail of the current form; we can

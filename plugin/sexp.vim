@@ -229,15 +229,15 @@ vnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_
 
 " Exchange element
 nnoremap <silent> <Plug>sexp_swap_element_backward :<C-u>call sexp#swap_element('n', 0, 0)<CR>
-vnoremap <silent> <Plug>sexp_swap_element_backward :<C-u>call sexp#swap_element('v', 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_swap_element_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 0)<CR>
 nnoremap <silent> <Plug>sexp_swap_element_forward  :<C-u>call sexp#swap_element('n', 1, 0)<CR>
-vnoremap <silent> <Plug>sexp_swap_element_forward  :<C-u>call sexp#swap_element('v', 1, 0)<CR>
+vnoremap <silent> <Plug>sexp_swap_element_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 0)<CR>
 
 " Exchange form
 nnoremap <silent> <Plug>sexp_swap_form_backward :<C-u>call sexp#swap_element('n', 0, 1)<CR>
-vnoremap <silent> <Plug>sexp_swap_form_backward :<C-u>call sexp#swap_element('v', 0, 1)<CR>
+vnoremap <silent> <Plug>sexp_swap_form_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 1)<CR>
 nnoremap <silent> <Plug>sexp_swap_form_forward  :<C-u>call sexp#swap_element('n', 1, 1)<CR>
-vnoremap <silent> <Plug>sexp_swap_form_forward  :<C-u>call sexp#swap_element('v', 1, 1)<CR>
+vnoremap <silent> <Plug>sexp_swap_form_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 1)<CR>
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)

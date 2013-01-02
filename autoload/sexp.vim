@@ -893,7 +893,14 @@ endfunction
 " Exchange the current element with an adjacent sibling element. Does nothing
 " if there is no current or sibling element.
 "
-" If form is 1, the current form is treated as the current element.
+" If form equals 1, the current form is treated as the current element.
+"
+" If mode equals 'v', the current selection is expanded to include any
+" partially selected elements, then is swapped with the next element as a
+" unit. The marks are set to the new position and visual mode is re-entered.
+"
+" If mode equals 'v' and form equals 1, then (for implementation simplicity)
+" the form at the cursor position at time call is used as the selection.
 "
 " Note that swapping comments with other elements can lead to structural
 " imbalance since trailing brackets may be included as part of a comment after
@@ -905,23 +912,72 @@ endfunction
 function! sexp#swap_element(mode, next, form)
     let reg_a = @a
     let reg_b = @b
+    let visual = a:mode ==? 'v'
     let cursor = getpos('.')
     let marks = {}
 
-    " Record the current element
-    if a:form
+    if visual
+        let vmarks = [getpos("'<"), getpos("'>")]
+    endif
+
+    " Extend both ends of visual selection to nearest element. Moving formwise
+    " with a:mode 'v' will be treated like a regular formwise swap from the
+    " cursor position.
+    if visual && !a:form
+        call setpos('.', vmarks[0])
+        let head = s:current_element_terminal(0)
+        let head_tail = [0, 0, 0, 0]
+        if head[1] > 0
+            call setpos("'<", head)
+            " We don't want to partially select a form
+            if getline(head[1])[head[2] - 1] =~ s:bracket
+                call setpos('.', head)
+                let head_tail = s:nearest_bracket(1)
+                call setpos("'>", head_tail)
+            endif
+        endif
+
+        call setpos('.', vmarks[1])
+        let tail = s:current_element_terminal(1)
+        if tail[1] > 0
+            " Only set tail if it is below the previously set tail
+            if head_tail[1] > 0 && s:compare_pos(tail, head_tail) == 1
+                call setpos("'>", tail)
+                if getline(tail[1])[tail[2] - 1] =~ s:bracket
+                    call setpos('.', tail)
+                    let tail_head = s:nearest_bracket(0)
+                    " Similarly only set head if it is above the previous head
+                    if s:compare_pos(tail_head, head) == -1
+                        call setpos("'<", tail_head)
+                    endif
+                endif
+            endif
+        endif
+
+        let selected = s:select_current_marks('v')
+    " Otherwise select the current form or element
+    elseif a:form
         let selected = sexp#select_current_form('o', 0)
     else
         let selected = sexp#select_current_element('o', 1)
     endif
 
     " Abort if nothing selected
-    if !selected | return | endif
+    if !selected
+        if visual
+            " Restore visual state
+            call setpos("'<", vmarks[0])
+            call setpos("'>", vmarks[1])
+            normal! gv
+        endif
+        return
+    endif
 
     normal! "ayma
     let marks['a'] = [getpos("'<"), getpos("'>")]
 
     " Record the sibling element
+    call setpos('.', marks['a'][a:next])
     call sexp#select_adjacent_element('n', a:next)
     normal! "bymb
     let marks['b'] = [getpos("'<"), getpos("'>")]
@@ -931,6 +987,12 @@ function! sexp#swap_element(mode, next, form)
     " element.
     if (a:next  && s:compare_pos(marks['b'][0], marks['a'][0]) < 0) ||
      \ (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
+        if visual
+            " Restore visual state
+            call setpos("'<", vmarks[0])
+            call setpos("'>", vmarks[1])
+            normal! gv
+        endif
         call setpos('.', cursor)
         return
     endif
@@ -949,10 +1011,10 @@ function! sexp#swap_element(mode, next, form)
     execute 'normal! gv"' . b . 'p'
 
     " Move to head of first item, then to head of next item if necessary
-    call setpos('.', marks[a][0])
-    if a:next
-        call sexp#move_to_adjacent_element('n', 1, 0)
-    endif
+    " call setpos('.', marks[a][0])
+    " if a:next
+    "     call sexp#move_to_adjacent_element('n', 1, 0)
+    " endif
 
     let @a = reg_a
     let @b = reg_b

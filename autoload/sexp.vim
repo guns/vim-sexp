@@ -890,6 +890,86 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     return pos
 endfunction
 
+" Place brackets around scope, then place cursor at head or tail, finally
+" leaving off in insert mode if specified. Insert also sets the headspace
+" parameter when inserting brackets.
+function! sexp#wrap(scope, bra, ket, at_tail, insert)
+    let original_start = getpos("'<")
+    let original_end = getpos("'>")
+
+    if a:scope ==# 'f'
+        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
+    elseif a:scope ==# 'e'
+        call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
+    elseif a:scope ==# 'v'
+        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
+    endif
+
+    call setpos("'<", original_start)
+    call setpos("'>", original_end)
+    if a:insert | startinsert | endif
+endfunction
+
+" Remove brackets from current form, placing cursor at position of deleted
+" first bracket.
+function! sexp#splice_form()
+    let original_start = getpos("'<")
+    let original_end = getpos("'>")
+    let cursor = getpos('.')
+
+    " Ensure we are not deleting chars at old marks
+    call s:clear_visual_marks()
+    call s:set_marks_around_current_form('n', 0)
+
+    let start = getpos("'<")
+
+    if start[1] > 0
+        " Delete ending bracket first so we don't mess up '<
+        call setpos('.', getpos("'>"))
+        normal! dl
+        call setpos('.', start)
+        normal! dl
+    else
+        call setpos('.' cursor)
+    endif
+
+    call setpos("'<", original_start)
+    call setpos("'>", original_end)
+endfunction
+
+" Move cursor to current form start or end and enter insert mode. Inserts
+" a leading space after opening bracket if inserting at head, unless there
+" already is one.
+function! sexp#insert_at_form_terminal(end)
+    let cursor = getpos('.')
+    let char = getline(cursor[1])[cursor[2] - 1]
+    let on_bracket = (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+
+    if on_bracket && !s:is_ignored_scope(cursor[1], cursor[2])
+        let pos = cursor
+    else
+        let pos = s:move_to_nearest_bracket(a:end)
+    endif
+
+    " Handle opening bracket edge cases
+    if !a:end && pos[1] > 0
+        let nextchar = getline(pos[1])[pos[2]]
+
+        " This is the eol, so start insert at eol
+        if empty(nextchar)
+            startinsert!
+            return
+        " Add headspace unless there's already some there
+        elseif nextchar !~ '\v\s'
+            execute 'normal! a '
+        " Else start after the bracket
+        else
+            normal! l
+        endif
+    endif
+
+    startinsert
+endfunction
 " Exchange the current element with an adjacent sibling element. Does nothing
 " if there is no current or sibling element.
 "
@@ -1027,85 +1107,4 @@ function! sexp#swap_element(mode, next, form)
 
     let @a = reg_a
     let @b = reg_b
-endfunction
-
-" Place brackets around scope, then place cursor at head or tail, finally
-" leaving off in insert mode if specified. Insert also sets the headspace
-" parameter when inserting brackets.
-function! sexp#wrap(scope, bra, ket, at_tail, insert)
-    let original_start = getpos("'<")
-    let original_end = getpos("'>")
-
-    if a:scope ==# 'f'
-        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
-    elseif a:scope ==# 'e'
-        call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
-    elseif a:scope ==# 'v'
-        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
-    endif
-
-    call setpos("'<", original_start)
-    call setpos("'>", original_end)
-    if a:insert | startinsert | endif
-endfunction
-
-" Remove brackets from current form, placing cursor at position of deleted
-" first bracket.
-function! sexp#splice_form()
-    let original_start = getpos("'<")
-    let original_end = getpos("'>")
-    let cursor = getpos('.')
-
-    " Ensure we are not deleting chars at old marks
-    call s:clear_visual_marks()
-    call s:set_marks_around_current_form('n', 0)
-
-    let start = getpos("'<")
-
-    if start[1] > 0
-        " Delete ending bracket first so we don't mess up '<
-        call setpos('.', getpos("'>"))
-        normal! dl
-        call setpos('.', start)
-        normal! dl
-    else
-        call setpos('.' cursor)
-    endif
-
-    call setpos("'<", original_start)
-    call setpos("'>", original_end)
-endfunction
-
-" Move cursor to current form start or end and enter insert mode. Inserts
-" a leading space after opening bracket if inserting at head, unless there
-" already is one.
-function! sexp#insert_at_form_terminal(end)
-    let cursor = getpos('.')
-    let char = getline(cursor[1])[cursor[2] - 1]
-    let on_bracket = (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
-
-    if on_bracket && !s:is_ignored_scope(cursor[1], cursor[2])
-        let pos = cursor
-    else
-        let pos = s:move_to_nearest_bracket(a:end)
-    endif
-
-    " Handle opening bracket edge cases
-    if !a:end && pos[1] > 0
-        let nextchar = getline(pos[1])[pos[2]]
-
-        " This is the eol, so start insert at eol
-        if empty(nextchar)
-            startinsert!
-            return
-        " Add headspace unless there's already some there
-        elseif nextchar !~ '\v\s'
-            execute 'normal! a '
-        " Else start after the bracket
-        else
-            normal! l
-        endif
-    endif
-
-    startinsert
 endfunction

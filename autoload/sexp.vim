@@ -1122,7 +1122,7 @@ function! sexp#swap_element(mode, next, form)
 
     " Set marks around next element using the ^B and ^C markers
     if a:next
-        call setpos('.', marks[a]['start'])
+        call setpos('.', marks['a']['start'])
 
         let [sl, sc] = s:findpos(nr2char(0x02), 1)
         call setpos('.', [0, sl, sc, 0])
@@ -1139,6 +1139,8 @@ function! sexp#swap_element(mode, next, form)
         normal! gv
     elseif a:next
         call setpos('.', getpos("'<"))
+    else
+        call setpos('.', marks['b']['start'])
     endif
 
     let @a = reg_a

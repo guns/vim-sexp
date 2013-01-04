@@ -22,7 +22,6 @@ let g:sexp_autoloaded = 1
 "
 " * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
-" * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
 " * When selecting non-atoms as elements, include all non-delimiter chars that

@@ -256,14 +256,12 @@ endif
 """ Insert mode mappings {{{1
 
 " Insert opening delimiter
-inoremap <silent><expr> <Plug>sexp_insert_opening_round         sexp#opening_insertion('(')
-inoremap <silent><expr> <Plug>sexp_insert_opening_square        sexp#opening_insertion('[')
-inoremap <silent><expr> <Plug>sexp_insert_opening_curly         sexp#opening_insertion('{')
-inoremap <silent><expr> <Plug>sexp_insert_opening_double_quote  sexp#opening_insertion('"')
+inoremap <silent><expr> <Plug>sexp_insert_opening_round  sexp#opening_insertion('(')
+inoremap <silent><expr> <Plug>sexp_insert_opening_square sexp#opening_insertion('[')
+inoremap <silent><expr> <Plug>sexp_insert_opening_curly  sexp#opening_insertion('{')
 
 if g:sexp_enable_insert_mode_mappings
     imap <buffer> ( <Plug>sexp_insert_opening_round
     imap <buffer> [ <Plug>sexp_insert_opening_square
     imap <buffer> { <Plug>sexp_insert_opening_curly
-    imap <buffer> " <Plug>sexp_insert_opening_double_quote
 endif

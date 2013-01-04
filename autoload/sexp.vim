@@ -24,7 +24,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Extract common subroutines? (not if it impedes clarity)
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
-" * Optimize top_form calls
 " * Comments should always be swapped to their own line
 " * When selecting non-atoms as elements, include all non-delimiter chars that
 "   are adjacent to them, like reader macro characters and Clojure's
@@ -33,7 +32,7 @@ let g:sexp_autoloaded = 1
 """ PATTERNS AND STATE {{{1
 
 if !exists('g:sexp_maxlines')
-    let g:sexp_maxlines = 0
+    let g:sexp_maxlines = -1
 endif
 
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
@@ -84,41 +83,61 @@ endfunction
 function! s:nearest_bracket(closing)
     let flags = a:closing ? 'nW' : 'bnW'
     let skip = 's:is_ignored_scope(line("."), col("."))'
-    let stopline = g:sexp_maxlines ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
+    let stopline = g:sexp_maxlines > 0 ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
     let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
 " Position of outermost paired bracket: 0 for opening, 1 for closing.
 " Returns [0, 0, 0, 0] if none found.
+"
+" If global variable g:sexp_maxlines is -1, a fast best-effort approach is
+" used instead of a recursive searchpairpos()
 function! s:current_top_form_bracket(closing)
-    let [_b, line, col, _o] = getpos('.')
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
     let skip = 's:is_ignored_scope(line("."), col("."))'
 
-    " searchpairpos() fails to find the matching closing bracket when on the
-    " outermost opening bracket and vice versa, so we decide on the search
-    " directions based on the current char.
-    if getline(line)[col-1] =~ s:opening_bracket
-        let flags = 'bcnr'
-        let dir = 0
-        let stopline = g:sexp_maxlines ? line('.') - g:sexp_maxlines : 0
-    else
-        let flags = 'cnr'
-        let dir = 1
-        let stopline = g:sexp_maxlines ? line('.') + g:sexp_maxlines : 0
-    endif
+    " Recursive searchpairpos() is excruciatingly slow on a large file. This
+    " can be addressed somewhat by providing a stopline argument, but this
+    " makes the call a best-effort approach. If we are sacrificing correctness
+    " for performance, we can do even better by assuming that all opening
+    " brackets on the first column of a line are toplevel.
+    if g:sexp_maxlines < 0
+        let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, 'bcW', skip)
 
-    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+        while col > 1
+            let [l, c] = searchpairpos(s:opening_bracket, '', s:closing_bracket, 'bW', skip)
+            if l < 1 | break | endif
+            let [line, col] = [l, c]
+        endwhile
+
+        call cursor(cursorline, cursorcol)
+        let dir = 0
+    else
+        " searchpairpos() fails to find the matching closing bracket when on the
+        " outermost opening bracket and vice versa, so we decide on the search
+        " directions based on the current char.
+        if getline(cursorline)[cursorcol - 1] =~ s:opening_bracket
+            let flags = 'bcnr'
+            let dir = 0
+            let stopline = g:sexp_maxlines > 0 ? line('.') - g:sexp_maxlines : 0
+        else
+            let flags = 'cnr'
+            let dir = 1
+            let stopline = g:sexp_maxlines > 0 ? line('.') + g:sexp_maxlines : 0
+        endif
+
+        let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+    endif
 
     if line < 1
         return [0, 0, 0, 0]
     elseif dir == a:closing
         return [0, line, col, 0]
     else
-        let cursor = getpos('.')
         call cursor(line, col)
         let pos = s:nearest_bracket(!dir)
-        call setpos('.', cursor)
+        call cursor(cursorline, cursorcol)
         return pos[1] > 0 ? pos : [0, 0, 0, 0]
     endif
 endfunction

@@ -39,6 +39,9 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
+let s:macro_characters = {
+    \ 'clojure': ['#', '\v[' . "'" . '`~@^#]'],
+\ }
 let s:pairs = {
     \ '(': ')',
     \ '[': ']',
@@ -1060,12 +1063,18 @@ function! sexp#opening_insertion(bra)
     endif
 
     let ket = s:pairs[a:bra]
-    let cur = getline(line)[col - 1]
-    let prev = getline(line)[col - 2]
+    let l = getline(line)
+    let cur = l[col - 1]
+    let prev = l[col - 2]
+    let pprev = l[col - 3]
+    let [dispatch, macro] = get(s:macro_characters, &filetype, ['', ''])
+
     let buf = ''
     let buftail = ''
 
-    if prev =~ '\v\S' && prev !~ s:opening_bracket
+    if prev =~ '\v\S'
+        \ && prev !~ s:opening_bracket
+        \ && (pprev !=# dispatch && prev !~ macro)
         let buf .= ' '
     endif
 

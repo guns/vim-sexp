@@ -405,7 +405,44 @@ function! s:terminals_with_whitespace(start, end)
     return [start, end]
 endfunction
 
-""" PREDICATES {{{1
+" Returns dict { 'bra': number, 'ket': number }, which indicates the number
+" of unpaired opening brackets ('bra') and the number of unpaired closing
+" brackets ('ket') in the selection from start to end.
+function! s:bracket_count(start, end, all_brackets, opening_brackets)
+    let cursor = getpos('.')
+    let bcount = { 'bra': 0, 'ket': 0 }
+
+    call setpos('.', a:start)
+    while 1
+        let [line, col] = searchpos(a:all_brackets, 'cW')
+        if s:is_ignored_scope(line, col) | break | endif
+        let cmp = s:compare_pos([0, line, col, 0], a:end)
+        if cmp > 0 | break | endif
+
+        if getline(line)[col - 1] =~ a:opening_brackets
+            let bcount['bra'] += 1
+        else
+            if bcount['bra'] > 0
+                let bcount['bra'] -= 1
+            else
+                let bcount['ket'] += 1
+            endif
+        endif
+
+        if cmp == 0 | break | endif
+
+        if col([line, '$']) - 1 == col
+            call cursor(line + 1, 1)
+        else
+            call cursor(line, col + 1)
+        endif
+    endwhile
+
+    call setpos('.', cursor)
+    return bcount
+endfunction
+
+""" PREDICATES AND COMPARATORS {{{1
 
 " See discussion at s:findpos()
 function! s:is_backward_multibyte_search_broken()
@@ -470,8 +507,6 @@ function! s:is_atom(line, col)
     endif
 endfunction
 
-""" COMPARATORS AND PURE FUNCTIONS {{{1
-
 " Returns -1 if position a is before position b, 1 if position a is after
 " position b, and 0 if they are the same position. Only compares the line and
 " column and ignores the first and last arguments.
@@ -485,35 +520,6 @@ function! s:compare_pos(a, b)
     else
         return a[2] < b[2] ? -1 : 1
     endif
-endfunction
-
-" Returns dict { 'bra': number, 'ket': number }, which indicates the number
-" of unpaired opening brackets ('bra') and the number of unpaired closing
-" brackets ('ket') in the given string.
-"
-" Parameter all_brackets should match all opening and closing brackets, and
-" parameter opening_brackets only opening brackets.
-function! s:bracket_count(string, all_brackets, opening_brackets)
-    let bcount = { 'bra': 0, 'ket': 0 }
-    let idx = -1
-
-    while 1
-        let idx = match(a:string, a:all_brackets, idx + 1)
-
-        if idx == -1 | break | endif
-
-        if a:string[idx] =~ a:opening_brackets
-            let bcount['bra'] += 1
-        else
-            if bcount['bra'] > 0
-                let bcount['bra'] -= 1
-            else
-                let bcount['ket'] += 1
-            endif
-        endif
-    endwhile
-
-    return bcount
 endfunction
 
 """ CURSOR MOVEMENT {{{1
@@ -1125,8 +1131,7 @@ function! sexp#swap_element(mode, next, form)
 
         if head[1] > 0 && tail[1] > 0
             " Find any unbalanced brackets in our selection
-            normal! gv"ay
-            let bcount = s:bracket_count(@a, s:bracket, s:opening_bracket)
+            let bcount = s:bracket_count(head, tail, s:bracket, s:opening_bracket)
 
             " Expand head for every ket and tail for every bra.
             if bcount['ket'] > 0

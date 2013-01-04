@@ -34,11 +34,20 @@ if !exists('g:sexp_maxlines')
     let g:sexp_maxlines = -1
 endif
 
+let s:countindex = 0 " Stores current count index during sexp#docount
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
-let s:countindex = 0 " Stores current count index during sexp#docount
+let s:pairs = {
+    \ '(': ')',
+    \ '[': ']',
+    \ '{': '}',
+    \ ')': '(',
+    \ ']': '[',
+    \ '}': '{',
+    \ '"': '"'
+\ }
 
 """ QUERIES AT CURSOR {{{1
 
@@ -1000,6 +1009,26 @@ function! sexp#insert_at_form_terminal(end)
     endif
 
     startinsert
+endfunction
+
+" Return keys to be inserted in place of bra. Returns bra if
+" s:is_ignored_scope() is true at the cursor.
+function! sexp#open_insertion(bra)
+    let [_b, line, col, _o] = getpos('.')
+
+    if s:is_ignored_scope(line, col)
+        return a:bra
+    endif
+
+    let ket = s:pairs[a:bra]
+    let prev = getline(line)[col - 2]
+    let buf = ''
+
+    if prev =~ '\v\S' && prev !~ s:opening_bracket
+        let buf .= ' '
+    endif
+
+    return buf . a:bra . ket . "\<Left>"
 endfunction
 
 " Exchange the current element with an adjacent sibling element. Does nothing

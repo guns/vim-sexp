@@ -28,6 +28,10 @@ if !exists('g:sexp_wrap_insert')
     let g:sexp_wrap_insert = 1
 endif
 
+if !exists('g:sexp_enable_insert_mode_mappings')
+    let g:sexp_enable_insert_mode_mappings = 1
+endif
+
 if !exists('g:sexp_textobj_mappings')
     " TODO: Document that 's' mapping overrides inner/outer sentence
     let g:sexp_textobj_mappings = {
@@ -247,4 +251,18 @@ if !empty(g:sexp_mappings)
                 \ 'vmap <silent><buffer> ' . g:sexp_mappings[s:plug] . ' <Plug>' . s:plug)
         endif
     endfor
+endif
+
+""" Insert mode mappings {{{1
+
+inoremap <silent><expr> <Plug>sexp_insert_open_round         sexp#open_insertion('(')
+inoremap <silent><expr> <Plug>sexp_insert_open_square        sexp#open_insertion('[')
+inoremap <silent><expr> <Plug>sexp_insert_open_curly         sexp#open_insertion('{')
+inoremap <silent><expr> <Plug>sexp_insert_open_double_quote  sexp#open_insertion('"')
+
+if g:sexp_enable_insert_mode_mappings
+    imap <buffer> ( <Plug>sexp_insert_open_round
+    imap <buffer> [ <Plug>sexp_insert_open_square
+    imap <buffer> { <Plug>sexp_insert_open_curly
+    imap <buffer> " <Plug>sexp_insert_open_double_quote
 endif

@@ -1011,9 +1011,11 @@ function! sexp#insert_at_form_terminal(end)
     startinsert
 endfunction
 
-" Return keys to be inserted in place of bra. Returns bra if
-" s:is_ignored_scope() is true at the cursor.
-function! sexp#open_insertion(bra)
+" Return keys to be inserted in place of bra; this includes the closing pair,
+" as well as a leading and/or trailing space to separate from other elements.
+"
+" Returns bra if s:is_ignored_scope() is true at the cursor.
+function! sexp#opening_insertion(bra)
     let [_b, line, col, _o] = getpos('.')
 
     if s:is_ignored_scope(line, col)
@@ -1021,14 +1023,24 @@ function! sexp#open_insertion(bra)
     endif
 
     let ket = s:pairs[a:bra]
+    let cur = getline(line)[col - 1]
     let prev = getline(line)[col - 2]
     let buf = ''
+    let buftail = ''
 
     if prev =~ '\v\S' && prev !~ s:opening_bracket
         let buf .= ' '
     endif
 
-    return buf . a:bra . ket . "\<Left>"
+    let buf .= a:bra . ket
+    let buftail .= "\<Left>"
+
+    if cur =~ '\v\S' && cur !~ s:closing_bracket
+        let buf .= ' '
+        let buftail .= "\<Left>"
+    endif
+
+    return buf . buftail
 endfunction
 
 " Exchange the current element with an adjacent sibling element. Does nothing

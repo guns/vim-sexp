@@ -46,6 +46,7 @@ let s:pairs = {
     \ ')': '(',
     \ ']': '[',
     \ '}': '{',
+    \ '"': '"'
 \ }
 
 """ QUERIES AT CURSOR {{{1
@@ -1077,6 +1078,27 @@ function! sexp#opening_insertion(bra)
     endif
 
     return buf . buftail
+endfunction
+
+" Return keys to delete both backwards and forwards when on a pair of paired
+" delimiters.
+function! sexp#backspace_insertion()
+    let [_b, line, col, _o] = getpos('.')
+
+    if s:syntax_match('\vcomment|char', line, col)
+        return "\<BS>"
+    else
+        let l = getline(line)
+        let bra = l[col - 2]
+        if bra =~ s:opening_bracket || bra == '"'
+            let ket = s:pairs[bra]
+            if l[col - 1] ==# ket
+                return "\<BS>\<Del>"
+            endif
+        endif
+    endif
+
+    return "\<BS>"
 endfunction
 
 " Exchange the current element with an adjacent sibling element. Does nothing

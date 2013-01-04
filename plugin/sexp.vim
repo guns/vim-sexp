@@ -260,8 +260,13 @@ inoremap <silent><expr> <Plug>sexp_insert_opening_round  sexp#opening_insertion(
 inoremap <silent><expr> <Plug>sexp_insert_opening_square sexp#opening_insertion('[')
 inoremap <silent><expr> <Plug>sexp_insert_opening_curly  sexp#opening_insertion('{')
 
+" Delete paired delimiters
+inoremap <silent><expr> <Plug>sexp_insert_backspace sexp#backspace_insertion()
+
 if g:sexp_enable_insert_mode_mappings
-    imap <buffer> ( <Plug>sexp_insert_opening_round
-    imap <buffer> [ <Plug>sexp_insert_opening_square
-    imap <buffer> { <Plug>sexp_insert_opening_curly
+    call s:filetype_autocmd(
+        \ 'imap <buffer> (    <Plug>sexp_insert_opening_round',
+        \ 'imap <buffer> [    <Plug>sexp_insert_opening_square',
+        \ 'imap <buffer> {    <Plug>sexp_insert_opening_curly',
+        \ 'imap <buffer> <BS> <Plug>sexp_insert_backspace')
 endif

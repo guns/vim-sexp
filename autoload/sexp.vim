@@ -27,6 +27,7 @@ let g:sexp_autoloaded = 1
 " * When selecting non-atoms as elements, include all non-delimiter chars that
 "   are adjacent to them, like reader macro characters and Clojure's
 "   spacing comma.
+" * Don't delete closing bracket when parens are not balanced
 
 """ PATTERNS AND STATE {{{1
 

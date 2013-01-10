@@ -41,6 +41,8 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
+let s:string_scope = '\vstring|regex|pattern'
+let s:ignored_scope = s:string_scope . '|comment|char'
 let s:macro_characters = {
     \ 'clojure': ['#', '\v[' . "'" . '`~@^#]'],
 \ }
@@ -139,7 +141,7 @@ endfunction
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if !s:syntax_match('string', cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+    if !s:syntax_match(s:string_scope, cursorline, cursorcol) | return [0, 0, 0, 0] | endif
 
     let [termline, termcol] = [cursorline, cursorcol]
 
@@ -155,7 +157,7 @@ function! s:current_string_terminal(end)
         " Beginning or end of file.
         if line < 1 | break | endif
 
-        if s:syntax_match('string', line, col)
+        if s:syntax_match(s:string_scope, line, col)
             let [termline, termcol] = [line, col]
             call cursor(line, col)
         else
@@ -229,7 +231,7 @@ function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
 
-    if s:syntax_match('string', line, col)
+    if s:syntax_match(s:string_scope, line, col)
         return s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
         return s:current_comment_terminal(a:end)
@@ -449,7 +451,7 @@ endfunction
 " It is established Vim convention that matching '\cstring|comment' and so on
 " is acceptable for syntax regions that are conventionally named.
 function! s:is_ignored_scope(line, col)
-    return s:syntax_match('\vstring|comment|char', a:line, a:col)
+    return s:syntax_match(s:ignored_scope, a:line, a:col)
 endfunction
 
 " Returns 1 if character at position is in a comment, or is in the whitespace
@@ -489,7 +491,7 @@ function! s:is_atom(line, col)
     if empty(char) || char =~ s:delimiter
         return 0
     else
-        return !s:syntax_match('\vstring|comment', a:line, a:col)
+        return !s:syntax_match(s:string_scope . '|comment', a:line, a:col)
     endif
 endfunction
 
@@ -1063,7 +1065,7 @@ endfunction
 function! sexp#backspace_insertion()
     let [_b, line, col, _o] = getpos('.')
 
-    if s:syntax_match('\vcomment|char', line, col)
+    if s:is_ignored_scope(line, col)
         return "\<BS>"
     else
         let l = getline(line)

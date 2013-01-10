@@ -44,7 +44,7 @@ let s:delimiter = s:bracket . '|\s'
 let s:string_scope = '\vstring|regex|pattern'
 let s:ignored_scope = s:string_scope . '|comment|char'
 let s:macro_characters = {
-    \ 'clojure': ['#', '\v[' . "'" . '`~@^#]'],
+    \ 'clojure': ['#', "\\v[#'`~@^,]"],
 \ }
 let s:pairs = {
     \ '(': ')',

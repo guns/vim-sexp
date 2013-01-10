@@ -909,20 +909,7 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     endif
 
     if a:top
-        let head = [0, 0, 0, 0]
-
-        " Check current element head before trying to find a top bracket that
-        " doesn't exist. Cf. discussion at s:current_top_form_bracket
-        if g:sexp_maxlines < 0
-            let head = s:nearest_element_head(0)
-            if head[1] > 0 && head[2] == 1
-                let top = head
-            else
-                let top = s:move_to_top_bracket(a:next)
-            endif
-        else
-            let top = s:move_to_top_bracket(a:next)
-        endif
+        let top = s:move_to_top_bracket(a:next)
 
         " Stop at current top element head if moving backward and did not
         " start on a top element head.

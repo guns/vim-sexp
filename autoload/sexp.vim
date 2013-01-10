@@ -110,7 +110,7 @@ function! s:current_top_form_bracket(closing)
     " searchpairpos() fails to find the matching closing bracket when on the
     " outermost opening bracket and vice versa, so we decide on the search
     " directions based on the current char.
-    if getline(line)[col-1] =~ s:opening_bracket
+    if getline(line)[col - 1] =~ s:opening_bracket
         let flags = 'bcnr'
         let dir = 0
         let stopline = g:sexp_maxlines ? line('.') - g:sexp_maxlines : 0

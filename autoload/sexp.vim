@@ -1067,31 +1067,32 @@ endfunction
 " Return keys to be inserted in place of ket:
 "
 "   * Insert ket if s:is_ignored_scope is true behind the cursor
+"   * Skip current char if equal to ket
 "   * Jump to next closing ket if current form is balanced
 "   * Insert ket if current form is unbalanced
-"   * Skip char if current form is unbalanced and current char is a ket
 function! sexp#closing_insertion(ket)
     let [_b, line, col, _o] = getpos('.')
 
     if s:is_ignored_scope(line, col - 1)
         return a:ket
+    elseif getline(line)[col - 1] == a:ket
+        return "\<Right>"
     endif
 
     let bra = '\V' . s:pairs[a:ket]
     let ket = '\V' . a:ket
     let open = s:nearest_bracket(0, bra, ket)
 
-    if open[1] > 0
-        let close = s:nearest_bracket(1, bra, ket)
+    " No enclosing form; insert nothing
+    if open[1] < 1 | return '' | endif
+
+    let close = s:nearest_bracket(1, bra, ket)
+    if close[1] > 0
         " Brackets are balanced, jump to closing bracket
-        if close[1] > 0
-            return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
-        " Brackets are short closing brackets, insert or skip current bracket
-        else
-            return getline('.')[col('.') - 1] == a:ket ? "\<Right>" : a:ket
-        endif
+        return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
     else
-        return ''
+        " Brackets are short closing brackets, insert bracket
+        return a:ket
     endif
 endfunction
 

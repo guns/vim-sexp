@@ -95,11 +95,15 @@ endfunction
 "
 " However, your syntax engine should clearly highlight the errors. If you have
 " a good argument for why this is not a good tradeoff, contact me.
-function! s:nearest_bracket(closing)
+"
+" Accepts alternate beginning and ending patterns as optional parameters.
+function! s:nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
     let skip = 's:is_ignored_scope(line("."), col("."))'
     let stopline = g:sexp_maxlines ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
-    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+    let open = a:0 ? a:1 : s:opening_bracket
+    let close = a:0 ? a:2 : s:closing_bracket
+    let [line, col] = searchpairpos(open, '', close, flags, skip, stopline)
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
@@ -1058,6 +1062,33 @@ function! sexp#opening_insertion(bra)
     endif
 
     return buf . buftail
+endfunction
+
+" Return keys to be inserted in place of ket.
+"
+" Returns ket if s:is_ignored_scope is true at the cursor.
+function! sexp#closing_insertion(ket)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+
+    if s:is_ignored_scope(cursorline, cursorcol)
+        return a:ket
+    endif
+
+    let bra = '\V' . s:pairs[a:ket]
+    let ket = '\V' . a:ket
+
+    let open = s:nearest_bracket(0, bra, ket)
+    let close = s:nearest_bracket(1, bra, ket)
+
+    " Brackets are balanced, jump to closing bracket
+    if open[1] > 0 && close[1] > 0
+        return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
+    " Brackets are short closing brackets, insert or skip current bracket
+    elseif open[1] > 0 && close[1] < 1
+        return getline('.')[col('.') - 1] == a:ket ? "\<Right>" : a:ket
+    else
+        return ''
+    endif
 endfunction
 
 " Return keys to delete both backwards and forwards when on a pair of paired

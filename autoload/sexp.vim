@@ -72,7 +72,9 @@ function! s:findpos(pattern, next, ...)
         let [_b, line, col, _o] = getpos('.')
         let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         " Bug only occurs when match is on same line
-        let possible = sline == line && &encoding ==? 'utf-8' && char2nr(getline(sline)[scol - 1]) > 0x7f
+        let possible = sline == line
+                       \ && &encoding ==? 'utf-8'
+                       \ && char2nr(getline(sline)[scol - 1]) > 0x7f
         if possible && s:is_backward_multibyte_search_broken()
             let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
@@ -100,7 +102,9 @@ endfunction
 function! s:nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
     let skip = 's:is_ignored_scope(line("."), col("."))'
-    let stopline = g:sexp_maxlines ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
+    let stopline = g:sexp_maxlines
+                   \ ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines)
+                   \ : 0
     let open = a:0 ? a:1 : s:opening_bracket
     let close = a:0 ? a:2 : s:closing_bracket
     let [line, col] = searchpairpos(open, '', close, flags, skip, stopline)
@@ -114,8 +118,8 @@ function! s:current_top_form_bracket(closing)
     let flags = a:closing ? 'cnr' : 'bcnr'
     let skip = 's:is_ignored_scope(line("."), col("."))'
     let stopline = g:sexp_maxlines
-        \ ? line + ((a:closing ? 1 : -1) * g:sexp_maxlines)
-        \ : 0
+                   \ ? line + ((a:closing ? 1 : -1) * g:sexp_maxlines)
+                   \ : 0
     let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
 
     if topline > 0
@@ -133,7 +137,10 @@ endfunction
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if !s:syntax_match(s:string_scope, cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+
+    if !s:syntax_match(s:string_scope, cursorline, cursorcol)
+        return [0, 0, 0, 0]
+    endif
 
     let [termline, termcol] = [cursorline, cursorcol]
 
@@ -228,7 +235,8 @@ function! s:current_element_terminal(end)
     elseif s:is_comment(line, col)
         return s:current_comment_terminal(a:end)
     elseif char =~ s:bracket
-        if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+        if (a:end && char =~ s:closing_bracket)
+            \ || (!a:end && char =~ s:opening_bracket)
             return [0, line, col, 0]
         else
             return s:nearest_bracket(a:end)
@@ -310,7 +318,7 @@ if exists('*synstack')
     function! s:syntax_match(pat, line, col)
         let stack = synstack(a:line, a:col)
         return (synIDattr(get(stack, -1, ''), 'name') =~? a:pat) ||
-            \  (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
+             \ (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
     endfunction
 else
     function! s:syntax_match(pat, line, col)
@@ -462,7 +470,8 @@ function! s:is_comment(line, col)
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
             let [cline, ccol] = s:findpos('\v\S', 1, a:line)
-            if s:syntax_match('comment', pline, pcol) && s:syntax_match('comment', cline, ccol)
+            if s:syntax_match('comment', pline, pcol)
+                \ && s:syntax_match('comment', cline, ccol)
                 let incomment = 1
             endif
             call setpos('.', cursor)
@@ -565,7 +574,9 @@ function! s:set_marks_around_current_form(mode, offset)
     endif
 
     " Native text objects expand when repeating inner motions too
-    if expanding && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
+    if expanding
+        \ && a:offset == 1
+        \ && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
         normal! h
         let cursor = getpos('.')
         let cursor_moved = 1
@@ -789,7 +800,9 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
         call setpos('.', start)
         execute 'normal! i' . a:bra
         " Did we just insert a character on the same line?
-        let end = start[1] == end[1] ? s:pos_with_col_offset(end, len(a:bra)) : end
+        let end = start[1] == end[1]
+                  \ ? s:pos_with_col_offset(end, len(a:bra))
+                  \ : end
         call setpos('.', end)
         execute 'normal! a' . a:ket
     else
@@ -986,7 +999,8 @@ endfunction
 function! sexp#insert_at_form_terminal(end)
     let cursor = getpos('.')
     let char = getline(cursor[1])[cursor[2] - 1]
-    let on_bracket = (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+    let on_bracket = (a:end && char =~ s:closing_bracket)
+                     \ || (!a:end && char =~ s:opening_bracket)
 
     if on_bracket && !s:is_ignored_scope(cursor[1], cursor[2])
         let pos = cursor
@@ -1070,7 +1084,9 @@ function! sexp#closing_insertion(ket)
 
     let bra = '\V' . s:pairs[a:ket]
     let ket = '\V' . a:ket
-    let open = char =~ s:opening_bracket ? [0, line, col, 0] : s:nearest_bracket(0, bra, ket)
+    let open = char =~ s:opening_bracket
+               \ ? [0, line, col, 0]
+               \ : s:nearest_bracket(0, bra, ket)
 
     " No enclosing form; insert nothing
     if open[1] < 1 | return '' | endif
@@ -1126,7 +1142,9 @@ function! sexp#backspace_insertion()
         \ && s:syntax_match(s:string_scope, line, col)
         \ && l[col - 3] !~ '\v[\"]'
         return "\<BS>\<Del>"
-    elseif !s:is_ignored_scope(line, col) && prev =~ s:opening_bracket && cur ==# s:pairs[prev]
+    elseif !s:is_ignored_scope(line, col)
+        \ && prev =~ s:opening_bracket
+        \ && cur ==# s:pairs[prev]
         return "\<BS>\<Del>"
     else
         return "\<BS>"
@@ -1239,8 +1257,8 @@ function! sexp#swap_element(mode, next, form)
     " we are at the top or bottom of the file.
     let b_cmp_a = s:compare_pos(marks['b']['start'], marks['a']['start'])
     if b_cmp_a == 0
-       \ || (a:next && b_cmp_a < 0)
-       \ || (!a:next && s:compare_pos(marks['b']['end'], marks['a']['end']) > 0)
+        \ || (a:next && b_cmp_a < 0)
+        \ || (!a:next && s:compare_pos(marks['b']['end'], marks['a']['end']) > 0)
         if visual
             " Restore visual state
             call setpos("'<", vmarks[0])

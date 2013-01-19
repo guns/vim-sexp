@@ -27,6 +27,7 @@ let g:sexp_autoloaded = 1
 " * When selecting non-atoms as elements, include all non-delimiter chars that
 "   are adjacent to them, like reader macro characters and Clojure's
 "   spacing comma.
+" * Don't delete closing bracket when parens are not balanced
 
 """ PATTERNS AND STATE {{{1
 
@@ -34,11 +35,25 @@ if !exists('g:sexp_maxlines')
     let g:sexp_maxlines = -1
 endif
 
+let s:countindex = 0 " Stores current count index during sexp#docount
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
-let s:countindex = 0 " Stores current count index during sexp#docount
+let s:string_scope = '\vstring|regex|pattern'
+let s:ignored_scope = s:string_scope . '|comment|char'
+let s:macro_characters = {
+    \ 'clojure': ['#', "\\v[#'`~@^,]"],
+\ }
+let s:pairs = {
+    \ '(': ')',
+    \ '[': ']',
+    \ '{': '}',
+    \ ')': '(',
+    \ ']': '[',
+    \ '}': '{',
+    \ '"': '"'
+\ }
 
 """ QUERIES AT CURSOR {{{1
 
@@ -56,7 +71,9 @@ function! s:findpos(pattern, next, ...)
         let [_b, line, col, _o] = getpos('.')
         let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
         " Bug only occurs when match is on same line
-        let possible = sline == line && &encoding ==? 'utf-8' && char2nr(getline(sline)[scol - 1]) > 0x7f
+        let possible = sline == line
+                       \ && &encoding ==? 'utf-8'
+                       \ && char2nr(getline(sline)[scol - 1]) > 0x7f
         if possible && s:is_backward_multibyte_search_broken()
             let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
         else
@@ -79,11 +96,17 @@ endfunction
 "
 " However, your syntax engine should clearly highlight the errors. If you have
 " a good argument for why this is not a good tradeoff, contact me.
-function! s:nearest_bracket(closing)
+"
+" Accepts alternate beginning and ending patterns as optional parameters.
+function! s:nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
     let skip = 's:is_ignored_scope(line("."), col("."))'
-    let stopline = g:sexp_maxlines > 0 ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines) : 0
-    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+    let stopline = g:sexp_maxlines > 0
+                   \ ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines)
+                   \ : 0
+    let open = a:0 ? a:1 : s:opening_bracket
+    let close = a:0 ? a:2 : s:closing_bracket
+    let [line, col] = searchpairpos(open, '', close, flags, skip, stopline)
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
@@ -93,51 +116,55 @@ endfunction
 " If global variable g:sexp_maxlines is -1, a fast best-effort approach is
 " used instead of a recursive searchpairpos()
 function! s:current_top_form_bracket(closing)
-    let [_b, cursorline, cursorcol, _o] = getpos('.')
-    let skip = 's:is_ignored_scope(line("."), col("."))'
-
-    " Recursive searchpairpos() is excruciatingly slow on a large file. This
-    " can be addressed somewhat by providing a stopline argument, but this
-    " makes the call a best-effort approach. If we are sacrificing correctness
-    " for performance, we can do even better by assuming that all opening
-    " brackets on the first column of a line are toplevel.
+    let [_b, line, col, _o] = getpos('.')
     if g:sexp_maxlines < 0
-        let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, 'bcW', skip)
+        " Recursive searchpairpos() is excruciatingly slow on a large file.
+        " This can be addressed somewhat by providing a stopline argument, but
+        " this makes the call a best-effort approach. If we are sacrificing
+        " correctness for performance, we can do even better by assuming that
+        " all opening brackets on the first column of a line are toplevel.
+        let top = 0
 
-        while col > 1
-            let [l, c] = searchpairpos(s:opening_bracket, '', s:closing_bracket, 'bW', skip)
-            if l < 1 | break | endif
-            let [line, col] = [l, c]
+        " Assume we're at the top level if the current element begins on the
+        " first column
+        let [_b, l, c, _o] = s:current_element_terminal(0)
+        if l > 0 && c == 1 | let top = 1 | endif
+
+        while !top
+            let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
+            if l > 0 && c == 1
+                let top = 1
+            elseif l < 1
+                break
+            endif
         endwhile
 
-        call cursor(cursorline, cursorcol)
-        let dir = 0
+        let closing = (top && getline(l)[c - 1] =~ s:opening_bracket)
+                      \ ? s:nearest_bracket(1)
+                      \ : [0, 0, 0, 0]
+
+        call cursor(line, col) " Restore position
+
+        return closing[1] > 0
+               \ ? (a:closing ? closing : [0, l, c, 0])
+               \ : [0, 0, 0, 0]
     else
-        " searchpairpos() fails to find the matching closing bracket when on the
-        " outermost opening bracket and vice versa, so we decide on the search
-        " directions based on the current char.
-        if getline(cursorline)[cursorcol - 1] =~ s:opening_bracket
-            let flags = 'bcnr'
-            let dir = 0
-            let stopline = g:sexp_maxlines > 0 ? line('.') - g:sexp_maxlines : 0
+        let flags = a:closing ? 'cnr' : 'bcnr'
+        let skip = 's:is_ignored_scope(line("."), col("."))'
+        let stopline = g:sexp_maxlines > 0
+                       \ ? line + ((a:closing ? 1 : -1) * g:sexp_maxlines)
+                       \ : 0
+        let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+
+        if topline > 0
+            return [0, topline, topcol, 0]
+            " searchpairpos() fails to find the matching closing bracket when on the
+            " outermost opening bracket and vice versa
+        elseif getline(line)[col - 1] =~ (a:closing ? s:opening_bracket : s:closing_bracket)
+            return s:nearest_bracket(a:closing)
         else
-            let flags = 'cnr'
-            let dir = 1
-            let stopline = g:sexp_maxlines > 0 ? line('.') + g:sexp_maxlines : 0
+            return [0, 0, 0, 0]
         endif
-
-        let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
-    endif
-
-    if line < 1
-        return [0, 0, 0, 0]
-    elseif dir == a:closing
-        return [0, line, col, 0]
-    else
-        call cursor(line, col)
-        let pos = s:nearest_bracket(!dir)
-        call cursor(cursorline, cursorcol)
-        return pos[1] > 0 ? pos : [0, 0, 0, 0]
     endif
 endfunction
 
@@ -145,7 +172,10 @@ endfunction
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
-    if !s:syntax_match('string', cursorline, cursorcol) | return [0, 0, 0, 0] | endif
+
+    if !s:syntax_match(s:string_scope, cursorline, cursorcol)
+        return [0, 0, 0, 0]
+    endif
 
     let [termline, termcol] = [cursorline, cursorcol]
 
@@ -161,7 +191,7 @@ function! s:current_string_terminal(end)
         " Beginning or end of file.
         if line < 1 | break | endif
 
-        if s:syntax_match('string', line, col)
+        if s:syntax_match(s:string_scope, line, col)
             let [termline, termcol] = [line, col]
             call cursor(line, col)
         else
@@ -235,12 +265,13 @@ function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
 
-    if s:syntax_match('string', line, col)
+    if s:syntax_match(s:string_scope, line, col)
         return s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
         return s:current_comment_terminal(a:end)
     elseif char =~ s:bracket
-        if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+        if (a:end && char =~ s:closing_bracket)
+            \ || (!a:end && char =~ s:opening_bracket)
             return [0, line, col, 0]
         else
             return s:nearest_bracket(a:end)
@@ -322,7 +353,7 @@ if exists('*synstack')
     function! s:syntax_match(pat, line, col)
         let stack = synstack(a:line, a:col)
         return (synIDattr(get(stack, -1, ''), 'name') =~? a:pat) ||
-            \  (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
+             \ (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
     endfunction
 else
     function! s:syntax_match(pat, line, col)
@@ -397,6 +428,43 @@ function! s:terminals_with_whitespace(start, end)
     return [start, end]
 endfunction
 
+" Returns dict { 'bra': number, 'ket': number }, which indicates the number
+" of unpaired opening brackets ('bra') and the number of unpaired closing
+" brackets ('ket') in the selection from start to end.
+function! s:bracket_count(start, end, all_brackets, opening_brackets)
+    let cursor = getpos('.')
+    let bcount = { 'bra': 0, 'ket': 0 }
+
+    call setpos('.', a:start)
+    while 1
+        let [line, col] = searchpos(a:all_brackets, 'cW')
+        if s:is_ignored_scope(line, col) | break | endif
+        let cmp = s:compare_pos([0, line, col, 0], a:end)
+        if cmp > 0 | break | endif
+
+        if getline(line)[col - 1] =~ a:opening_brackets
+            let bcount['bra'] += 1
+        else
+            if bcount['bra'] > 0
+                let bcount['bra'] -= 1
+            else
+                let bcount['ket'] += 1
+            endif
+        endif
+
+        if cmp == 0 | break | endif
+
+        if col([line, '$']) - 1 == col
+            call cursor(line + 1, 1)
+        else
+            call cursor(line, col + 1)
+        endif
+    endwhile
+
+    call setpos('.', cursor)
+    return bcount
+endfunction
+
 """ PREDICATES AND COMPARATORS {{{1
 
 " See discussion at s:findpos()
@@ -418,7 +486,7 @@ endfunction
 " It is established Vim convention that matching '\cstring|comment' and so on
 " is acceptable for syntax regions that are conventionally named.
 function! s:is_ignored_scope(line, col)
-    return s:syntax_match('\vstring|comment|char', a:line, a:col)
+    return s:syntax_match(s:ignored_scope, a:line, a:col)
 endfunction
 
 " Returns 1 if character at position is in a comment, or is in the whitespace
@@ -437,7 +505,8 @@ function! s:is_comment(line, col)
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
             let [cline, ccol] = s:findpos('\v\S', 1, a:line)
-            if s:syntax_match('comment', pline, pcol) && s:syntax_match('comment', cline, ccol)
+            if s:syntax_match('comment', pline, pcol)
+                \ && s:syntax_match('comment', cline, ccol)
                 let incomment = 1
             endif
             call setpos('.', cursor)
@@ -458,7 +527,7 @@ function! s:is_atom(line, col)
     if empty(char) || char =~ s:delimiter
         return 0
     else
-        return !s:syntax_match('\vstring|comment', a:line, a:col)
+        return !s:syntax_match(s:string_scope . '|comment', a:line, a:col)
     endif
 endfunction
 
@@ -540,7 +609,9 @@ function! s:set_marks_around_current_form(mode, offset)
     endif
 
     " Native text objects expand when repeating inner motions too
-    if expanding && a:offset == 1 && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
+    if expanding
+        \ && a:offset == 1
+        \ && getline(cursor[1])[cursor[2] - 2] =~ s:opening_bracket
         normal! h
         let cursor = getpos('.')
         let cursor_moved = 1
@@ -764,7 +835,9 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
         call setpos('.', start)
         execute 'normal! i' . a:bra
         " Did we just insert a character on the same line?
-        let end = start[1] == end[1] ? s:pos_with_col_offset(end, len(a:bra)) : end
+        let end = start[1] == end[1]
+                  \ ? s:pos_with_col_offset(end, len(a:bra))
+                  \ : end
         call setpos('.', end)
         execute 'normal! a' . a:ket
     else
@@ -878,20 +951,7 @@ function! sexp#move_to_adjacent_element(mode, next, top)
     endif
 
     if a:top
-        let head = [0, 0, 0, 0]
-
-        " Check current element head before trying to find a top bracket that
-        " doesn't exist. Cf. discussion at s:current_top_form_bracket
-        if g:sexp_maxlines < 0
-            let head = s:nearest_element_head(0)
-            if head[1] > 0 && head[2] == 1
-                let top = head
-            else
-                let top = s:move_to_top_bracket(a:next)
-            endif
-        else
-            let top = s:move_to_top_bracket(a:next)
-        endif
+        let top = s:move_to_top_bracket(a:next)
 
         " Stop at current top element head if moving backward and did not
         " start on a top element head.
@@ -974,7 +1034,8 @@ endfunction
 function! sexp#insert_at_form_terminal(end)
     let cursor = getpos('.')
     let char = getline(cursor[1])[cursor[2] - 1]
-    let on_bracket = (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+    let on_bracket = (a:end && char =~ s:closing_bracket)
+                     \ || (!a:end && char =~ s:opening_bracket)
 
     if on_bracket && !s:is_ignored_scope(cursor[1], cursor[2])
         let pos = cursor
@@ -1000,6 +1061,129 @@ function! sexp#insert_at_form_terminal(end)
     endif
 
     startinsert
+endfunction
+
+" Return keys to be inserted in place of bra; this includes the closing pair,
+" as well as a leading and/or trailing space to separate from other elements.
+"
+" Returns bra if s:is_ignored_scope() is true at the cursor.
+function! sexp#opening_insertion(bra)
+    let [_b, line, col, _o] = getpos('.')
+
+    if s:is_ignored_scope(line, col)
+        return a:bra
+    endif
+
+    let ket = s:pairs[a:bra]
+    let l = getline(line)
+    let cur = l[col - 1]
+    let prev = l[col - 2]
+    let pprev = l[col - 3]
+    let [dispatch, macro] = get(s:macro_characters, &filetype, ['', ''])
+
+    let buf = ''
+    let buftail = ''
+
+    if prev =~ '\v\S'
+        \ && prev !~ s:opening_bracket
+        \ && (pprev !=# dispatch && prev !~ macro)
+        let buf .= ' '
+    endif
+
+    let buf .= a:bra . ket
+    let buftail .= "\<Left>"
+
+    if cur =~ '\v\S' && cur !~ s:closing_bracket
+        let buf .= ' '
+        let buftail .= "\<Left>"
+    endif
+
+    return buf . buftail
+endfunction
+
+" Return keys to be inserted in place of ket:
+"
+"   * Insert ket if s:is_ignored_scope is true at the cursor
+"   * Skip current char if equal to ket
+"   * Jump to next closing ket if current form is balanced
+"   * Insert ket if current form is unbalanced
+function! sexp#closing_insertion(ket)
+    let [_b, line, col, _o] = getpos('.')
+    let char = getline(line)[col - 1]
+
+    if s:is_ignored_scope(line, col)
+        return a:ket
+    elseif char == a:ket
+        return "\<Right>"
+    endif
+
+    let bra = '\V' . s:pairs[a:ket]
+    let ket = '\V' . a:ket
+    let open = char =~ s:opening_bracket
+               \ ? [0, line, col, 0]
+               \ : s:nearest_bracket(0, bra, ket)
+
+    " No enclosing form; insert nothing
+    if open[1] < 1 | return '' | endif
+
+    let close = s:nearest_bracket(1, bra, ket)
+    if close[1] > 0
+        " Brackets are balanced, jump to closing bracket
+        return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
+    else
+        " Brackets are short closing brackets, insert bracket
+        return a:ket
+    endif
+endfunction
+
+" Return keys to be inserted in place of quote:
+"
+"   * Insert quote if s:is_ignored_scope is true at the cursor
+"   * If in a string, insert quote unless current char is a quote
+"   * If in a string, always insert quote if previous char is a backslash
+"   * Insert pair of quotes otherwise
+function! sexp#quote_insertion(quote)
+    let [_b, line, col, _o] = getpos('.')
+
+    if s:syntax_match(s:string_scope, line, col)
+        let l = getline(line)
+        " User is trying to insert an escaped quote, so do it
+        if l[col - 2] == '\'
+            return a:quote
+        else
+            return l[col - 1] == a:quote ? "\<Right>" : a:quote
+        endif
+    elseif s:is_ignored_scope(line, col)
+        return a:quote
+    else
+        return a:quote . a:quote . "\<Left>"
+    endif
+endfunction
+
+" Return keys to be inserted when deleting backwards:
+"
+"   * Delete adjacent double quotes when previous position is in a string,
+"     unless the first quote is preceded by another quote or a backslash
+"   * Delete adjacent paired brackets, unless s:is_ignored_scope is true at
+"     the cursor
+"   * Normal backspace otherwise
+function! sexp#backspace_insertion()
+    let [_b, line, col, _o] = getpos('.')
+    let l = getline(line)
+    let cur = l[col - 1]
+    let prev = l[col - 2]
+
+    if prev == '"' && cur == '"'
+        \ && s:syntax_match(s:string_scope, line, col)
+        \ && l[col - 3] !~ '\v[\"]'
+        return "\<BS>\<Del>"
+    elseif !s:is_ignored_scope(line, col)
+        \ && prev =~ s:opening_bracket
+        \ && cur ==# s:pairs[prev]
+        return "\<BS>\<Del>"
+    else
+        return "\<BS>"
+    endif
 endfunction
 
 " Exchange the current element with an adjacent sibling element. Does nothing
@@ -1054,25 +1238,7 @@ function! sexp#swap_element(mode, next, form)
 
         if head[1] > 0 && tail[1] > 0
             " Find any unbalanced brackets in our selection
-            normal! gv"ay
-            let bcount = { 'bra': 0, 'ket': 0 }
-            let str = @a
-            let idx = -1
-            while 1
-                let idx = match(str, s:bracket, idx + 1)
-
-                if idx == -1 | break | endif
-
-                if str[idx] =~ s:opening_bracket
-                    let bcount['bra'] += 1
-                else
-                    if bcount['bra'] > 0
-                        let bcount['bra'] -= 1
-                    else
-                        let bcount['ket'] += 1
-                    endif
-                endif
-            endwhile
+            let bcount = s:bracket_count(head, tail, s:bracket, s:opening_bracket)
 
             " Expand head for every ket and tail for every bra.
             if bcount['ket'] > 0
@@ -1126,8 +1292,8 @@ function! sexp#swap_element(mode, next, form)
     " we are at the top or bottom of the file.
     let b_cmp_a = s:compare_pos(marks['b']['start'], marks['a']['start'])
     if b_cmp_a == 0
-       \ || (a:next && b_cmp_a < 0)
-       \ || (!a:next && s:compare_pos(marks['b']['end'], marks['a']['end']) > 0)
+        \ || (a:next && b_cmp_a < 0)
+        \ || (!a:next && s:compare_pos(marks['b']['end'], marks['a']['end']) > 0)
         if visual
             " Restore visual state
             call setpos("'<", vmarks[0])

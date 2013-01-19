@@ -1079,16 +1079,17 @@ function! sexp#closing_insertion(ket)
 
     let bra = '\V' . s:pairs[a:ket]
     let ket = '\V' . a:ket
-
     let open = s:nearest_bracket(0, bra, ket)
-    let close = s:nearest_bracket(1, bra, ket)
 
-    " Brackets are balanced, jump to closing bracket
-    if open[1] > 0 && close[1] > 0
-        return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
-    " Brackets are short closing brackets, insert or skip current bracket
-    elseif open[1] > 0 && close[1] < 1
-        return getline('.')[col('.') - 1] == a:ket ? "\<Right>" : a:ket
+    if open[1] > 0
+        let close = s:nearest_bracket(1, bra, ket)
+        " Brackets are balanced, jump to closing bracket
+        if close[1] > 0
+            return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
+        " Brackets are short closing brackets, insert or skip current bracket
+        else
+            return getline('.')[col('.') - 1] == a:ket ? "\<Right>" : a:ket
+        endif
     else
         return ''
     endif

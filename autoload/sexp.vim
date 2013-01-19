@@ -111,33 +111,21 @@ endfunction
 " Returns [0, 0, 0, 0] if none found.
 function! s:current_top_form_bracket(closing)
     let [_b, line, col, _o] = getpos('.')
+    let flags = a:closing ? 'cnr' : 'bcnr'
     let skip = 's:is_ignored_scope(line("."), col("."))'
+    let stopline = g:sexp_maxlines
+        \ ? line + ((a:closing ? 1 : -1) * g:sexp_maxlines)
+        \ : 0
+    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
 
+    if topline > 0
+        return [0, topline, topcol, 0]
     " searchpairpos() fails to find the matching closing bracket when on the
-    " outermost opening bracket and vice versa, so we decide on the search
-    " directions based on the current char.
-    if getline(line)[col - 1] =~ s:opening_bracket
-        let flags = 'bcnr'
-        let dir = 0
-        let stopline = g:sexp_maxlines ? line('.') - g:sexp_maxlines : 0
+    " outermost opening bracket and vice versa
+    elseif getline(line)[col - 1] =~ (a:closing ? s:opening_bracket : s:closing_bracket)
+        return s:nearest_bracket(a:closing)
     else
-        let flags = 'cnr'
-        let dir = 1
-        let stopline = g:sexp_maxlines ? line('.') + g:sexp_maxlines : 0
-    endif
-
-    let [line, col] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
-
-    if line < 1
         return [0, 0, 0, 0]
-    elseif dir == a:closing
-        return [0, line, col, 0]
-    else
-        let cursor = getpos('.')
-        call cursor(line, col)
-        let pos = s:nearest_bracket(!dir)
-        call setpos('.', cursor)
-        return pos[1] > 0 ? pos : [0, 0, 0, 0]
     endif
 endfunction
 

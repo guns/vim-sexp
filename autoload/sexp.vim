@@ -23,7 +23,6 @@ let g:sexp_autoloaded = 1
 " * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
-" * Optimize top_form calls
 " * Comments should always be swapped to their own line
 " * When selecting non-atoms as elements, include all non-delimiter chars that
 "   are adjacent to them, like reader macro characters and Clojure's
@@ -33,7 +32,7 @@ let g:sexp_autoloaded = 1
 """ PATTERNS AND STATE {{{1
 
 if !exists('g:sexp_maxlines')
-    let g:sexp_maxlines = 0
+    let g:sexp_maxlines = -1
 endif
 
 let s:countindex = 0 " Stores current count index during sexp#docount
@@ -102,7 +101,7 @@ endfunction
 function! s:nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
     let skip = 's:is_ignored_scope(line("."), col("."))'
-    let stopline = g:sexp_maxlines
+    let stopline = g:sexp_maxlines > 0
                    \ ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines)
                    \ : 0
     let open = a:0 ? a:1 : s:opening_bracket
@@ -113,23 +112,59 @@ endfunction
 
 " Position of outermost paired bracket: 0 for opening, 1 for closing.
 " Returns [0, 0, 0, 0] if none found.
+"
+" If global variable g:sexp_maxlines is -1, a fast best-effort approach is
+" used instead of a recursive searchpairpos()
 function! s:current_top_form_bracket(closing)
     let [_b, line, col, _o] = getpos('.')
-    let flags = a:closing ? 'cnr' : 'bcnr'
-    let skip = 's:is_ignored_scope(line("."), col("."))'
-    let stopline = g:sexp_maxlines
-                   \ ? line + ((a:closing ? 1 : -1) * g:sexp_maxlines)
-                   \ : 0
-    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+    if g:sexp_maxlines < 0
+        " Recursive searchpairpos() is excruciatingly slow on a large file.
+        " This can be addressed somewhat by providing a stopline argument, but
+        " this makes the call a best-effort approach. If we are sacrificing
+        " correctness for performance, we can do even better by assuming that
+        " all opening brackets on the first column of a line are toplevel.
+        let top = 0
 
-    if topline > 0
-        return [0, topline, topcol, 0]
-    " searchpairpos() fails to find the matching closing bracket when on the
-    " outermost opening bracket and vice versa
-    elseif getline(line)[col - 1] =~ (a:closing ? s:opening_bracket : s:closing_bracket)
-        return s:nearest_bracket(a:closing)
+        " Assume we're at the top level if the current element begins on the
+        " first column
+        let [_b, l, c, _o] = s:current_element_terminal(0)
+        if l > 0 && c == 1 | let top = 1 | endif
+
+        while !top
+            let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
+            if l > 0 && c == 1
+                let top = 1
+            elseif l < 1
+                break
+            endif
+        endwhile
+
+        let closing = (top && getline(l)[c - 1] =~ s:opening_bracket)
+                      \ ? s:nearest_bracket(1)
+                      \ : [0, 0, 0, 0]
+
+        call cursor(line, col) " Restore position
+
+        return closing[1] > 0
+               \ ? (a:closing ? closing : [0, l, c, 0])
+               \ : [0, 0, 0, 0]
     else
-        return [0, 0, 0, 0]
+        let flags = a:closing ? 'cnr' : 'bcnr'
+        let skip = 's:is_ignored_scope(line("."), col("."))'
+        let stopline = g:sexp_maxlines > 0
+                       \ ? line + ((a:closing ? 1 : -1) * g:sexp_maxlines)
+                       \ : 0
+        let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+
+        if topline > 0
+            return [0, topline, topcol, 0]
+            " searchpairpos() fails to find the matching closing bracket when on the
+            " outermost opening bracket and vice versa
+        elseif getline(line)[col - 1] =~ (a:closing ? s:opening_bracket : s:closing_bracket)
+            return s:nearest_bracket(a:closing)
+        else
+            return [0, 0, 0, 0]
+        endif
     endif
 endfunction
 

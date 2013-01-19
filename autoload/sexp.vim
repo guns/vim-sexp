@@ -1118,25 +1118,28 @@ function! sexp#quote_insertion(quote)
     endif
 endfunction
 
-" Return keys to delete both backwards and forwards when on a pair of paired
-" delimiters.
+" Return keys to be inserted when deleting backwards:
+"
+"   * Delete adjacent double quotes when previous position is in a string,
+"     unless the first quote is preceded by another quote or a backslash
+"   * Delete adjacent paired brackets, unless s:is_ignored_scope is true
+"     behind the cursor
+"   * Normal backspace otherwise
 function! sexp#backspace_insertion()
     let [_b, line, col, _o] = getpos('.')
+    let l = getline(line)
+    let cur = l[col - 1]
+    let prev = l[col - 2]
 
-    if s:is_ignored_scope(line, col)
-        return "\<BS>"
+    if prev == '"' && cur == '"'
+        \ && s:syntax_match(s:string_scope, line, col - 1)
+        \ && l[col - 3] !~ '\v[\"]'
+        return "\<BS>\<Del>"
+    elseif !s:is_ignored_scope(line, col) && prev =~ s:opening_bracket && cur ==# s:pairs[prev]
+        return "\<BS>\<Del>"
     else
-        let l = getline(line)
-        let bra = l[col - 2]
-        if bra =~ s:opening_bracket || bra == '"'
-            let ket = s:pairs[bra]
-            if l[col - 1] ==# ket
-                return "\<BS>\<Del>"
-            endif
-        endif
+        return "\<BS>"
     endif
-
-    return "\<BS>"
 endfunction
 
 " Exchange the current element with an adjacent sibling element. Does nothing

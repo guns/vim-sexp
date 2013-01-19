@@ -1017,11 +1017,11 @@ endfunction
 " Return keys to be inserted in place of bra; this includes the closing pair,
 " as well as a leading and/or trailing space to separate from other elements.
 "
-" Returns bra if s:is_ignored_scope() is true behind the cursor.
+" Returns bra if s:is_ignored_scope() is true at the cursor.
 function! sexp#opening_insertion(bra)
     let [_b, line, col, _o] = getpos('.')
 
-    if s:is_ignored_scope(line, col - 1)
+    if s:is_ignored_scope(line, col)
         return a:bra
     endif
 
@@ -1054,7 +1054,7 @@ endfunction
 
 " Return keys to be inserted in place of ket:
 "
-"   * Insert ket if s:is_ignored_scope is true behind the cursor
+"   * Insert ket if s:is_ignored_scope is true at the cursor
 "   * Skip current char if equal to ket
 "   * Jump to next closing ket if current form is balanced
 "   * Insert ket if current form is unbalanced
@@ -1062,7 +1062,7 @@ function! sexp#closing_insertion(ket)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
 
-    if s:is_ignored_scope(line, col - 1)
+    if s:is_ignored_scope(line, col)
         return a:ket
     elseif char == a:ket
         return "\<Right>"
@@ -1087,14 +1087,14 @@ endfunction
 
 " Return keys to be inserted in place of quote:
 "
-"   * Insert quote if s:is_ignored_scope is true behind the cursor
+"   * Insert quote if s:is_ignored_scope is true at the cursor
 "   * If in a string, insert quote unless current char is a quote
 "   * If in a string, always insert quote if previous char is a backslash
 "   * Insert pair of quotes otherwise
 function! sexp#quote_insertion(quote)
     let [_b, line, col, _o] = getpos('.')
 
-    if s:syntax_match(s:string_scope, line, col - 1)
+    if s:syntax_match(s:string_scope, line, col)
         let l = getline(line)
         " User is trying to insert an escaped quote, so do it
         if l[col - 2] == '\'
@@ -1102,7 +1102,7 @@ function! sexp#quote_insertion(quote)
         else
             return l[col - 1] == a:quote ? "\<Right>" : a:quote
         endif
-    elseif s:is_ignored_scope(line, col - 1)
+    elseif s:is_ignored_scope(line, col)
         return a:quote
     else
         return a:quote . a:quote . "\<Left>"
@@ -1113,8 +1113,8 @@ endfunction
 "
 "   * Delete adjacent double quotes when previous position is in a string,
 "     unless the first quote is preceded by another quote or a backslash
-"   * Delete adjacent paired brackets, unless s:is_ignored_scope is true
-"     behind the cursor
+"   * Delete adjacent paired brackets, unless s:is_ignored_scope is true at
+"     the cursor
 "   * Normal backspace otherwise
 function! sexp#backspace_insertion()
     let [_b, line, col, _o] = getpos('.')
@@ -1123,7 +1123,7 @@ function! sexp#backspace_insertion()
     let prev = l[col - 2]
 
     if prev == '"' && cur == '"'
-        \ && s:syntax_match(s:string_scope, line, col - 1)
+        \ && s:syntax_match(s:string_scope, line, col)
         \ && l[col - 3] !~ '\v[\"]'
         return "\<BS>\<Del>"
     elseif !s:is_ignored_scope(line, col) && prev =~ s:opening_bracket && cur ==# s:pairs[prev]

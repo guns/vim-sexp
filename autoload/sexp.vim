@@ -1072,16 +1072,17 @@ endfunction
 "   * Insert ket if current form is unbalanced
 function! sexp#closing_insertion(ket)
     let [_b, line, col, _o] = getpos('.')
+    let char = getline(line)[col - 1]
 
     if s:is_ignored_scope(line, col - 1)
         return a:ket
-    elseif getline(line)[col - 1] == a:ket
+    elseif char == a:ket
         return "\<Right>"
     endif
 
     let bra = '\V' . s:pairs[a:ket]
     let ket = '\V' . a:ket
-    let open = s:nearest_bracket(0, bra, ket)
+    let open = char =~ s:opening_bracket ? [0, line, col, 0] : s:nearest_bracket(0, bra, ket)
 
     " No enclosing form; insert nothing
     if open[1] < 1 | return '' | endif

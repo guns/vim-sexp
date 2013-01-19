@@ -1029,11 +1029,11 @@ endfunction
 " Return keys to be inserted in place of bra; this includes the closing pair,
 " as well as a leading and/or trailing space to separate from other elements.
 "
-" Returns bra if s:is_ignored_scope() is true at the cursor.
+" Returns bra if s:is_ignored_scope() is true behind the cursor.
 function! sexp#opening_insertion(bra)
     let [_b, line, col, _o] = getpos('.')
 
-    if s:is_ignored_scope(line, col)
+    if s:is_ignored_scope(line, col - 1)
         return a:bra
     endif
 
@@ -1064,13 +1064,16 @@ function! sexp#opening_insertion(bra)
     return buf . buftail
 endfunction
 
-" Return keys to be inserted in place of ket.
+" Return keys to be inserted in place of ket:
 "
-" Returns ket if s:is_ignored_scope is true at the cursor.
+"   * Insert ket if s:is_ignored_scope is true behind the cursor
+"   * Jump to next closing ket if current form is balanced
+"   * Insert ket if current form is unbalanced
+"   * Skip char if current form is unbalanced and current char is a ket
 function! sexp#closing_insertion(ket)
-    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    let [_b, line, col, _o] = getpos('.')
 
-    if s:is_ignored_scope(cursorline, cursorcol)
+    if s:is_ignored_scope(line, col - 1)
         return a:ket
     endif
 
@@ -1091,21 +1094,27 @@ function! sexp#closing_insertion(ket)
     endif
 endfunction
 
-" Return keys to be inserted in place of quote.
+" Return keys to be inserted in place of quote:
+"
+"   * Insert quote if s:is_ignored_scope is true behind the cursor
+"   * If in a string, insert quote unless current char is a quote
+"   * If in a string, always insert quote if previous char is a backslash
+"   * Insert pair of quotes otherwise
 function! sexp#quote_insertion(quote)
     let [_b, line, col, _o] = getpos('.')
 
-    if s:syntax_match(s:string_scope, line, col)
+    if s:syntax_match(s:string_scope, line, col - 1)
         let l = getline(line)
+        " User is trying to insert an escaped quote, so do it
         if l[col - 2] == '\'
             return a:quote
         else
             return l[col - 1] == a:quote ? "\<Right>" : a:quote
         endif
-    elseif !s:is_ignored_scope(line, col)
-        return a:quote . a:quote . "\<Left>"
-    else
+    elseif s:is_ignored_scope(line, col - 1)
         return a:quote
+    else
+        return a:quote . a:quote . "\<Left>"
     endif
 endfunction
 

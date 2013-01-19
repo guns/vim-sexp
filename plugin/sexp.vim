@@ -265,6 +265,9 @@ inoremap <silent><expr> <Plug>sexp_insert_closing_round  sexp#closing_insertion(
 inoremap <silent><expr> <Plug>sexp_insert_closing_square sexp#closing_insertion(']')
 inoremap <silent><expr> <Plug>sexp_insert_closing_curly  sexp#closing_insertion('}')
 
+" Insert double quote
+inoremap <silent><expr> <Plug>sexp_insert_double_quote sexp#quote_insertion('"')
+
 " Delete paired delimiters
 inoremap <silent><expr> <Plug>sexp_insert_backspace sexp#backspace_insertion()
 
@@ -276,5 +279,6 @@ if g:sexp_enable_insert_mode_mappings
         \ 'imap <buffer> )    <Plug>sexp_insert_closing_round',
         \ 'imap <buffer> ]    <Plug>sexp_insert_closing_square',
         \ 'imap <buffer> }    <Plug>sexp_insert_closing_curly',
+        \ 'imap <buffer> "    <Plug>sexp_insert_double_quote',
         \ 'imap <buffer> <BS> <Plug>sexp_insert_backspace')
 endif

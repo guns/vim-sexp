@@ -1091,6 +1091,24 @@ function! sexp#closing_insertion(ket)
     endif
 endfunction
 
+" Return keys to be inserted in place of quote.
+function! sexp#quote_insertion(quote)
+    let [_b, line, col, _o] = getpos('.')
+
+    if s:syntax_match(s:string_scope, line, col)
+        let l = getline(line)
+        if l[col - 2] == '\'
+            return a:quote
+        else
+            return l[col - 1] == a:quote ? "\<Right>" : a:quote
+        endif
+    elseif !s:is_ignored_scope(line, col)
+        return a:quote . a:quote . "\<Left>"
+    else
+        return a:quote
+    endif
+endfunction
+
 " Return keys to delete both backwards and forwards when on a pair of paired
 " delimiters.
 function! sexp#backspace_insertion()

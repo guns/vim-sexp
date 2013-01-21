@@ -69,10 +69,10 @@ if !exists('g:sexp_mappings')
         \ 'sexp_splice_form':              '<Leader>O',
         \ 'sexp_insert_at_form_head':      '<Leader>h',
         \ 'sexp_insert_at_form_tail':      '<Leader>l',
-        \ 'sexp_swap_element_backward':    '<M-h>',
-        \ 'sexp_swap_element_forward':     '<M-l>',
-        \ 'sexp_swap_form_backward':       '<M-k>',
-        \ 'sexp_swap_form_forward':        '<M-j>',
+        \ 'sexp_swap_element_backward':    '<M-k>',
+        \ 'sexp_swap_element_forward':     '<M-j>',
+        \ 'sexp_swap_form_backward':       '<M-K>',
+        \ 'sexp_swap_form_forward':        '<M-J>',
     \ }
 endif
 

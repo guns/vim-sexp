@@ -125,7 +125,11 @@ function! s:current_top_form_bracket(closing)
         " Assume we're at the top level if the current element begins on the
         " first column
         let [_b, l, c, _o] = s:current_element_terminal(0)
-        if l > 0 && c == 1 | let top = 1 | endif
+
+        if l > 0
+            call cursor(l, c)
+            let top = c == 1
+        endif
 
         while !top
             let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
@@ -155,8 +159,8 @@ function! s:current_top_form_bracket(closing)
 
         if topline > 0
             return [0, topline, topcol, 0]
-            " searchpairpos() fails to find the matching closing bracket when on the
-            " outermost opening bracket and vice versa
+        " searchpairpos() fails to find the matching closing bracket when on the
+        " outermost opening bracket and vice versa
         elseif getline(line)[col - 1] =~# (a:closing ? s:opening_bracket : s:closing_bracket)
             return s:nearest_bracket(a:closing)
         else

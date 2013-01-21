@@ -24,9 +24,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
-" * When selecting non-atoms as elements, include all non-delimiter chars that
-"   are adjacent to them, like reader macro characters and Clojure's
-"   spacing comma.
 " * Don't delete closing bracket when parens are not balanced
 
 """ PATTERNS AND STATE {{{1
@@ -253,6 +250,37 @@ function! s:current_atom_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
+" Position of start / end of current sequence of macro metacharacters: 0
+" for start, 1 for end. Returns [0, 0, 0, 0] if not currently in a macro
+" metacharacter sequence or no macro characters are defined for the current
+" filetype.
+function! s:current_macro_character_terminal(end)
+    let macro = get(s:macro_characters, &filetype, ['', ''])[1]
+    if empty(macro) | return [0, 0, 0, 0] | endif
+
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    if getline(cursorline)[cursorcol - 1] !~ macro
+        return [0, 0, 0, 0]
+    endif
+
+    let [line, termline, termcol] = [cursorline, cursorline, cursorcol]
+
+    while 1
+        let [line, col] = s:findpos('\v.', a:end, line)
+        if line < 1 | break | endif
+
+        if getline(line)[col - 1] =~ macro
+            let [termline, termcol] = [line, col]
+            call cursor(line, col)
+        else
+            break
+        endif
+    endwhile
+
+    call cursor(cursorline, cursorcol)
+    return [0, termline, termcol, 0]
+endfunction
+
 " Position of start / end of current element: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in an element.
 "
@@ -264,20 +292,32 @@ endfunction
 function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
+    let include_macro_characters = !a:end
 
     if s:syntax_match(s:string_region, line, col)
-        return s:current_string_terminal(a:end)
+        let pos = s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
-        return s:current_comment_terminal(a:end)
+        let pos = s:current_comment_terminal(a:end)
     elseif char =~ s:bracket
-        if (a:end && char =~ s:closing_bracket)
-            \ || (!a:end && char =~ s:opening_bracket)
-            return [0, line, col, 0]
+        if (a:end && char =~ s:closing_bracket) || (!a:end && char =~ s:opening_bracket)
+            let pos = [0, line, col, 0]
         else
-            return s:nearest_bracket(a:end)
+            let pos = s:nearest_bracket(a:end)
         end
     else
-        return s:current_atom_terminal(a:end)
+        let include_macro_characters = 0
+        let pos = s:current_atom_terminal(a:end)
+    endif
+
+    if !include_macro_characters || pos[1] < 1 || pos[2] <= 1
+        return pos
+    else
+        " Move cursor to left of start position and soak up any leading macro
+        " metacharacters
+        call cursor(pos[1], pos[2] - 1)
+        let pre = s:current_macro_character_terminal(0)
+        call cursor(line, col)
+        return pre[1] > 0 ? pre : pos
     endif
 endfunction
 

@@ -308,9 +308,32 @@ function! s:current_element_terminal(end)
         else
             let pos = s:nearest_bracket(a:end)
         end
+    " We are either in a macro character sequence or in an atom
     else
-        let include_macro_characters = 0
-        let pos = s:current_atom_terminal(a:end)
+        let macro = get(s:macro_characters, &filetype, ['', ''])[1]
+        let is_macro = char =~# macro
+
+        " Let the rest of the function find the macro head
+        if is_macro && !a:end
+            let include_macro_characters = 1
+            let pos = [0, line, col, 0]
+        " Otherwise search for the attached element's tail
+        elseif is_macro
+            let include_macro_characters = 0
+            let macro_tail = s:current_macro_character_terminal(1)
+            let elem_char = getline(macro_tail[1])[macro_tail[2]]
+            if empty(elem_char) || elem_char =~# '\v\s'
+                let pos = macro_tail
+            else
+                call cursor(macro_tail[1], macro_tail[2] + 1)
+                let pos = s:current_element_terminal(1)
+                call cursor(line, col)
+            endif
+        " Finally, this is just an atom
+        else
+            let include_macro_characters = 0
+            let pos = s:current_atom_terminal(a:end)
+        endif
     endif
 
     if !include_macro_characters || pos[1] < 1 || pos[2] <= 1

@@ -288,7 +288,11 @@ endfunction
 "   * Current string if cursor is in a string
 "   * Current comment if cursor is in a comment
 "   * Current form if and only if cursor is on a paired bracket
+"   * Current sequence of macro characters and following element if cursor is
+"     on a macro char
 "   * Current atom otherwise
+"
+" An element always includes leading macro metacharacters.
 function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]

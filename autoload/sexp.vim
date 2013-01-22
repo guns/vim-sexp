@@ -1251,6 +1251,112 @@ function! sexp#backspace_insertion()
     endif
 endfunction
 
+" Capture or emit the first or last element out of or into the current form.
+" The cursor will be placed on the new bracket position, or if mode is 'v',
+" the resulting form will be selected.
+"
+" For implementation simplicity a form will never emit its last element, or
+" capture its containing form.
+function! sexp#stackop(mode, last, capture)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    let char = getline(cursorline)[cursorcol - 1]
+
+    if a:mode ==? 'v'
+        let marks = [getpos("'<"), getpos("'>")]
+        execute "normal! \<C-Bslash>\<C-n>"
+    endif
+
+    " The bracket we will be moving
+    if char !~# (a:last ? s:closing_bracket : s:opening_bracket)
+        let pos = s:move_to_nearest_bracket(a:last)
+    else
+        let pos = getpos('.')
+    endif
+
+    " goto loop
+    for _ in [0]
+        " No paired bracket found, so not in a form
+        if pos[1] < 1 | break | endif
+
+        let bracket = getline(pos[1])[pos[2] - 1]
+
+        " Not DRY and not pretty!
+        if a:capture
+            let nextpos = sexp#move_to_adjacent_element('n', a:last, 0)
+            if nextpos[1] < 1 | break | endif
+
+            " Ensure we are not trying to capture a parent form
+            if s:compare_pos(pos, s:current_element_terminal(!a:last)) == (a:last ? 1 : -1)
+                break
+            endif
+
+            " Insertion and deletion must be done from the bottom up to avoid
+            " recalculating our marks
+            if a:last
+                let nextpos = s:current_element_terminal(1)
+                call setpos('.', nextpos)
+                execute 'normal! a' . bracket . "\<Esc>"
+                call setpos('.', pos)
+                normal! dl
+                call setpos('.', s:pos_with_col_offset(nextpos, 1 + -(pos[1] == nextpos[1])))
+            else
+                call setpos('.', pos)
+                normal! dl
+                call setpos('.', nextpos)
+                execute 'normal! i' . bracket . "\<Esc>"
+            endif
+        else
+            " Move inwards onto the terminal element, then find the
+            " penultimate element, which will become the ultimate element
+            " after the move
+            let [l, c] = s:findpos('\v\S', !a:last)
+            if l < 1 | break |endif
+            call cursor(l, c)
+            if a:last | call setpos('.', s:current_element_terminal(0)) | endif
+            let nextpos = sexp#move_to_adjacent_element('n', !a:last, 0)
+            if nextpos[1] < 1 | break | end
+
+            " Ensure the new ultimate element is actually contained
+            let nextpos = s:current_element_terminal(a:last)
+            if s:compare_pos(nextpos, pos) != (a:last ? -1 : 1)
+                \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
+                break
+            endif
+
+            " Insertion and deletion must be done from the bottom up to avoid
+            " recalculating our marks
+            if a:last
+                call setpos('.', pos)
+                normal! dl
+                call setpos('.', nextpos)
+                execute 'normal! a' . bracket . "\<Esc>"
+            else
+                call setpos('.', nextpos)
+                execute 'normal! i' . bracket . "\<Esc>"
+                call setpos('.', pos)
+                normal! dl
+                call setpos('.', s:pos_with_col_offset(nextpos, -(pos[1] == nextpos[1])))
+            endif
+        endif
+
+        if a:mode =~? 'v'
+            call sexp#select_current_form('n', 0)
+        endif
+
+        " No errors, don't jump to cleanup
+        return
+    endfor
+
+    " Cleanup after error
+    if a:mode ==? 'v'
+        call setpos("'<", marks[0])
+        call setpos("'>", marks[1])
+        normal! gv
+    else
+        call cursor(cursorline, cursorcol)
+    endif
+endfunction
+
 " Exchange the current element with an adjacent sibling element. Does nothing
 " if there is no current or sibling element.
 "

@@ -73,6 +73,10 @@ if !exists('g:sexp_mappings')
         \ 'sexp_swap_element_forward':     '<M-j>',
         \ 'sexp_swap_form_backward':       '<M-K>',
         \ 'sexp_swap_form_forward':        '<M-J>',
+        \ 'sexp_emit_first_element':       '<M-h>',
+        \ 'sexp_emit_last_element':        '<M-l>',
+        \ 'sexp_capture_prev_element':     '<M-H>',
+        \ 'sexp_capture_next_element':     '<M-L>',
     \ }
 endif
 
@@ -242,6 +246,16 @@ nnoremap <silent> <Plug>sexp_swap_form_backward :<C-u>call sexp#swap_element('n'
 vnoremap <silent> <Plug>sexp_swap_form_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 1)<CR>
 nnoremap <silent> <Plug>sexp_swap_form_forward  :<C-u>call sexp#swap_element('n', 1, 1)<CR>
 vnoremap <silent> <Plug>sexp_swap_form_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 1)<CR>
+
+" Emit / capture element
+nnoremap <silent> <Plug>sexp_emit_first_element   :<C-u>call sexp#docount("sexp#stackop('n', 0, 0)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_emit_first_element   :<C-u>call sexp#docount("sexp#stackop('v', 0, 0)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_emit_last_element    :<C-u>call sexp#docount("sexp#stackop('n', 1, 0)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_emit_last_element    :<C-u>call sexp#docount("sexp#stackop('v', 1, 0)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_capture_prev_element :<C-u>call sexp#docount("sexp#stackop('n', 0, 1)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_capture_prev_element :<C-u>call sexp#docount("sexp#stackop('v', 0, 1)", v:count)<CR>
+nnoremap <silent> <Plug>sexp_capture_next_element :<C-u>call sexp#docount("sexp#stackop('n', 1, 1)", v:count)<CR>
+vnoremap <silent> <Plug>sexp_capture_next_element :<C-u>call sexp#docount("sexp#stackop('v', 1, 1)", v:count)<CR>
 
 if !empty(g:sexp_mappings)
     for s:plug in keys(g:sexp_mappings)

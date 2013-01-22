@@ -69,10 +69,10 @@ if !exists('g:sexp_mappings')
         \ 'sexp_splice_form':              '<Leader>O',
         \ 'sexp_insert_at_form_head':      '<Leader>h',
         \ 'sexp_insert_at_form_tail':      '<Leader>l',
-        \ 'sexp_swap_element_backward':    '<M-k>',
-        \ 'sexp_swap_element_forward':     '<M-j>',
-        \ 'sexp_swap_form_backward':       '<M-K>',
-        \ 'sexp_swap_form_forward':        '<M-J>',
+        \ 'sexp_swap_form_backward':       '<M-k>',
+        \ 'sexp_swap_form_forward':        '<M-j>',
+        \ 'sexp_swap_element_backward':    '<M-K>',
+        \ 'sexp_swap_element_forward':     '<M-J>',
         \ 'sexp_capture_prev_element':     '<M-h>',
         \ 'sexp_capture_next_element':     '<M-l>',
         \ 'sexp_emit_first_element':       '<M-H>',
@@ -235,17 +235,17 @@ vnoremap <silent> <Plug>sexp_insert_at_form_head :<C-u>call sexp#insert_at_form_
 nnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
 vnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
 
-" Exchange element
-nnoremap <silent> <Plug>sexp_swap_element_backward :<C-u>call sexp#swap_element('n', 0, 0)<CR>
-vnoremap <silent> <Plug>sexp_swap_element_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 0)<CR>
-nnoremap <silent> <Plug>sexp_swap_element_forward  :<C-u>call sexp#swap_element('n', 1, 0)<CR>
-vnoremap <silent> <Plug>sexp_swap_element_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 0)<CR>
-
 " Exchange form
 nnoremap <silent> <Plug>sexp_swap_form_backward :<C-u>call sexp#swap_element('n', 0, 1)<CR>
 vnoremap <silent> <Plug>sexp_swap_form_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 1)<CR>
 nnoremap <silent> <Plug>sexp_swap_form_forward  :<C-u>call sexp#swap_element('n', 1, 1)<CR>
 vnoremap <silent> <Plug>sexp_swap_form_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 1)<CR>
+
+" Exchange element
+nnoremap <silent> <Plug>sexp_swap_element_backward :<C-u>call sexp#swap_element('n', 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_swap_element_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 0)<CR>
+nnoremap <silent> <Plug>sexp_swap_element_forward  :<C-u>call sexp#swap_element('n', 1, 0)<CR>
+vnoremap <silent> <Plug>sexp_swap_element_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 0)<CR>
 
 " Emit / capture element
 nnoremap <silent> <Plug>sexp_capture_prev_element :<C-u>call sexp#docount("sexp#stackop('n', 0, 1)", v:count)<CR>

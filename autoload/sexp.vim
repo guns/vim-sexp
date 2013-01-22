@@ -1362,12 +1362,10 @@ endfunction
 "
 " If form equals 1, the current form is treated as the current element.
 "
-" If mode equals 'v', the current selection is expanded to include any
-" partially selected elements, then is swapped with the next element as a
-" unit. The marks are set to the new position and visual mode is re-entered.
-"
-" If mode equals 'v' and form equals 1, then (for implementation simplicity)
-" the form at the cursor position at time call is used as the selection.
+" If mode equals 'v' (regardless of the value of form), the current selection
+" is expanded to include any partially selected elements, then is swapped with
+" the next element as a unit. The marks are set to the new position and visual
+" mode is re-entered.
 "
 " Note that swapping comments with other elements can lead to structural
 " imbalance since trailing brackets may be included as part of a comment after
@@ -1382,17 +1380,15 @@ function! sexp#swap_element(mode, next, form)
     let visual = a:mode ==? 'v'
     let cursor = getpos('.')
 
-    if visual
-        let vmarks = [getpos("'<"), getpos("'>")]
-    endif
-
     " Extend both ends of visual selection to nearest element. If there exist
     " any unpaired brackets in the resulting selection, the selection is
     " extended to include those forms.
     "
     " Moving formwise with a:mode 'v' will be treated like a regular formwise
     " swap from the cursor position.
-    if visual && !a:form
+    if visual
+        let vmarks = [getpos("'<"), getpos("'>")]
+
         call setpos('.', vmarks[0])
         if getline(vmarks[0][1])[vmarks[0][2] - 1] =~# '\v\s'
             call sexp#move_to_adjacent_element('n', 1, 0)

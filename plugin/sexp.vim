@@ -71,12 +71,12 @@ if !exists('g:sexp_mappings')
         \ 'sexp_insert_at_form_tail':      '<Leader>l',
         \ 'sexp_swap_form_backward':       '<M-k>',
         \ 'sexp_swap_form_forward':        '<M-j>',
-        \ 'sexp_swap_element_backward':    '<M-K>',
-        \ 'sexp_swap_element_forward':     '<M-J>',
-        \ 'sexp_capture_prev_element':     '<M-h>',
-        \ 'sexp_capture_next_element':     '<M-l>',
-        \ 'sexp_emit_first_element':       '<M-H>',
-        \ 'sexp_emit_last_element':        '<M-L>',
+        \ 'sexp_swap_element_backward':    '<M-h>',
+        \ 'sexp_swap_element_forward':     '<M-l>',
+        \ 'sexp_capture_prev_element':     '<Leader>H',
+        \ 'sexp_capture_next_element':     '<Leader>L',
+        \ 'sexp_emit_first_element':       '<Leader><M-h>',
+        \ 'sexp_emit_last_element':        '<Leader><M-l>',
     \ }
 endif
 

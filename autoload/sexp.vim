@@ -24,7 +24,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
-" * Don't delete closing bracket when parens are not balanced
 
 """ PATTERNS AND STATE {{{1
 

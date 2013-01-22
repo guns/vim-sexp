@@ -1267,6 +1267,7 @@ function! sexp#stackop(mode, last, capture)
 
     " The bracket we will be moving
     if char !~# (a:last ? s:closing_bracket : s:opening_bracket)
+        \ || s:syntax_match(s:ignored_region, cursorline, cursorcol)
         let pos = s:move_to_nearest_bracket(a:last)
     else
         let pos = getpos('.')

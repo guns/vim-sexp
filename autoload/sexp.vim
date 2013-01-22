@@ -24,6 +24,10 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
+" * Implement move-to-next-element-terminal
+" * Element selection should include trailing commas in Clojure
+" * Handle counts for swap; should specify the number of adjacent elements to
+"   swap with
 
 """ PATTERNS AND STATE {{{1
 

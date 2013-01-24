@@ -57,32 +57,38 @@ let s:pairs = {
 
 """ QUERIES AT CURSOR {{{1
 
-" Like searchpos(), return first pattern match from cursor as [line, col].
-" Unlike searchpos(), searching backward when the cursor is on a multibyte
-" character does not move the cursor too far.
-"
-" cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
-"
-" One extra argument may be supplied: the stopline parameter of searchpos().
-function! s:findpos(pattern, next, ...)
-    if a:next
-        let [line, col] = searchpos(a:pattern, 'nW', a:0 ? a:1 : 0)
-    else
-        let [_b, line, col, _o] = getpos('.')
-        let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
-        " Bug only occurs when match is on same line
-        let possible = sline == line
-                       \ && &encoding ==? 'utf-8'
-                       \ && char2nr(getline(sline)[scol - 1]) > 0x7f
-        if possible && s:is_backward_multibyte_search_broken()
-            let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
+if has('patch779')
+    function! s:findpos(pattern, next, ...)
+        return searchpos(a:pattern, a:next ? 'nW' : 'bnW', a:0 ? a:1 : 0)
+    endfunction
+else
+    " Like searchpos(), return first pattern match from cursor as [line, col].
+    " Unlike searchpos(), searching backward when the cursor is on a multibyte
+    " character does not move the cursor too far.
+    "
+    " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
+    "
+    " The stopline parameter of searchpos() may also optionally be supplied.
+    function! s:findpos(pattern, next, ...)
+        if a:next
+            let [line, col] = searchpos(a:pattern, 'nW', a:0 ? a:1 : 0)
         else
-            let [line, col] = [sline, scol]
+            let [_b, line, col, _o] = getpos('.')
+            let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
+            " Bug only occurs when match is on same line
+            let possible = sline == line
+                \ && &encoding ==? 'utf-8'
+                \ && char2nr(getline(sline)[scol - 1]) > 0x7f
+            if possible && s:is_backward_multibyte_search_broken()
+                let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
+            else
+                let [line, col] = [sline, scol]
+            endif
         endif
-    endif
 
-    return [line, col]
-endfunction
+        return [line, col]
+    endfunction
+endif
 
 " Position of nearest paired bracket: 0 for opening, 1 for closing. Returns
 " [0, 0, 0, 0] if none found.
@@ -542,20 +548,22 @@ endfunction
 """ PREDICATES AND COMPARATORS {{{1
 
 " See discussion at s:findpos()
-function! s:is_backward_multibyte_search_broken()
-    if exists('s:backward_multibyte_search_is_broken')
-        return s:backward_multibyte_search_is_broken
-    else
-        let cursor = getpos('.')
-        silent! call append(cursor[1], '123❤sexp-bugcheck')
-        call cursor(cursor[1] + 1, 4)
-        let s:backward_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
-        " FIXME: Remove this undo leaf!
-        silent! normal! u
-        call setpos('.', cursor)
-        return s:backward_multibyte_search_is_broken
-    endif
-endfunction
+if !has('patch779')
+    function! s:is_backward_multibyte_search_broken()
+        if exists('s:backward_multibyte_search_is_broken')
+            return s:backward_multibyte_search_is_broken
+        else
+            let cursor = getpos('.')
+            silent! call append(cursor[1], '123❤sexp-bugcheck')
+            call cursor(cursor[1] + 1, 4)
+            let s:backward_multibyte_search_is_broken = searchpos('\v.', 'b')[1] != 3
+            " FIXME: Remove this undo leaf!
+            silent! normal! u
+            call setpos('.', cursor)
+            return s:backward_multibyte_search_is_broken
+        endif
+    endfunction
+endif
 
 " Returns 1 if character at position is in a comment, or is in the whitespace
 " between two line comments.

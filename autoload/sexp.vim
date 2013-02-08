@@ -77,8 +77,8 @@ else
             let [sline, scol] = searchpos(a:pattern, 'bnW', a:0 ? a:1 : 0)
             " Bug only occurs when match is on same line
             let possible = sline == line
-                \ && &encoding ==? 'utf-8'
-                \ && char2nr(getline(sline)[scol - 1]) > 0x7f
+                           \ && &encoding ==? 'utf-8'
+                           \ && char2nr(getline(sline)[scol - 1]) > 0x7f
             if possible && s:is_backward_multibyte_search_broken()
                 let col = scol + byteidx(getline(line), virtcol('.')) - col('.')
             else
@@ -1430,8 +1430,8 @@ function! sexp#swap_element(mode, next, form)
         " Check element end in case we are on leading macro chars
         let pos = s:current_element_terminal(1)
         let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~ s:closing_bracket)
-            \ ? pos
-            \ : s:nearest_bracket(1)
+                   \ ? pos
+                   \ : s:nearest_bracket(1)
         if tail[1] < 1
             let selected = 0
         else

@@ -518,7 +518,13 @@ function! s:bracket_count(start, end, all_brackets, opening_brackets)
     call setpos('.', a:start)
     while 1
         let [line, col] = searchpos(a:all_brackets, 'cW')
-        if s:syntax_match(s:ignored_region, line, col) | break | endif
+
+        " Start next iteration from end of ignored scope if necessary
+        if s:syntax_match(s:ignored_region, line, col)
+            call setpos('.', s:current_element_terminal(1))
+            continue
+        endif
+
         let cmp = s:compare_pos([0, line, col, 0], a:end)
         if cmp > 0 | break | endif
 

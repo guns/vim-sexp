@@ -1387,8 +1387,8 @@ function! sexp#swap_element(mode, next, form)
     " any unpaired brackets in the resulting selection, the selection is
     " extended to include those forms.
     "
-    " Moving formwise with a:mode 'v' will be treated like a regular formwise
-    " swap from the cursor position.
+    " Moving formwise with a:mode 'v' will be treated like a regular
+    " element-wise swap.
     if visual
         let vmarks = [getpos("'<"), getpos("'>")]
 
@@ -1427,21 +1427,7 @@ function! sexp#swap_element(mode, next, form)
         let selected = s:select_current_marks('v')
     " Otherwise select the current form (with leading macro chars) or element
     elseif a:form
-        call setpos('.', s:current_element_terminal(1))
-        let cpos = getpos('.')
-        let tail = getline(cpos[1])[cpos[2] - 1] =~ s:closing_bracket
-                   \ ? cpos
-                   \ : s:nearest_bracket(1)
-
-        if tail[1] < 1
-            let selected = 0
-        else
-            call setpos('.', tail)
-            call setpos("'<", s:current_element_terminal(0))
-            call setpos("'>", tail)
-            call setpos('.', cursor)
-            let selected = s:select_current_marks('o')
-        endif
+        let selected = sexp#select_current_form('o', 0)
     else
         let selected = sexp#select_current_element('o', 1)
     endif

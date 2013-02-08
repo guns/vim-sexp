@@ -32,7 +32,7 @@ let g:sexp_autoloaded = 1
 """ PATTERNS AND STATE {{{1
 
 if !exists('g:sexp_maxlines')
-    let g:sexp_maxlines = -1
+    let g:sexp_maxlines = -1 " Use fast best-effort top form search
 endif
 
 let s:countindex = 0 " Stores current count index during sexp#docount
@@ -1108,16 +1108,7 @@ endfunction
 " a leading space after opening bracket if inserting at head, unless there
 " already is one.
 function! sexp#insert_at_form_terminal(end)
-    let cursor = getpos('.')
-    let char = getline(cursor[1])[cursor[2] - 1]
-    let on_bracket = (a:end && char =~# s:closing_bracket)
-                     \ || (!a:end && char =~# s:opening_bracket)
-
-    if on_bracket && !s:syntax_match(s:ignored_region, cursor[1], cursor[2])
-        let pos = cursor
-    else
-        let pos = s:move_to_nearest_bracket(a:end)
-    endif
+    let pos = s:move_to_nearest_bracket(a:end)
 
     " Handle opening bracket edge cases
     if !a:end && pos[1] > 0

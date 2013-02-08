@@ -1427,7 +1427,17 @@ function! sexp#swap_element(mode, next, form)
         let selected = s:select_current_marks('v')
     " Otherwise select the current form (with leading macro chars) or element
     elseif a:form
-        let selected = sexp#select_current_form('o', 0)
+        " Check element end in case we are on leading macro chars
+        let pos = s:current_element_terminal(1)
+        let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~ s:closing_bracket)
+            \ ? pos
+            \ : s:nearest_bracket(1)
+        if tail[1] < 1
+            let selected = 0
+        else
+            call setpos('.', tail)
+            let selected = sexp#select_current_element('o', 1)
+        endif
     else
         let selected = sexp#select_current_element('o', 1)
     endif

@@ -43,7 +43,7 @@ let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|char'
 let s:macro_characters = {
-    \ 'clojure': ['#', "\\v[#'`~@^]"],
+    \ 'clojure': ['#', "\\v[#'`~@^_=]"],
 \ }
 let s:pairs = {
     \ '(': ')',

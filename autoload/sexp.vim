@@ -878,11 +878,12 @@ function! s:set_marks_around_adjacent_element(mode, next)
     call setpos('.', cursor)
 endfunction
 
-" Enter visual mode with current visual marks, unless '< is invalid and
-" mode equals 'o'
+" Enter characterwise visual mode with current visual marks, unless '< is
+" invalid and mode equals 'o'.
 function! s:select_current_marks(mode)
     if getpos("'<")[1] > 0
         normal! gv
+        if visualmode() !=# 'v' | execute 'normal! v' | endif
         return 1
     elseif a:mode !=? 'o'
         normal! v
@@ -1044,11 +1045,12 @@ function! sexp#move_to_adjacent_element(mode, next, top)
         if omode
             call setpos("'<", pos)
             call setpos("'>", end)
-            normal! gvo
+            call s:select_current_marks('v')
+            normal! o
         else
             call setpos("'<", start)
             call setpos("'>", pos)
-            normal! gv
+            call s:select_current_marks('v')
         endif
     else
         call setpos('.', pos)
@@ -1491,11 +1493,13 @@ function! sexp#swap_element(mode, next, form)
 
     call setpos("'<", marks[b]['start'])
     call setpos("'>", marks[b]['end'  ])
-    execute 'normal! gv"' . a . 'p'
+    call s:select_current_marks('v')
+    execute 'normal! "' . a . 'p'
 
     call setpos("'<", marks[a]['start'])
     call setpos("'>", marks[a]['end'  ])
-    execute 'normal! gv"' . b . 'p'
+    call s:select_current_marks('v')
+    execute 'normal! "' . b . 'p'
 
     " Set marks around next element using the ^B and ^C markers
     if a:next
@@ -1513,7 +1517,7 @@ function! sexp#swap_element(mode, next, form)
     endif
 
     if visual
-        normal! gv
+        call s:select_current_marks('v')
     elseif a:next
         call setpos('.', getpos("'<"))
     else

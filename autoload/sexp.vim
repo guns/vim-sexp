@@ -28,6 +28,7 @@ let g:sexp_autoloaded = 1
 " * Element selection should include trailing commas in Clojure
 " * Handle counts for swap; should specify the number of adjacent elements to
 "   swap with
+" * Indenting with a motion should not move the cursor
 
 """ PATTERNS AND STATE {{{1
 

@@ -767,23 +767,28 @@ function! s:set_marks_around_current_string(mode, offset)
     endif
 endfunction
 
-" Set visual marks '< and '> to the start and end of the current comment.
+" Set visual marks '< and '> to the start and end of the current scope
+" determined by scopefunc, which should be the name of a referentially pure
+" function that returns the start of scope when called with 0, and the end of
+" scope when called with 1.
+"
 " If inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
 "
-" Will set both to [0, 0, 0, 0] if not currently in a comment and mode does
-" not equal 'v'.
-function! s:set_marks_around_current_comment(mode, inner)
+" Will set both marks to [0, 0, 0, 0] if calls to funcref return invalid
+" positions and mode does not equal 'v'.
+function! s:set_marks_around_current_scope(scopefunc, mode, inner)
     let start = [0, 0, 0, 0]
-    let end = s:current_comment_terminal(1)
-
+    let end = eval(a:scopefunc . '(1)')
     if end[1] > 0
-        let start = s:current_comment_terminal(0)
-    else
+        let start = eval(a:scopefunc . '(0)')
+    endif
+
+    if start[1] < 1 || end[1] < 1
         if a:mode !=? 'v'
             call s:clear_visual_marks()
         endif
-        return
+        return 0
     endif
 
     if !a:inner
@@ -792,6 +797,17 @@ function! s:set_marks_around_current_comment(mode, inner)
 
     call setpos("'<", start)
     call setpos("'>", end)
+    return 1
+endfunction
+
+" Set visual marks '< and '> to the start and end of the current comment.
+" If inner is 0, trailing or leading whitespace is included by way of
+" s:terminals_with_whitespace().
+"
+" Will set both to [0, 0, 0, 0] if not currently in a comment and mode does
+" not equal 'v'.
+function! s:set_marks_around_current_comment(mode, inner)
+    return s:set_marks_around_current_scope('s:current_comment_terminal', a:mode, a:inner)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current atom.
@@ -801,24 +817,17 @@ endfunction
 " Will set both to [0, 0, 0, 0] if not currently in an atom and mode does
 " not equal 'v'.
 function! s:set_marks_around_current_atom(mode, inner)
-    let start = [0, 0, 0, 0]
-    let end = s:current_atom_terminal(1)
+    return s:set_marks_around_current_scope('s:current_atom_terminal', a:mode, a:inner)
+endfunction
 
-    if end[1] > 0
-        let start = s:current_atom_terminal(0)
-    else
-        if a:mode !=? 'v'
-            call s:clear_visual_marks()
-        endif
-        return
-    endif
-
-    if !a:inner
-        let [start, end] = s:terminals_with_whitespace(start, end)
-    endif
-
-    call setpos("'<", start)
-    call setpos("'>", end)
+" Set visual marks '< and '> to the start and end of the current macro
+" character sequence. If inner is 0, trailing or leading whitespace is
+" included by way of s:terminals_with_whitespace().
+"
+" Will set both to [0, 0, 0, 0] if not currently in a macro character sequence
+" and mode does not equal 'v'.
+function! s:set_marks_around_current_macro_characters(mode, inner)
+    return s:set_marks_around_current_scope('s:current_macro_character_terminal', a:mode, a:inner)
 endfunction
 
 " Set visual marks '< and '> to the start and end of the current element.

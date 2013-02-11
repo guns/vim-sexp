@@ -830,16 +830,6 @@ function! s:set_marks_around_current_atom(mode, inner)
     return s:set_marks_around_current_scope('s:current_atom_terminal', a:mode, a:inner)
 endfunction
 
-" Set visual marks '< and '> to the start and end of the current macro
-" character sequence. If inner is 0, trailing or leading whitespace is
-" included by way of s:terminals_with_whitespace().
-"
-" Will set both to [0, 0, 0, 0] if not currently in a macro character sequence
-" and mode does not equal 'v'.
-function! s:set_marks_around_current_macro_characters(mode, inner)
-    return s:set_marks_around_current_scope('s:current_macro_character_terminal', a:mode, a:inner)
-endfunction
-
 " Set visual marks '< and '> to the start and end of the current element.
 " If inner is 0, trailing or leading whitespace is included by way
 " of s:terminals_with_whitespace().

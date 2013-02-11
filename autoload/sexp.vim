@@ -1286,7 +1286,7 @@ function! sexp#stackop(mode, last, capture)
         execute "normal! \<C-Bslash>\<C-n>"
     endif
 
-    " The bracket we will be moving
+    " Move to the terminal of the current form
     if char !~# (a:last ? s:closing_bracket : s:opening_bracket)
         \ || s:syntax_match(s:ignored_region, cursorline, cursorcol)
         let pos = s:move_to_nearest_bracket(a:last)
@@ -1294,7 +1294,7 @@ function! sexp#stackop(mode, last, capture)
         let pos = getpos('.')
     endif
 
-    " goto loop
+    " This is a goto disguised as a foreach loop.
     for _ in [0]
         " No paired bracket found, so not in a form
         if pos[1] < 1 | break | endif
@@ -1447,7 +1447,7 @@ function! sexp#swap_element(mode, next, form)
     elseif a:form
         " Check element end in case we are on leading macro chars
         let pos = s:current_element_terminal(1)
-        let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~ s:closing_bracket)
+        let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
                    \ ? pos
                    \ : s:nearest_bracket(1)
         if tail[1] < 1

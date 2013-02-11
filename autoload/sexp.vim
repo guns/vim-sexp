@@ -526,7 +526,7 @@ function! s:bracket_count(start, end, all_brackets, opening_brackets)
 
         " Start next iteration from end of ignored scope if necessary
         if s:syntax_match(s:ignored_region, line, col)
-            call setpos('.', s:current_element_terminal(1))
+            call s:move_to_current_element_terminal(1)
             continue
         endif
 
@@ -635,7 +635,7 @@ endfunction
 
 """ CURSOR MOVEMENT {{{1
 
-" Tries to move cursor to nearest paired bracket, returning its position
+" Tries to move cursor to nearest paired bracket, returning its position.
 function! s:move_to_nearest_bracket(closing)
     let pos = s:nearest_bracket(a:closing)
     if pos[1] > 0 | call setpos('.', pos) | endif
@@ -647,6 +647,13 @@ endfunction
 " if not in a form.
 function! s:move_to_top_bracket(closing)
     let pos = s:current_top_form_bracket(a:closing)
+    if pos[1] > 0 | call setpos('.', pos) | endif
+    return pos
+endfunction
+
+" Tries to move cursor to current element terminal, returning its position.
+function! s:move_to_current_element_terminal(closing)
+    let pos = s:current_element_terminal(a:closing)
     if pos[1] > 0 | call setpos('.', pos) | endif
     return pos
 endfunction
@@ -889,8 +896,7 @@ function! s:set_marks_around_adjacent_element(mode, next)
     " If moving backward, first position ourselves at the head of the current
     " element.
     if !a:next
-        let head = s:current_element_terminal(0)
-        if head[1] > 0 | call setpos('.', head) | endif
+        call s:move_to_current_element_terminal(0)
     endif
 
     call sexp#move_to_adjacent_element('n', a:next, 0)

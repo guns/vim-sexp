@@ -43,7 +43,7 @@ let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|char'
-let s:macro_characters = {
+let s:macro_filetype_characters = {
     \ 'clojure': ['#', "\\v[#'`~@^_=]"],
 \ }
 let s:pairs = {
@@ -55,6 +55,10 @@ let s:pairs = {
     \ '}': '{',
     \ '"': '"'
 \ }
+
+function! s:macro_chars()
+    return get(s:macro_filetype_characters, &filetype, ['', ''])
+endfunction
 
 """ QUERIES AT CURSOR {{{1
 
@@ -269,7 +273,7 @@ endfunction
 " metacharacter sequence or no macro characters are defined for the current
 " filetype.
 function! s:current_macro_character_terminal(end)
-    let macro = get(s:macro_characters, &filetype, ['', ''])[1]
+    let macro = s:macro_chars()[1]
     if empty(macro) | return [0, 0, 0, 0] | endif
 
     let [_b, cursorline, cursorcol, _o] = getpos('.')
@@ -324,7 +328,7 @@ function! s:current_element_terminal(end)
         end
     " We are either in a macro character sequence or in an atom
     else
-        let macro = get(s:macro_characters, &filetype, ['', ''])[1]
+        let macro = s:macro_chars()[1]
         let is_macro = char =~# macro
 
         " Let the rest of the function find the macro head
@@ -1164,7 +1168,7 @@ function! sexp#opening_insertion(bra)
     let cur = l[col - 1]
     let prev = l[col - 2]
     let pprev = l[col - 3]
-    let [dispatch, macro] = get(s:macro_characters, &filetype, ['', ''])
+    let [dispatch, macro] = s:macro_chars()
 
     let buf = ''
     let buftail = ''

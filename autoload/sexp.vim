@@ -328,8 +328,7 @@ function! s:current_element_terminal(end)
         end
     " We are either in a macro character sequence or in an atom
     else
-        let macro = s:macro_chars()[1]
-        let is_macro = char =~# macro
+        let is_macro = char =~# s:macro_chars()[1]
 
         " Let the rest of the function find the macro head
         if is_macro && !a:end

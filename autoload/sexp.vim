@@ -1279,26 +1279,34 @@ endfunction
 function! sexp#stackop(mode, last, capture)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     let char = getline(cursorline)[cursorcol - 1]
+    let reg_save = @b
 
     if a:mode ==? 'v'
         let marks = [getpos("'<"), getpos("'>")]
         execute "normal! \<C-Bslash>\<C-n>"
     endif
 
-    " Move to the terminal of the current form
-    if char !~# (a:last ? s:closing_bracket : s:opening_bracket)
-        \ || s:syntax_match(s:ignored_region, cursorline, cursorcol)
-        let pos = s:move_to_nearest_bracket(a:last)
-    else
-        let pos = getpos('.')
-    endif
-
     " This is a goto disguised as a foreach loop.
     for _ in [0]
+        " Move to element tail first so we can find leading macro chars
+        let pos = s:move_to_current_element_terminal(1)
+        let pos = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
+                  \ ? pos
+                  \ : s:move_to_nearest_bracket(1)
+
         " No paired bracket found, so not in a form
         if pos[1] < 1 | break | endif
 
-        let bracket = getline(pos[1])[pos[2] - 1]
+        if a:last
+            let bpos = pos
+            let @b = getline(pos[1])[pos[2] - 1]
+        else
+            let bpos = s:move_to_nearest_bracket(0)
+            let pos = s:move_to_current_element_terminal(0)
+            let @b = getline(pos[1])[pos[2] - 1 : bpos[2] - 1]
+        endif
+
+        let blen = len(@b)
 
         " Not DRY and not pretty!
         if a:capture
@@ -1315,24 +1323,26 @@ function! sexp#stackop(mode, last, capture)
             if a:last
                 let nextpos = s:current_element_terminal(1)
                 call setpos('.', nextpos)
-                execute 'normal! a' . bracket . "\<Esc>"
+                execute 'normal! "bp'
                 call setpos('.', pos)
-                normal! dl
+                execute 'normal! "_d' . blen . 'l'
                 call setpos('.', s:pos_with_col_offset(nextpos, 1 + -(pos[1] == nextpos[1])))
             else
                 call setpos('.', pos)
-                normal! dl
+                execute 'normal! "_d' . blen . 'l'
                 call setpos('.', nextpos)
-                execute 'normal! i' . bracket . "\<Esc>"
+                execute 'normal! "bP'
+                if blen > 1 | execute 'normal! ' . (blen - 1) . 'h' | endif
             endif
         else
             " Move inwards onto the terminal element, then find the
             " penultimate element, which will become the ultimate element
             " after the move
+            call setpos('.', bpos)
             let [l, c] = s:findpos('\v\S', !a:last)
-            if l < 1 | break |endif
+            if l < 1 | break | endif
             call cursor(l, c)
-            if a:last | call setpos('.', s:current_element_terminal(0)) | endif
+            if a:last | call s:move_to_current_element_terminal(0) | endif
             let nextpos = sexp#move_to_adjacent_element('n', !a:last, 0)
             if nextpos[1] < 1 | break | end
 
@@ -1347,15 +1357,15 @@ function! sexp#stackop(mode, last, capture)
             " recalculating our marks
             if a:last
                 call setpos('.', pos)
-                normal! dl
+                execute 'normal! "_d' . blen . 'l'
                 call setpos('.', nextpos)
-                execute 'normal! a' . bracket . "\<Esc>"
+                execute 'normal! "bp'
             else
                 call setpos('.', nextpos)
-                execute 'normal! i' . bracket . "\<Esc>"
+                execute 'normal! "bP'
                 call setpos('.', pos)
-                normal! dl
-                call setpos('.', s:pos_with_col_offset(nextpos, -(pos[1] == nextpos[1])))
+                execute 'normal! "_d' . blen . 'l'
+                call setpos('.', s:pos_with_col_offset(nextpos, -(pos[1] == nextpos[1]) - blen + 1))
             endif
         endif
 
@@ -1364,10 +1374,12 @@ function! sexp#stackop(mode, last, capture)
         endif
 
         " No errors, don't jump to cleanup
+        let @b = reg_save
         return
     endfor
 
     " Cleanup after error
+    let @b = reg_save
     if a:mode ==? 'v'
         call setpos("'<", marks[0])
         call setpos("'>", marks[1])

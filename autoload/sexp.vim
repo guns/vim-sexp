@@ -57,7 +57,7 @@ let s:pairs = {
 \ }
 
 function! s:macro_chars()
-    return get(s:macro_filetype_characters, &filetype, ['', ''])
+    return get(s:macro_filetype_characters, &filetype, [0x00, 0x00])
 endfunction
 
 """ QUERIES AT CURSOR {{{1

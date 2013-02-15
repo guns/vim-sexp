@@ -789,9 +789,9 @@ endfunction
 " positions and mode does not equal 'v'.
 function! s:set_marks_around_current_scope(scopefunc, mode, inner)
     let start = [0, 0, 0, 0]
-    let end = eval(a:scopefunc . '(1)')
+    let end = call(a:scopefunc, 1)
     if end[1] > 0
-        let start = eval(a:scopefunc . '(0)')
+        let start = call(a:scopefunc, 0)
     endif
 
     if start[1] < 1 || end[1] < 1

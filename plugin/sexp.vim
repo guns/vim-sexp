@@ -41,6 +41,8 @@ if !exists('g:sexp_textobj_mappings')
         \ 'comment':                          'c',
         \ 'atom':                             '',
         \ 'element':                          'e',
+        \ 'prev_bracket':                     '(',
+        \ 'next_bracket':                     ')',
         \ 'prev_element':                     '[w',
         \ 'next_element':                     ']w',
         \ 'prev_top_element':                 '[[',
@@ -133,11 +135,19 @@ onoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_curren
 vnoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('v', 1)<CR>
 onoremap <silent> <Plug>sexp_textobj_inner_element :<C-u>call sexp#select_current_element('o', 1)<CR>
 
-" Adjacent element
+" Form terminal
 "
 " Note that Ctrl-\_Ctrl-N breaks us directly out of visual mode into normal
 " mode without setting the cursor position to '<. This is necessary to detect
 " which end the user is using to adjust the selection.
+nnoremap <silent> <Plug>sexp_textobj_prev_bracket :<C-u>call sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_bracket <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_prev_bracket :<C-u>call sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 0)<CR>
+nnoremap <silent> <Plug>sexp_textobj_next_bracket :<C-u>call sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_bracket <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_next_bracket :<C-u>call sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 1)<CR>
+
+" Adjacent element
 nnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0)<CR>
 vnoremap <silent> <Plug>sexp_textobj_prev_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0)<CR>
 onoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0)<CR>
@@ -177,7 +187,9 @@ if !empty('g:sexp_textobj_mappings')
         endif
     endfor
 
-    for s:key in ['next_element', 'prev_element', 'prev_top_element', 'next_top_element',
+    for s:key in ['prev_bracket', 'next_bracket',
+                \ 'prev_element', 'next_element',
+                \ 'prev_top_element', 'next_top_element',
                 \ 'exclusive_prev_element_selection', 'exclusive_next_element_selection']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(

@@ -1080,6 +1080,19 @@ function! sexp#select_adjacent_element(mode, next)
     return s:select_current_marks(a:mode)
 endfunction
 
+" Move cursor to current form's terminal bracket, returning its position; 0
+" for previous, 1 for next. If currently on an opening or closing bracket and
+" moving backward or forward (respectively), cursor is moved to enclosing
+" form's terminal bracket.
+"
+" If there is no enclosing form, the cursor is not moved and [0, 0, 0, 0] is
+" returned.
+function! sexp#move_to_nearest_bracket(mode, next)
+    return a:mode ==? 'v'
+           \ ? s:move_cursor_extending_selection('s:move_to_nearest_bracket', a:next)
+           \ : s:move_to_nearest_bracket(a:next)
+endfunction
+
 " Calls s:move_to_adjacent_element, but extends the current visual selection
 " if mode is 'v'.
 function! sexp#move_to_adjacent_element(mode, next, top)

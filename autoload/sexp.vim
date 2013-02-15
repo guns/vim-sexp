@@ -657,6 +657,61 @@ function! s:move_to_current_element_terminal(closing)
     return pos
 endfunction
 
+" Move cursor to adjacent element, returning its position; 0 for previous, 1
+" for next. If top is 1, moves to adjacent top-level element.
+"
+" If no such adjacent element exists, moves to beginning or end of element
+" respectively. Analogous to native w and b commands.
+function! s:move_to_adjacent_element(next, top)
+    let cursor = getpos('.')
+
+    if a:top
+        let top = s:move_to_top_bracket(a:next)
+
+        " Stop at current top element head if moving backward and did not
+        " start on a top element head.
+        if !a:next && top[1] > 0 && top != cursor
+            let pos = top
+        else
+            let pos = s:nearest_element_head(a:next)
+        endif
+    else
+        let pos = s:nearest_element_head(a:next)
+    endif
+
+    if pos[1] > 0 | call setpos('.', pos) | endif
+    return pos
+endfunction
+
+" Extend current selection by moving the cursor to position returned by
+" evaluating func with given varargs. Detects which end of the selection
+" should be extended.
+function! s:move_cursor_extending_selection(func, ...)
+    " Break out of visual mode, preserving cursor position
+    if s:countindex > 0
+        execute "normal! \<C-Bslash>\<C-n>"
+    endif
+
+    let start = getpos("'<")
+    let end = getpos("'>")
+    let omode = start == getpos('.')
+
+    let pos = call(a:func, a:000)
+
+    if omode
+        call setpos("'<", pos)
+        call setpos("'>", end)
+        call s:select_current_marks('v')
+        normal! o
+    else
+        call setpos("'<", start)
+        call setpos("'>", pos)
+        call s:select_current_marks('v')
+    endif
+
+    return pos
+endfunction
+
 """ VISUAL MARKS {{{1
 
 " Set start and end visual marks to [0, 0, 0, 0]
@@ -848,7 +903,7 @@ function! s:set_marks_around_current_element(mode, inner)
     else
         " We are on whitespace; move to next element and recurse.
         let cursor = getpos('.')
-        let next = sexp#move_to_adjacent_element('n', 1, 0)
+        let next = s:move_to_adjacent_element(1, 0)
 
         " No next element! We are at the eof or in a blank buffer.
         if next == cursor
@@ -888,7 +943,7 @@ function! s:set_marks_around_adjacent_element(mode, next)
         call s:move_to_current_element_terminal(0)
     endif
 
-    call sexp#move_to_adjacent_element('n', a:next, 0)
+    call s:move_to_adjacent_element(a:next, 0)
     call s:set_marks_around_current_element(a:mode, 1)
     call setpos('.', cursor)
 endfunction
@@ -1025,54 +1080,12 @@ function! sexp#select_adjacent_element(mode, next)
     return s:select_current_marks(a:mode)
 endfunction
 
-" Moves cursor to adjacent element, returning its position; 0 for previous, 1
-" for next. If no such adjacent element exists, moves to beginning or end of
-" element respectively. Analogous to native w and b commands.
+" Calls s:move_to_adjacent_element, but extends the current visual selection
+" if mode is 'v'.
 function! sexp#move_to_adjacent_element(mode, next, top)
-    let cursor = getpos('.')
-
-    if a:mode ==? 'v'
-        " Break out of visual mode, preserving cursor position
-        if s:countindex > 0
-            execute "normal! \<C-Bslash>\<C-n>"
-        endif
-
-        " Record visual state now before moving the cursor
-        let start = getpos("'<")
-        let end = getpos("'>")
-        let omode = cursor == start
-    endif
-
-    if a:top
-        let top = s:move_to_top_bracket(a:next)
-
-        " Stop at current top element head if moving backward and did not
-        " start on a top element head.
-        if !a:next && top[1] > 0 && top != cursor
-            let pos = top
-        else
-            let pos = s:nearest_element_head(a:next)
-        endif
-    else
-        let pos = s:nearest_element_head(a:next)
-    endif
-
-    if a:mode ==? 'v'
-        if omode
-            call setpos("'<", pos)
-            call setpos("'>", end)
-            call s:select_current_marks('v')
-            normal! o
-        else
-            call setpos("'<", start)
-            call setpos("'>", pos)
-            call s:select_current_marks('v')
-        endif
-    else
-        call setpos('.', pos)
-    endif
-
-    return pos
+    return a:mode ==? 'v'
+           \ ? s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:top)
+           \ : s:move_to_adjacent_element(a:next, a:top)
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally
@@ -1311,7 +1324,7 @@ function! sexp#stackop(mode, last, capture)
 
         " Not DRY and not pretty!
         if a:capture
-            let nextpos = sexp#move_to_adjacent_element('n', a:last, 0)
+            let nextpos = s:move_to_adjacent_element(a:last, 0)
             if nextpos[1] < 1 | break | endif
 
             " Ensure we are not trying to capture a parent form
@@ -1344,7 +1357,7 @@ function! sexp#stackop(mode, last, capture)
             if l < 1 | break | endif
             call cursor(l, c)
             if a:last | call s:move_to_current_element_terminal(0) | endif
-            let nextpos = sexp#move_to_adjacent_element('n', !a:last, 0)
+            let nextpos = s:move_to_adjacent_element(!a:last, 0)
             if nextpos[1] < 1 | break | end
 
             " Ensure the new ultimate element is actually contained
@@ -1424,14 +1437,14 @@ function! sexp#swap_element(mode, next, form)
 
         call setpos('.', vmarks[0])
         if getline(vmarks[0][1])[vmarks[0][2] - 1] =~# '\v\s'
-            call sexp#move_to_adjacent_element('n', 1, 0)
+            call s:move_to_adjacent_element(1, 0)
         endif
         let head = s:current_element_terminal(0)
         if head[1] > 0 | call setpos("'<", head) | endif
 
         call setpos('.', vmarks[1])
         if getline(vmarks[1][1])[vmarks[1][2] - 1] =~# '\v\s'
-            call sexp#move_to_adjacent_element('n', 1, 0)
+            call s:move_to_adjacent_element(1, 0)
         endif
         let tail = s:current_element_terminal(1)
         if tail[1] > 0 | call setpos("'>", tail) | endif

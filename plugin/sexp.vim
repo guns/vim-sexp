@@ -45,10 +45,11 @@ if !exists('g:sexp_textobj_mappings')
         \ 'next_bracket':                     ')',
         \ 'prev_top_element':                 '[[',
         \ 'next_top_element':                 ']]',
-        \ 'prev_element':                     '-b',
-        \ 'next_element':                     '-w',
-        \ 'exclusive_prev_element_selection': '-B',
-        \ 'exclusive_next_element_selection': '-W',
+        \ 'prev_element':                     '<M-b>',
+        \ 'next_element':                     '<M-w>',
+        \ 'end_of_element':                   '<M-e>',
+        \ 'exclusive_prev_element_selection': '[e',
+        \ 'exclusive_next_element_selection': ']e',
     \ }
 endif
 
@@ -148,20 +149,28 @@ vnoremap <silent> <Plug>sexp_textobj_next_bracket <C-Bslash><C-n>:<C-u>call sexp
 onoremap <silent> <Plug>sexp_textobj_next_bracket :<C-u>call sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 1)<CR>
 
 " Adjacent top element
-nnoremap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1)<CR>
-vnoremap <silent> <Plug>sexp_textobj_prev_top_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1)<CR>
-onoremap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 1)<CR>
-nnoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1)<CR>
-vnoremap <silent> <Plug>sexp_textobj_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1)<CR>
-onoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 1)<CR>
+nnoremap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_top_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_prev_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 1)<CR>
+nnoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 1)<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_top_elemenqt <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 1)<CR>
+onoremap <silent> <Plug>sexp_textobj_next_top_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 1)<CR>
 
 " Adjacent element
-nnoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0)<CR>
-vnoremap <silent> <Plug>sexp_textobj_prev_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0)<CR>
-onoremap <silent> <Plug>sexp_textobj_prev_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0)<CR>
-nnoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0)<CR>
-vnoremap <silent> <Plug>sexp_textobj_next_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0)<CR>
-onoremap <silent> <Plug>sexp_textobj_next_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0)<CR>
+"
+" Note that inclusive operator pending motions require a visual mode selection
+" to include the last character of a line.
+nnoremap <silent> <Plug>sexp_textobj_prev_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_prev_element   <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_prev_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)<CR>
+nnoremap <silent> <Plug>sexp_textobj_next_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_next_element   <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_next_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)<CR>
+nnoremap <silent> <Plug>sexp_textobj_end_of_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)<CR>
+vnoremap <silent> <Plug>sexp_textobj_end_of_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
+onoremap <silent> <Plug>sexp_textobj_end_of_element :call setpos("'<", getpos('.')) \|
+                                                   \ call setpos("'>", getpos('.')) \|
+                                                   \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
 
 " Adjacent exclusive element selection.
 "
@@ -189,7 +198,7 @@ if !empty('g:sexp_textobj_mappings')
 
     for s:key in ['prev_bracket', 'next_bracket',
                 \ 'prev_top_element', 'next_top_element',
-                \ 'prev_element', 'next_element',
+                \ 'prev_element', 'next_element', 'end_of_element',
                 \ 'exclusive_prev_element_selection', 'exclusive_next_element_selection']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(

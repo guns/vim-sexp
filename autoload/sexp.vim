@@ -24,7 +24,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
-" * Implement move-to-next-element-terminal
 " * Element selection should include trailing commas in Clojure
 " * Handle counts for swap; should specify the number of adjacent elements to
 "   swap with
@@ -183,7 +182,7 @@ function! s:current_top_form_bracket(closing)
     endif
 endfunction
 
-" Position of start / end of current string: 0 for start, 1 for end. Returns
+" Position of start/end of current string: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in a string.
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
@@ -218,7 +217,7 @@ function! s:current_string_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
-" Position of start / end of current comment: 0 for start, 1 for end. Returns
+" Position of start/end of current comment: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in a comment.
 function! s:current_comment_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
@@ -243,7 +242,7 @@ function! s:current_comment_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
-" Position of start / end of current atom: 0 for start, 1 for end. Returns
+" Position of start/end of current atom: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
 " lines.
 function! s:current_atom_terminal(end)
@@ -268,7 +267,7 @@ function! s:current_atom_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
-" Position of start / end of current sequence of macro metacharacters: 0
+" Position of start/end of current sequence of macro metacharacters: 0
 " for start, 1 for end. Returns [0, 0, 0, 0] if not currently in a macro
 " metacharacter sequence or no macro characters are defined for the current
 " filetype.
@@ -299,7 +298,7 @@ function! s:current_macro_character_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
-" Position of start / end of current element: 0 for start, 1 for end. Returns
+" Position of start/end of current element: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in an element.
 "
 " An element is defined as:
@@ -365,11 +364,12 @@ function! s:current_element_terminal(end)
     endif
 endfunction
 
-" Returns position of previous / next element head. Returns current position
-" if no such element exists. There is one exception: if next is 1 and the next
-" element is the parent form, the form's closing bracket position is returned
-" instead.
-function! s:nearest_element_head(next)
+" Returns position of previous/next element's head/tail. If the current
+" element the first or last element in the current form, the enclosing form's
+" terminal bracket position is returned instead.
+"
+" Returns current element's terminal if no adjacent element exists.
+function! s:nearest_element_terminal(next, tail)
     let cursor = getpos('.')
     let pos = cursor
 
@@ -379,8 +379,11 @@ function! s:nearest_element_head(next)
         if terminal[1] > 0 && pos != terminal
             let pos = terminal
             call setpos('.', pos)
-            " b command moves to head of the current word if not on the head
-            if !a:next | break | endif
+            " b moves to the head of the current word if not already on the
+            " head and e moves to the tail if not on the tail.
+            if !a:next || a:tail
+                break
+            endif
         endif
 
         let [l, c] = s:findpos('\v\S', a:next)
@@ -392,13 +395,12 @@ function! s:nearest_element_head(next)
             let pos = adjacent
         endif
 
-        " We are at a head if moving forward
-        if a:next
+        " We are at a head if moving forward or at a tail if moving backward
+        if (a:next && !a:tail) || (!a:next && a:tail)
             break
-        " Or at a tail if moving backward
         else
             call setpos('.', pos)
-            let final = s:current_element_terminal(0)
+            let final = s:current_element_terminal(a:tail)
             if final[1] > 0
                 let pos = final
             endif
@@ -657,12 +659,14 @@ function! s:move_to_current_element_terminal(closing)
     return pos
 endfunction
 
-" Move cursor to adjacent element, returning its position; 0 for previous, 1
-" for next. If top is 1, moves to adjacent top-level element.
+" Move cursor to adjacent element, returning its position; 0 for previous,
+" 1 for next. If tail is 1, the cursor is placed on the end of the adjacent
+" element, and on the head otherwise. If top is 1, moves to adjacent top-level
+" element.
 "
 " If no such adjacent element exists, moves to beginning or end of element
-" respectively. Analogous to native w and b commands.
-function! s:move_to_adjacent_element(next, top)
+" respectively. Analogous to native w, e, and b commands.
+function! s:move_to_adjacent_element(next, tail, top)
     let cursor = getpos('.')
 
     if a:top
@@ -673,10 +677,10 @@ function! s:move_to_adjacent_element(next, top)
         if !a:next && top[1] > 0 && top != cursor
             let pos = top
         else
-            let pos = s:nearest_element_head(a:next)
+            let pos = s:nearest_element_terminal(a:next, a:tail)
         endif
     else
-        let pos = s:nearest_element_head(a:next)
+        let pos = s:nearest_element_terminal(a:next, a:tail)
     endif
 
     if pos[1] > 0 | call setpos('.', pos) | endif
@@ -903,7 +907,7 @@ function! s:set_marks_around_current_element(mode, inner)
     else
         " We are on whitespace; move to next element and recurse.
         let cursor = getpos('.')
-        let next = s:move_to_adjacent_element(1, 0)
+        let next = s:move_to_adjacent_element(1, 0, 0)
 
         " No next element! We are at the eof or in a blank buffer.
         if next == cursor
@@ -943,7 +947,7 @@ function! s:set_marks_around_adjacent_element(mode, next)
         call s:move_to_current_element_terminal(0)
     endif
 
-    call s:move_to_adjacent_element(a:next, 0)
+    call s:move_to_adjacent_element(a:next, 0, 0)
     call s:set_marks_around_current_element(a:mode, 1)
     call setpos('.', cursor)
 endfunction
@@ -1095,10 +1099,10 @@ endfunction
 
 " Calls s:move_to_adjacent_element, but extends the current visual selection
 " if mode is 'v'.
-function! sexp#move_to_adjacent_element(mode, next, top)
+function! sexp#move_to_adjacent_element(mode, next, tail, top)
     return a:mode ==? 'v'
-           \ ? s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:top)
-           \ : s:move_to_adjacent_element(a:next, a:top)
+           \ ? s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:tail, a:top)
+           \ : s:move_to_adjacent_element(a:next, a:tail, a:top)
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally
@@ -1337,7 +1341,7 @@ function! sexp#stackop(mode, last, capture)
 
         " Not DRY and not pretty!
         if a:capture
-            let nextpos = s:move_to_adjacent_element(a:last, 0)
+            let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
             if nextpos[1] < 1 | break | endif
 
             " Ensure we are not trying to capture a parent form
@@ -1370,7 +1374,7 @@ function! sexp#stackop(mode, last, capture)
             if l < 1 | break | endif
             call cursor(l, c)
             if a:last | call s:move_to_current_element_terminal(0) | endif
-            let nextpos = s:move_to_adjacent_element(!a:last, 0)
+            let nextpos = s:move_to_adjacent_element(!a:last, 0, 0)
             if nextpos[1] < 1 | break | end
 
             " Ensure the new ultimate element is actually contained
@@ -1450,14 +1454,14 @@ function! sexp#swap_element(mode, next, form)
 
         call setpos('.', vmarks[0])
         if getline(vmarks[0][1])[vmarks[0][2] - 1] =~# '\v\s'
-            call s:move_to_adjacent_element(1, 0)
+            call s:move_to_adjacent_element(1, 0, 0)
         endif
         let head = s:current_element_terminal(0)
         if head[1] > 0 | call setpos("'<", head) | endif
 
         call setpos('.', vmarks[1])
         if getline(vmarks[1][1])[vmarks[1][2] - 1] =~# '\v\s'
-            call s:move_to_adjacent_element(1, 0)
+            call s:move_to_adjacent_element(1, 0, 0)
         endif
         let tail = s:current_element_terminal(1)
         if tail[1] > 0 | call setpos("'>", tail) | endif

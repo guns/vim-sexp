@@ -24,8 +24,8 @@ if !exists('g:sexp_filetypes')
     let g:sexp_filetypes = 'clojure,scheme,lisp'
 endif
 
-if !exists('g:sexp_wrap_insert')
-    let g:sexp_wrap_insert = 1
+if !exists('g:sexp_insert_after_wrap')
+    let g:sexp_insert_after_wrap = 1
 endif
 
 if !exists('g:sexp_enable_insert_mode_mappings')
@@ -206,32 +206,32 @@ endif
 " form for easy grepping.
 
 " Wrap form
-nnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('f', '(', ')', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('f', '(', ')', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 1, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('f', '[', ']', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('f', '[', ']', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 1, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('f', '{', '}', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('f', '{', '}', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('f', '(', ')', 1, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('f', '[', ']', 0, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('f', '[', ']', 1, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('f', '{', '}', 0, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('f', '{', '}', 1, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_form_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)<CR>
 
 " Wrap element
-nnoremap <silent> <Plug>sexp_element_wrap_round_head  :<C-u>call sexp#wrap('e', '(', ')', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_element_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_element_wrap_round_tail  :<C-u>call sexp#wrap('e', '(', ')', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_element_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 1, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_element_wrap_square_head :<C-u>call sexp#wrap('e', '[', ']', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_element_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_element_wrap_square_tail :<C-u>call sexp#wrap('e', '[', ']', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_element_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 1, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_element_wrap_curly_head  :<C-u>call sexp#wrap('e', '{', '}', 0, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_element_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 0, g:sexp_wrap_insert)<CR>
-nnoremap <silent> <Plug>sexp_element_wrap_curly_tail  :<C-u>call sexp#wrap('e', '{', '}', 1, g:sexp_wrap_insert)<CR>
-vnoremap <silent> <Plug>sexp_element_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_wrap_insert)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_round_head  :<C-u>call sexp#wrap('e', '(', ')', 0, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_round_head  :<C-u>call sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_round_tail  :<C-u>call sexp#wrap('e', '(', ')', 1, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_round_tail  :<C-u>call sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_square_head :<C-u>call sexp#wrap('e', '[', ']', 0, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_square_head :<C-u>call sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_square_tail :<C-u>call sexp#wrap('e', '[', ']', 1, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_square_tail :<C-u>call sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_curly_head  :<C-u>call sexp#wrap('e', '{', '}', 0, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_curly_head  :<C-u>call sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)<CR>
+nnoremap <silent> <Plug>sexp_element_wrap_curly_tail  :<C-u>call sexp#wrap('e', '{', '}', 1, g:sexp_insert_after_wrap)<CR>
+vnoremap <silent> <Plug>sexp_element_wrap_curly_tail  :<C-u>call sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)<CR>
 
 " Lift form
 nmap <silent> <Plug>sexp_lift_form d<Plug>sexp_textobj_outer_formv<Plug>sexp_textobj_outer_formp

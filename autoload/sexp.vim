@@ -959,13 +959,14 @@ endfunction
 
 """ EXPORTED FUNCTIONS {{{1
 
-" Evaluate expr count times. Will evaluate expr at least once. Stores current
-" evaluation iteration (from 0 to count, exclusive) in s:countindex.
-function! sexp#docount(expr, count)
+" Call func count times with given varargs. Will call func at least once.
+" Stores current evaluation iteration (from 0 to count, exclusive) in
+" s:countindex.
+function! sexp#docount(count, func, ...)
     try
         for n in range(a:count > 0 ? a:count : 1)
             let s:countindex = n
-            call eval(a:expr)
+            call call(a:func, a:000)
         endfor
     finally
         let s:countindex = 0
@@ -1442,13 +1443,13 @@ function! sexp#swap_element(mode, next, form)
             " Expand head for every ket and tail for every bra.
             if bcount['ket'] > 0
                 call setpos('.', head)
-                call sexp#docount('s:move_to_nearest_bracket(0)', bcount['ket'])
+                call sexp#docount(bcount['ket'], 's:move_to_nearest_bracket', 0)
                 call setpos("'<", getpos('.'))
             endif
 
             if bcount['bra'] > 0
                 call setpos('.', tail)
-                call sexp#docount('s:move_to_nearest_bracket(1)', bcount['bra'])
+                call sexp#docount(bcount['bra'], 's:move_to_nearest_bracket', 1)
                 call setpos("'>", getpos('.'))
             endif
         endif

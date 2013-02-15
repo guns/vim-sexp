@@ -879,16 +879,6 @@ function! s:set_marks_around_current_comment(mode, inner)
     return s:set_marks_around_current_scope('s:current_comment_terminal', a:mode, a:inner)
 endfunction
 
-" Set visual marks '< and '> to the start and end of the current atom.
-" If inner is 0, trailing or leading whitespace is included by way of
-" s:terminals_with_whitespace().
-"
-" Will set both to [0, 0, 0, 0] if not currently in an atom and mode does
-" not equal 'v'.
-function! s:set_marks_around_current_atom(mode, inner)
-    return s:set_marks_around_current_scope('s:current_atom_terminal', a:mode, a:inner)
-endfunction
-
 " Set visual marks '< and '> to the start and end of the current element.
 " If inner is 0, trailing or leading whitespace is included by way
 " of s:terminals_with_whitespace().
@@ -1060,13 +1050,6 @@ endfunction
 " currently in a comment and mode equals 'o', nothing is done.
 function! sexp#select_current_comment(mode, inner)
     call s:set_marks_around_current_comment(a:mode, a:inner)
-    return s:select_current_marks(a:mode)
-endfunction
-
-" Set visual marks around current atom and enter visual mode. If not currently
-" in an atom and mode equals 'o', nothing is done.
-function! sexp#select_current_atom(mode, inner)
-    call s:set_marks_around_current_atom(a:mode, a:inner)
     return s:select_current_marks(a:mode)
 endfunction
 

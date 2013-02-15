@@ -39,7 +39,6 @@ if !exists('g:sexp_textobj_mappings')
         \ 'top_form':                         'F',
         \ 'string':                           's',
         \ 'comment':                          'c',
-        \ 'atom':                             '',
         \ 'element':                          'e',
         \ 'prev_bracket':                     '(',
         \ 'next_bracket':                     ')',
@@ -124,12 +123,6 @@ onoremap <silent> <Plug>sexp_textobj_outer_comment :<C-u>call sexp#select_curren
 vnoremap <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('v', 1)<CR>
 onoremap <silent> <Plug>sexp_textobj_inner_comment :<C-u>call sexp#select_current_comment('o', 1)<CR>
 
-" Current atom
-vnoremap <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('v', 0)<CR>
-onoremap <silent> <Plug>sexp_textobj_outer_atom :<C-u>call sexp#select_current_atom('o', 0)<CR>
-vnoremap <silent> <Plug>sexp_textobj_inner_atom :<C-u>call sexp#select_current_atom('v', 1)<CR>
-onoremap <silent> <Plug>sexp_textobj_inner_atom :<C-u>call sexp#select_current_atom('o', 1)<CR>
-
 " Current element
 vnoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('v', 0)<CR>
 onoremap <silent> <Plug>sexp_textobj_outer_element :<C-u>call sexp#select_current_element('o', 0)<CR>
@@ -186,7 +179,7 @@ vnoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call
 onoremap <silent> <Plug>sexp_textobj_exclusive_next_element_selection :<C-u>call sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 1)<CR>
 
 if !empty('g:sexp_textobj_mappings')
-    for s:key in ['form', 'top_form', 'string', 'comment', 'atom', 'element']
+    for s:key in ['form', 'top_form', 'string', 'comment', 'element']
         if has_key(g:sexp_textobj_mappings, s:key) && !empty(g:sexp_textobj_mappings[s:key])
             call s:filetype_autocmd(
                 \ 'vmap <silent><buffer> a' . g:sexp_textobj_mappings[s:key] . ' <Plug>sexp_textobj_outer_' . s:key,

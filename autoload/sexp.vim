@@ -785,7 +785,7 @@ endfunction
 " If inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
 "
-" Will set both marks to [0, 0, 0, 0] if calls to funcref return invalid
+" Will set both marks to [0, 0, 0, 0] if calls to scopefunc return invalid
 " positions and mode does not equal 'v'.
 function! s:set_marks_around_current_scope(scopefunc, mode, inner)
     let start = [0, 0, 0, 0]
@@ -1370,7 +1370,7 @@ function! sexp#stackop(mode, last, capture)
             endif
         endif
 
-        if a:mode =~? 'v'
+        if a:mode ==? 'v'
             call sexp#select_current_form('n', 0)
         endif
 

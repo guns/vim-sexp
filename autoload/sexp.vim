@@ -1022,12 +1022,24 @@ endfunction
 " moving backward or forward (respectively), cursor is moved to enclosing
 " form's terminal bracket.
 "
+" If mode is 'o' and moving backward, the cursor is positioned just after the
+" opening bracket so that the selection is exclusive like when moving to the
+" closing bracket.
+"
 " If there is no enclosing form, the cursor is not moved and [0, 0, 0, 0] is
 " returned.
 function! sexp#move_to_nearest_bracket(mode, next)
-    return a:mode ==? 'v'
-           \ ? s:move_cursor_extending_selection('s:move_to_nearest_bracket', a:next)
-           \ : s:move_to_nearest_bracket(a:next)
+    if a:mode ==? 'v'
+        return s:move_cursor_extending_selection('s:move_to_nearest_bracket', a:next)
+    elseif a:mode ==? 'o' && !a:next
+        let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
+        if l > 0
+            let [l, c] = searchpos('\v\_.', 'W')
+        endif
+        return [0, l, c, 0]
+    else
+        return s:move_to_nearest_bracket(a:next)
+    endif
 endfunction
 
 " Calls s:move_to_adjacent_element, but extends the current visual selection

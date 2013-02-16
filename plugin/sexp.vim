@@ -40,7 +40,6 @@ let s:sexp_default_mappings = {
     \ 'sexp_select_form':                 'f',
     \ 'sexp_select_top_form':             'F',
     \ 'sexp_select_string':               's',
-    \ 'sexp_select_comment':              'c',
     \ 'sexp_select_element':              'e',
     \ 'sexp_move_to_prev_element':        '<M-b>',
     \ 'sexp_move_to_next_element':        '<M-w>',
@@ -112,19 +111,13 @@ onoremap <silent> <Plug>sexp_select_string_outer :<C-u>call sexp#select_current_
 vnoremap <silent> <Plug>sexp_select_string_inner :<C-u>call sexp#select_current_string('v', 1)<CR>
 onoremap <silent> <Plug>sexp_select_string_inner :<C-u>call sexp#select_current_string('o', 1)<CR>
 
-" Current comment
-vnoremap <silent> <Plug>sexp_select_comment_outer :<C-u>call sexp#select_current_comment('v', 0)<CR>
-onoremap <silent> <Plug>sexp_select_comment_outer :<C-u>call sexp#select_current_comment('o', 0)<CR>
-vnoremap <silent> <Plug>sexp_select_comment_inner :<C-u>call sexp#select_current_comment('v', 1)<CR>
-onoremap <silent> <Plug>sexp_select_comment_inner :<C-u>call sexp#select_current_comment('o', 1)<CR>
-
 " Current element
 vnoremap <silent> <Plug>sexp_select_element_outer :<C-u>call sexp#select_current_element('v', 0)<CR>
 onoremap <silent> <Plug>sexp_select_element_outer :<C-u>call sexp#select_current_element('o', 0)<CR>
 vnoremap <silent> <Plug>sexp_select_element_inner :<C-u>call sexp#select_current_element('v', 1)<CR>
 onoremap <silent> <Plug>sexp_select_element_inner :<C-u>call sexp#select_current_element('o', 1)<CR>
 
-for s:plug in ['sexp_select_form', 'sexp_select_top_form', 'sexp_select_string', 'sexp_select_comment', 'sexp_select_element']
+for s:plug in ['sexp_select_form', 'sexp_select_top_form', 'sexp_select_string', 'sexp_select_element']
     let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
     if !empty(s:lhs)
         call s:filetype_autocmd(

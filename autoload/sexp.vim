@@ -836,49 +836,6 @@ function! s:set_marks_around_current_string(mode, offset)
     endif
 endfunction
 
-" Set visual marks '< and '> to the start and end of the current scope
-" determined by scopefunc, which should be the name of a referentially pure
-" function that returns the start of scope when called with 0, and the end of
-" scope when called with 1.
-"
-" If inner is 0, trailing or leading whitespace is included by way of
-" s:terminals_with_whitespace().
-"
-" Will set both marks to [0, 0, 0, 0] if calls to scopefunc return invalid
-" positions and mode does not equal 'v'.
-function! s:set_marks_around_current_scope(scopefunc, mode, inner)
-    let start = [0, 0, 0, 0]
-    let end = call(a:scopefunc, [1])
-    if end[1] > 0
-        let start = call(a:scopefunc, [0])
-    endif
-
-    if start[1] < 1 || end[1] < 1
-        if a:mode !=? 'v'
-            call s:clear_visual_marks()
-        endif
-        return 0
-    endif
-
-    if !a:inner
-        let [start, end] = s:terminals_with_whitespace(start, end)
-    endif
-
-    call setpos("'<", start)
-    call setpos("'>", end)
-    return 1
-endfunction
-
-" Set visual marks '< and '> to the start and end of the current comment.
-" If inner is 0, trailing or leading whitespace is included by way of
-" s:terminals_with_whitespace().
-"
-" Will set both to [0, 0, 0, 0] if not currently in a comment and mode does
-" not equal 'v'.
-function! s:set_marks_around_current_comment(mode, inner)
-    return s:set_marks_around_current_scope('s:current_comment_terminal', a:mode, a:inner)
-endfunction
-
 " Set visual marks '< and '> to the start and end of the current element.
 " If inner is 0, trailing or leading whitespace is included by way
 " of s:terminals_with_whitespace().
@@ -1043,13 +1000,6 @@ endfunction
 " desired. If not currently in string and mode equals 'o', nothing is done.
 function! sexp#select_current_string(mode, offset)
     call s:set_marks_around_current_string(a:mode, a:offset)
-    return s:select_current_marks(a:mode)
-endfunction
-
-" Set visual marks around current comment and enter visual mode. If not
-" currently in a comment and mode equals 'o', nothing is done.
-function! sexp#select_current_comment(mode, inner)
-    call s:set_marks_around_current_comment(a:mode, a:inner)
     return s:select_current_marks(a:mode)
 endfunction
 

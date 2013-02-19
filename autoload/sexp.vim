@@ -700,13 +700,14 @@ function! s:move_cursor_extending_selection(func, ...)
     let omode = start == getpos('.')
 
     let pos = call(a:func, a:000)
+    let valid = pos[1] > 1
 
     if omode
-        call s:set_visual_marks([pos, end])
+        call s:set_visual_marks([valid ? pos : start, end])
         call s:select_current_marks('v')
         normal! o
     else
-        call s:set_visual_marks([start, pos])
+        call s:set_visual_marks([start, valid ? pos : end])
         call s:select_current_marks('v')
     endif
 

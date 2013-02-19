@@ -696,20 +696,17 @@ function! s:move_cursor_extending_selection(func, ...)
         execute "normal! \<C-Bslash>\<C-n>"
     endif
 
-    let start = getpos("'<")
-    let end = getpos("'>")
+    let [start, end] = s:get_visual_marks()
     let omode = start == getpos('.')
 
     let pos = call(a:func, a:000)
 
     if omode
-        call setpos("'<", pos)
-        call setpos("'>", end)
+        call s:set_visual_marks([pos, end])
         call s:select_current_marks('v')
         normal! o
     else
-        call setpos("'<", start)
-        call setpos("'>", pos)
+        call s:set_visual_marks([start, pos])
         call s:select_current_marks('v')
     endif
 
@@ -717,6 +714,17 @@ function! s:move_cursor_extending_selection(func, ...)
 endfunction
 
 """ VISUAL MARKS {{{1
+
+" Return current visual marks as a list
+function! s:get_visual_marks()
+    return [getpos("'<"), getpos("'>")]
+endfunction
+
+" Set visual marks to [start, end]
+function! s:set_visual_marks(marks)
+    call setpos("'<", a:marks[0])
+    call setpos("'>", a:marks[1])
+endfunction
 
 " Set start and end visual marks to [0, 0, 0, 0]
 function! s:clear_visual_marks()
@@ -793,8 +801,7 @@ function! s:set_marks_around_current_form(mode, offset)
     endif
 
     if open[1] > 0 && close[1] > 0
-        call setpos("'<", open)
-        call setpos("'>", close)
+        call s:set_visual_marks([open, close])
     " Don't erase marks when in visual mode
     elseif !visual
         call s:clear_visual_marks()
@@ -873,8 +880,7 @@ function! s:set_marks_around_current_element(mode, inner)
         let [start, end] = s:terminals_with_whitespace(start, end)
     endif
 
-    call setpos("'<", start)
-    call setpos("'>", end)
+    call s:set_visual_marks([start, end])
 endfunction
 
 " Set visual marks '< and '> to the start and end of the adjacent inner
@@ -923,8 +929,7 @@ endfunction
 " headspace determines whether to insert a space after the opening bracket
 " when placing cursor at the head.
 function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
-    let start = getpos("'<")
-    let end = getpos("'>")
+    let [start, end] = s:get_visual_marks()
 
     " No form, just insert brackets
     if start[1] < 1
@@ -1054,8 +1059,7 @@ endfunction
 " leaving off in insert mode if specified. Insert also sets the headspace
 " parameter when inserting brackets.
 function! sexp#wrap(scope, bra, ket, at_tail, insert)
-    let original_start = getpos("'<")
-    let original_end = getpos("'>")
+    let marks = s:get_visual_marks()
 
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
@@ -1065,16 +1069,14 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
         call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
     endif
 
-    call setpos("'<", original_start)
-    call setpos("'>", original_end)
+    call s:set_visual_marks(marks)
     if a:insert | startinsert | endif
 endfunction
 
 " Remove brackets from current form, placing cursor at position of deleted
 " first bracket.
 function! sexp#splice_form()
-    let original_start = getpos("'<")
-    let original_end = getpos("'>")
+    let marks = s:get_visual_marks()
     let cursor = getpos('.')
 
     " Ensure we are not deleting chars at old marks
@@ -1093,8 +1095,7 @@ function! sexp#splice_form()
         call setpos('.' cursor)
     endif
 
-    call setpos("'<", original_start)
-    call setpos("'>", original_end)
+    call s:set_visual_marks(marks)
 endfunction
 
 " Move cursor to current form start or end and enter insert mode. Inserts
@@ -1258,7 +1259,7 @@ function! sexp#stackop(mode, last, capture)
     let reg_save = @b
 
     if a:mode ==? 'v'
-        let marks = [getpos("'<"), getpos("'>")]
+        let marks = s:get_visual_marks()
         execute "normal! \<C-Bslash>\<C-n>"
     endif
 
@@ -1357,8 +1358,7 @@ function! sexp#stackop(mode, last, capture)
     " Cleanup after error
     let @b = reg_save
     if a:mode ==? 'v'
-        call setpos("'<", marks[0])
-        call setpos("'>", marks[1])
+        call s:set_visual_marks(marks)
         normal! gv
     else
         call cursor(cursorline, cursorcol)
@@ -1395,7 +1395,7 @@ function! sexp#swap_element(mode, next, form)
     " Moving formwise with a:mode 'v' will be treated like a regular
     " element-wise swap.
     if visual
-        let vmarks = [getpos("'<"), getpos("'>")]
+        let vmarks = s:get_visual_marks()
 
         call setpos('.', vmarks[0])
         if getline(vmarks[0][1])[vmarks[0][2] - 1] =~# '\v\s'
@@ -1451,8 +1451,7 @@ function! sexp#swap_element(mode, next, form)
     if !selected
         if visual
             " Restore visual state
-            call setpos("'<", vmarks[0])
-            call setpos("'>", vmarks[1])
+            call s:set_visual_marks(vmarks)
             normal! gv
         endif
         return
@@ -1463,26 +1462,25 @@ function! sexp#swap_element(mode, next, form)
     if a:next | let @a = nr2char(0x02) . @a . nr2char(0x03) | endif
 
     let marks = {}
-    let marks['a'] = { 'start': getpos("'<"), 'end': getpos("'>")}
+    let marks['a'] = s:get_visual_marks()
 
     " Record the sibling element
-    call setpos('.', marks['a'][a:next ? 'end' : 'start'])
+    call setpos('.', marks['a'][!!a:next])
     call sexp#select_adjacent_element('n', a:next)
     normal! "by
-    let marks['b'] = { 'start': getpos("'<"), 'end': getpos("'>")}
+    let marks['b'] = s:get_visual_marks()
 
     " Abort if we are already at the head or tail of the current form; we can
     " determine this by seeing if the adjacent element envelops the original
     " element. Also abort if the selections are the same, which indicates that
     " we are at the top or bottom of the file.
-    let b_cmp_a = s:compare_pos(marks['b']['start'], marks['a']['start'])
+    let b_cmp_a = s:compare_pos(marks['b'][0], marks['a'][0])
     if b_cmp_a == 0
         \ || (a:next && b_cmp_a < 0)
-        \ || (!a:next && s:compare_pos(marks['b']['end'], marks['a']['end']) > 0)
+        \ || (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
         if visual
             " Restore visual state
-            call setpos("'<", vmarks[0])
-            call setpos("'>", vmarks[1])
+            call s:set_visual_marks(vmarks)
             normal! gv
         endif
         call setpos('.', cursor)
@@ -1494,19 +1492,17 @@ function! sexp#swap_element(mode, next, form)
     let b = a:next ? 'b' : 'a'
     let a = a:next ? 'a' : 'b'
 
-    call setpos("'<", marks[b]['start'])
-    call setpos("'>", marks[b]['end'  ])
+    call s:set_visual_marks(marks[b])
     call s:select_current_marks('v')
     execute 'normal! "' . a . 'p'
 
-    call setpos("'<", marks[a]['start'])
-    call setpos("'>", marks[a]['end'  ])
+    call s:set_visual_marks(marks[a])
     call s:select_current_marks('v')
     execute 'normal! "' . b . 'p'
 
     " Set marks around next element using the ^B and ^C markers
     if a:next
-        call setpos('.', marks['a']['start'])
+        call setpos('.', marks['a'][0])
 
         let [sl, sc] = s:findpos(nr2char(0x02), 1)
         call setpos('.', [0, sl, sc, 0])
@@ -1524,7 +1520,7 @@ function! sexp#swap_element(mode, next, form)
     elseif a:next
         call setpos('.', getpos("'<"))
     else
-        call setpos('.', marks['b']['start'])
+        call setpos('.', marks['b'][0])
     endif
 
     let @a = reg_a

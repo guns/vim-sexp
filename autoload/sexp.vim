@@ -387,8 +387,7 @@ function! s:nearest_element_terminal(next, tail)
     let cursor = getpos('.')
     let pos = cursor
 
-    " This is a goto disguised as a foreach loop.
-    for _ in [0]
+    try
         let terminal = s:current_element_terminal(a:next)
 
         if terminal[1] > 0 && pos != terminal
@@ -397,7 +396,7 @@ function! s:nearest_element_terminal(next, tail)
             " b moves to the head of the current word if not already on the
             " head and e moves to the tail if not on the tail.
             if !a:next || a:tail
-                break
+                throw 'sexp-error'
             endif
         endif
 
@@ -406,14 +405,14 @@ function! s:nearest_element_terminal(next, tail)
 
         " We are at the beginning or end of file
         if adjacent[1] < 1 || pos == adjacent
-            break
+            throw 'sexp-error
         else
             let pos = adjacent
         endif
 
         " We are at a head if moving forward or at a tail if moving backward
         if (a:next && !a:tail) || (!a:next && a:tail)
-            break
+            throw 'sexp-error
         else
             call setpos('.', pos)
             let final = s:current_element_terminal(a:tail)
@@ -421,10 +420,11 @@ function! s:nearest_element_terminal(next, tail)
                 let pos = final
             endif
         endif
-    endfor
-
-    call setpos('.', cursor)
-    return pos
+    catch /sexp-error/
+    finally
+        call setpos('.', cursor)
+        return pos
+    endtry
 endfunction
 
 """ QUERIES AT POSITION {{{1

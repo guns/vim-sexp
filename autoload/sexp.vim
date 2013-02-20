@@ -25,7 +25,6 @@ let g:sexp_autoloaded = 1
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
 " * Element selection should include trailing commas in Clojure
-" * Handle counts for swap
 " * Indenting with a motion should not move the cursor
 
 """ PATTERNS AND STATE {{{1

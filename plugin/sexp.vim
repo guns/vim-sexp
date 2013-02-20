@@ -231,16 +231,16 @@ nnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_
 vnoremap <silent> <Plug>sexp_insert_at_form_tail :<C-u>call sexp#insert_at_form_terminal(1)<CR>
 
 " Swap form
-nnoremap <silent> <Plug>sexp_swap_form_backward :<C-u>call sexp#swap_element('n', 0, 1)<CR>
-vnoremap <silent> <Plug>sexp_swap_form_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 1)<CR>
-nnoremap <silent> <Plug>sexp_swap_form_forward  :<C-u>call sexp#swap_element('n', 1, 1)<CR>
-vnoremap <silent> <Plug>sexp_swap_form_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 1)<CR>
+nnoremap <silent> <Plug>sexp_swap_form_backward :<C-u>call sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)<CR>
+vnoremap <silent> <Plug>sexp_swap_form_backward <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)<CR>
+nnoremap <silent> <Plug>sexp_swap_form_forward  :<C-u>call sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 1)<CR>
+vnoremap <silent> <Plug>sexp_swap_form_forward  <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 1)<CR>
 
 " Swap element
-nnoremap <silent> <Plug>sexp_swap_element_backward :<C-u>call sexp#swap_element('n', 0, 0)<CR>
-vnoremap <silent> <Plug>sexp_swap_element_backward <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 0, 0)<CR>
-nnoremap <silent> <Plug>sexp_swap_element_forward  :<C-u>call sexp#swap_element('n', 1, 0)<CR>
-vnoremap <silent> <Plug>sexp_swap_element_forward  <C-Bslash><C-n>:<C-u>call sexp#swap_element('v', 1, 0)<CR>
+nnoremap <silent> <Plug>sexp_swap_element_backward :<C-u>call sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_swap_element_backward <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 0)<CR>
+nnoremap <silent> <Plug>sexp_swap_element_forward  :<C-u>call sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 0)<CR>
+vnoremap <silent> <Plug>sexp_swap_element_forward  <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 0)<CR>
 
 " Emit/capture element
 nnoremap <silent> <Plug>sexp_emit_first_element   :<C-u>call sexp#docount(v:count, 'sexp#stackop', 'n', 0, 0)<CR>

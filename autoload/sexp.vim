@@ -1010,6 +1010,96 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
+" Capture element adjacent to current form, given the starting position of the
+" enclosing form's bracket plus leading metacharacters (spos) and the position
+" of the bracket itself (bpos).
+function! s:stackop_capture(last, spos, bpos)
+    call setpos('.', a:spos)
+    let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
+
+    " Ensure we are not trying to capture a parent form
+    if nextpos[1] < 1 || s:compare_pos(a:spos, s:current_element_terminal(!a:last)) == (a:last ? 1 : -1)
+        return 0
+    endif
+
+    let reg_save = @b
+    let @b = getline(a:spos[1])[a:spos[2] - 1 : a:bpos[2] - 1]
+    let blen = len(@b)
+
+    " Insertion and deletion must be done from the bottom up to avoid
+    " recalculating our marks
+    if a:last
+        let nextpos = s:current_element_terminal(1)
+        call setpos('.', nextpos)
+        execute 'silent! normal! "bp'
+        call setpos('.', a:spos)
+        execute 'silent! normal! "_d' . blen . 'l'
+        call setpos('.', s:pos_with_col_offset(nextpos, 1 + -(a:spos[1] == nextpos[1])))
+    else
+        call setpos('.', a:spos)
+        execute 'silent! normal! "_d' . blen . 'l'
+        call setpos('.', nextpos)
+        execute 'silent! normal! "bP'
+        if blen > 1
+            execute 'silent! normal! ' . (blen - 1) . 'h'
+        endif
+    endif
+
+    let @b = reg_save
+    return 1
+endfunction
+
+" Emit terminal element in current form, given the starting position of the
+" enclosing form's bracket plus leading metacharacters (spos) and the position
+" of the bracket itself (bpos).
+function! s:stackop_emit(last, spos, bpos)
+    " Move inwards onto the terminal element, then find the penultimate
+    " element, which will become the ultimate element after the move
+    call setpos('.', a:bpos)
+
+    let [l, c] = s:findpos('\v\S', !a:last)
+    if l < 1 | return 0 | endif
+
+    call cursor(l, c)
+
+    if a:last
+        call s:move_to_current_element_terminal(0)
+    endif
+
+    let nextpos = s:move_to_adjacent_element(!a:last, 0, 0)
+    if nextpos[1] < 1 | return 0 | end
+
+    let nextpos = s:current_element_terminal(a:last)
+
+    " Ensure the new ultimate element is actually contained
+    if s:compare_pos(nextpos, a:spos) != (a:last ? -1 : 1)
+        \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
+        return 0
+    endif
+
+    let reg_save = @b
+    let @b = getline(a:spos[1])[a:spos[2] - 1 : a:bpos[2] - 1]
+    let blen = len(@b)
+
+    " Insertion and deletion must be done from the bottom up to avoid
+    " recalculating our marks
+    if a:last
+        call setpos('.', a:spos)
+        execute 'silent! normal! "_d' . blen . 'l'
+        call setpos('.', nextpos)
+        execute 'silent! normal! "bp'
+    else
+        call setpos('.', nextpos)
+        execute 'silent! normal! "bP'
+        call setpos('.', a:spos)
+        execute 'silent! normal! "_d' . blen . 'l'
+        call setpos('.', s:pos_with_col_offset(nextpos, -(a:spos[1] == nextpos[1]) - blen + 1))
+    endif
+
+    let @b = reg_save
+    return 1
+endfunction
+
 """ EXPORTED FUNCTIONS {{{1
 
 " Call func count times with given varargs. Will call func at least once.
@@ -1299,7 +1389,7 @@ function! sexp#backspace_insertion()
     endif
 endfunction
 
-" Capture or emit the first or last element out of or into the current form.
+" Capture or emit the first or last element into or out of the current form.
 " The cursor will be placed on the new bracket position, or if mode is 'v',
 " the resulting form will be selected.
 "
@@ -1308,122 +1398,48 @@ endfunction
 function! sexp#stackop(mode, last, capture)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     let char = getline(cursorline)[cursorcol - 1]
-    let reg_save = @b
 
     if a:mode ==? 'v'
         let marks = s:get_visual_marks()
         execute "normal! \<C-Bslash>\<C-n>"
     endif
 
-    " This is a goto disguised as a foreach loop.
-    for _ in [0]
-        " Move to element tail first so we can skip leading macro chars
-        let pos = s:move_to_current_element_terminal(1)
+    " Move to element tail first so we can skip leading macro chars
+    let pos = s:move_to_current_element_terminal(1)
 
-        " Move to closing bracket unless we are on one
-        if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
-            let pos = s:move_to_nearest_bracket(1)
-        endif
+    " Move to closing bracket unless we are on one
+    if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
+        let pos = s:move_to_nearest_bracket(1)
+    endif
 
+    try
         " No paired bracket found, so not in a form
-        if pos[1] < 1 | break | endif
+        if pos[1] < 1 | throw 'sexp-error' | endif
 
         if a:last
             let bpos = pos
-            let @b = getline(pos[1])[pos[2] - 1]
         else
             let bpos = s:move_to_nearest_bracket(0)
             let pos = s:move_to_current_element_terminal(0)
-            let @b = getline(pos[1])[pos[2] - 1 : bpos[2] - 1]
         endif
 
-        let blen = len(@b)
-
-        " Not DRY and not pretty!
-        if a:capture
-            let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
-            if nextpos[1] < 1 | break | endif
-
-            " Ensure we are not trying to capture a parent form
-            if s:compare_pos(pos, s:current_element_terminal(!a:last)) == (a:last ? 1 : -1)
-                break
-            endif
-
-            " Insertion and deletion must be done from the bottom up to avoid
-            " recalculating our marks
-            if a:last
-                let nextpos = s:current_element_terminal(1)
-                call setpos('.', nextpos)
-                execute 'silent! normal! "bp'
-                call setpos('.', pos)
-                execute 'silent! normal! "_d' . blen . 'l'
-                call setpos('.', s:pos_with_col_offset(nextpos, 1 + -(pos[1] == nextpos[1])))
-            else
-                call setpos('.', pos)
-                execute 'silent! normal! "_d' . blen . 'l'
-                call setpos('.', nextpos)
-                execute 'silent! normal! "bP'
-                if blen > 1 | execute 'silent! normal! ' . (blen - 1) . 'h' | endif
-            endif
-        else
-            " Move inwards onto the terminal element, then find the
-            " penultimate element, which will become the ultimate element
-            " after the move
-            call setpos('.', bpos)
-
-            let [l, c] = s:findpos('\v\S', !a:last)
-            if l < 1 | break | endif
-
-            call cursor(l, c)
-
-            if a:last
-                call s:move_to_current_element_terminal(0)
-            endif
-
-            let nextpos = s:move_to_adjacent_element(!a:last, 0, 0)
-            if nextpos[1] < 1 | break | end
-
-            " Ensure the new ultimate element is actually contained
-            let nextpos = s:current_element_terminal(a:last)
-
-            if s:compare_pos(nextpos, pos) != (a:last ? -1 : 1)
-                \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
-                break
-            endif
-
-            " Insertion and deletion must be done from the bottom up to avoid
-            " recalculating our marks
-            if a:last
-                call setpos('.', pos)
-                execute 'silent! normal! "_d' . blen . 'l'
-                call setpos('.', nextpos)
-                execute 'silent! normal! "bp'
-            else
-                call setpos('.', nextpos)
-                execute 'silent! normal! "bP'
-                call setpos('.', pos)
-                execute 'silent! normal! "_d' . blen . 'l'
-                call setpos('.', s:pos_with_col_offset(nextpos, -(pos[1] == nextpos[1]) - blen + 1))
-            endif
+        if !(a:capture ? s:stackop_capture(a:last, pos, bpos)
+                     \ : s:stackop_emit(a:last, pos, bpos))
+            throw 'sexp-error'
         endif
 
         if a:mode ==? 'v'
             call sexp#select_current_form('n', 0)
         endif
-
-        " No errors, don't jump to cleanup
-        let @b = reg_save
-        return
-    endfor
-
-    " Cleanup after error
-    let @b = reg_save
-    if a:mode ==? 'v'
-        call s:set_visual_marks(marks)
-        normal! gv
-    else
-        call cursor(cursorline, cursorcol)
-    endif
+    catch /sexp-error/
+        " Cleanup after error
+        if a:mode ==? 'v'
+            call s:set_visual_marks(marks)
+            normal! gv
+        else
+            call cursor(cursorline, cursorcol)
+        endif
+    endtry
 endfunction
 
 " Exchange the current element with an adjacent sibling element. Does nothing

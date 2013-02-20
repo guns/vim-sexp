@@ -125,60 +125,66 @@ endfunction
 " If global variable g:sexp_maxlines is -1, a fast best-effort approach is
 " used instead of a recursive searchpairpos()
 function! s:current_top_form_bracket(closing)
+    return g:sexp_maxlines < 0
+           \ ? s:current_top_form_bracket_by_first_column(a:closing)
+           \ : s:current_top_form_bracket_by_maxlines(a:closing)
+endfunction
+
+" Recursive searchpairpos() is excruciatingly slow on a large file. This can
+" be addressed somewhat by providing a stopline argument, but this makes
+" the call a best-effort approach. If we are sacrificing correctness for
+" performance, we can do even better by assuming that all opening brackets on
+" the first column of a line are toplevel.
+function! s:current_top_form_bracket_by_first_column(closing)
+    let cursor = getpos('.')
+    let at_top = 0
+    let [_b, line, col, _o] = s:current_element_terminal(0)
+
+    if line > 0
+        call cursor(line, col)
+        let at_top = col == 1
+    endif
+
+    while !at_top
+        let [_b, line, col, _o] = s:move_to_nearest_bracket(0)
+
+        if line > 0 && col == 1
+            let at_top = 1
+        elseif line < 1
+            break
+        endif
+    endwhile
+
+    let closing = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
+                  \ ? s:nearest_bracket(1)
+                  \ : [0, 0, 0, 0]
+
+    call setpos('.', cursor)
+
+    return closing[1] > 0
+           \ ? (a:closing ? closing : [0, line, col, 0])
+           \ : [0, 0, 0, 0]
+endfunction
+
+" Return current form's top-level bracket using searchpairpos() with
+" g:sexp_maxlines
+function! s:current_top_form_bracket_by_maxlines(closing)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
+    let flags = a:closing ? 'cnr' : 'bcnr'
+    let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
+    let stopline = g:sexp_maxlines > 0
+                   \ ? cursorline + ((a:closing ? 1 : -1) * g:sexp_maxlines)
+                   \ : 0
+    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
 
-    if g:sexp_maxlines < 0
-        " Recursive searchpairpos() is excruciatingly slow on a large file.
-        " This can be addressed somewhat by providing a stopline argument, but
-        " this makes the call a best-effort approach. If we are sacrificing
-        " correctness for performance, we can do even better by assuming that
-        " all opening brackets on the first column of a line are toplevel.
-        let at_top = 0
-
-        " Assume we're at the top level if the current element begins on the
-        " first column
-        let [_b, line, col, _o] = s:current_element_terminal(0)
-
-        if line > 0
-            call cursor(line, col)
-            let at_top = col == 1
-        endif
-
-        while !at_top
-            let [_b, line, col, _o] = s:move_to_nearest_bracket(0)
-            if line > 0 && col == 1
-                let at_top = 1
-            elseif line < 1
-                break
-            endif
-        endwhile
-
-        let closing = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
-                      \ ? s:nearest_bracket(1)
-                      \ : [0, 0, 0, 0]
-
-        call cursor(cursorline, cursorcol) " Restore position
-
-        return closing[1] > 0
-               \ ? (a:closing ? closing : [0, line, col, 0])
-               \ : [0, 0, 0, 0]
+    if topline > 0
+        return [0, topline, topcol, 0]
+    " searchpairpos() fails to find the matching closing bracket when on the
+    " outermost opening bracket and vice versa
+    elseif getline(cursorline)[cursorcol - 1] =~# (a:closing ? s:opening_bracket : s:closing_bracket)
+        return s:nearest_bracket(a:closing)
     else
-        let flags = a:closing ? 'cnr' : 'bcnr'
-        let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
-        let stopline = g:sexp_maxlines > 0
-                       \ ? cursorline + ((a:closing ? 1 : -1) * g:sexp_maxlines)
-                       \ : 0
-        let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
-
-        if topline > 0
-            return [0, topline, topcol, 0]
-        " searchpairpos() fails to find the matching closing bracket when on the
-        " outermost opening bracket and vice versa
-        elseif getline(cursorline)[cursorcol - 1] =~# (a:closing ? s:opening_bracket : s:closing_bracket)
-            return s:nearest_bracket(a:closing)
-        else
-            return [0, 0, 0, 0]
-        endif
+        return [0, 0, 0, 0]
     endif
 endfunction
 

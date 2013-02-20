@@ -532,6 +532,42 @@ function! s:terminals_with_whitespace(start, end)
     return [start, end]
 endfunction
 
+" Extend given positions to the terminals of any partially contained elements.
+" If there exist any unpaired brackets in the region, the positions are
+" extended to include those forms.
+function! s:positions_with_element_terminals(positions)
+    let cursor = getpos('.')
+    let [start, end] = a:positions
+
+    call s:move_to_element_near_position(start)
+    let head = s:current_element_terminal(0)
+
+    call s:move_to_element_near_position(end)
+    let tail = s:current_element_terminal(1)
+
+    if head[1] > 0 && tail[1] > 0
+        " Find any unbalanced brackets in our selection
+        let bcount = s:count_brackets(head, tail, s:bracket, s:opening_bracket)
+
+        " Extend head for every ket
+        if bcount['ket'] > 0
+            call setpos('.', head)
+            call sexp#docount(bcount['ket'], 's:move_to_nearest_bracket', 0)
+            let head = getpos('.')
+        endif
+
+        " And tail for every bra
+        if bcount['bra'] > 0
+            call setpos('.', tail)
+            call sexp#docount(bcount['bra'], 's:move_to_nearest_bracket', 1)
+            let tail = getpos('.')
+        endif
+    endif
+
+    call setpos('.', cursor)
+    return [head, tail]
+endfunction
+
 " Returns dict { 'bra': number, 'ket': number }, which indicates the number
 " of unpaired opening brackets ('bra') and the number of unpaired closing
 " brackets ('ket') in the selection from start to end.
@@ -726,6 +762,14 @@ function! s:move_to_adjacent_element(next, tail, top)
 
     if pos[1] > 0 | call setpos('.', pos) | endif
     return pos
+endfunction
+
+" Move cursor to pos, and then to the next element if in whitespace.
+function! s:move_to_element_near_position(pos)
+    call setpos('.', a:pos)
+    return getline('.')[col('.') - 1] =~# '\v\s'
+           \ ? s:move_to_adjacent_element(1, 0, 0)
+           \ : a:pos
 endfunction
 
 " Extend current selection by moving the cursor to position returned by
@@ -964,7 +1008,7 @@ function! s:select_current_marks(mode)
     endif
 endfunction
 
-""" CHARACTER INSERTION {{{1
+""" BUFFER MUTATION {{{1
 
 " Insert bra and ket around current visual marks. If mark '< is invalid,
 " inserts brackets at cursor.
@@ -1097,6 +1141,87 @@ function! s:stackop_emit(last, spos, bpos)
     endif
 
     let @b = reg_save
+    return 1
+endfunction
+
+" Swap current visual selection with adjacent element. If pairwise is true,
+" swaps with adjacent pair of elements. If mode is 'v', the newly moved
+" selection is reselected.
+function! s:swap_current_selection(mode, next, pairwise)
+    let reg_save = [@a, @b]
+    let visual = a:mode =~? 'v'
+
+    " Yank selection and mark with START OF TEXT and END OF TEXT if necessary
+    call s:select_current_marks(a:mode)
+    silent! normal! "ay
+    if a:next
+        let @a = nr2char(0x02) . @a . nr2char(0x03)
+    endif
+
+    let marks = {}
+    let marks['a'] = s:get_visual_marks()
+
+    " Record the sibling element
+    call setpos('.', marks['a'][!!a:next])
+    call s:set_marks_around_adjacent_element('n', a:next)
+    if a:pairwise
+        let mark = a:next ? "'>" : "'<"
+        call setpos('.', getpos(mark))
+        call setpos(mark, s:nearest_element_terminal(a:next, a:next))
+        call s:set_visual_marks(s:positions_with_element_terminals(s:get_visual_marks()))
+    endif
+    call s:select_current_marks(a:mode)
+    silent! normal! "by
+    let marks['b'] = s:get_visual_marks()
+
+    " Abort if we are already at the head or tail of the current form; we can
+    " determine this by seeing if the adjacent element contains the original
+    " element. Also abort if the selections are the same, which indicates that
+    " we are at the top or bottom of the file.
+    let b_cmp_a = s:compare_pos(marks['b'][0], marks['a'][0])
+    if b_cmp_a == 0
+        \ || (a:next && b_cmp_a < 0)
+        \ || (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
+        return 0
+    endif
+
+    " We change the buffer from the bottom up so that the marks remain
+    " accurate.
+    let b = a:next ? 'b' : 'a'
+    let a = a:next ? 'a' : 'b'
+
+    call s:set_visual_marks(marks[b])
+    call s:select_current_marks('v')
+    execute 'silent! normal! "' . a . 'p'
+
+    call s:set_visual_marks(marks[a])
+    call s:select_current_marks('v')
+    execute 'silent! normal! "' . b . 'p'
+
+    " Set marks around next element using the ^B and ^C markers
+    if a:next
+        call setpos('.', marks['a'][0])
+
+        let [sl, sc] = s:findpos(nr2char(0x02), 1)
+        call setpos('.', [0, sl, sc, 0])
+        normal! x
+        call setpos("'<", [0, sl, sc, 0])
+
+        let [el, ec] = s:findpos(nr2char(0x03), 1)
+        call setpos('.', [0, el, ec, 0])
+        normal! x
+        call setpos("'>", [0, el, ec - 1, 0])
+    endif
+
+    if visual
+        call s:select_current_marks('v')
+    elseif a:next
+        call setpos('.', getpos("'<"))
+    else
+        call setpos('.', marks['b'][0])
+    endif
+
+    let [@a, @b] = reg_save
     return 1
 endfunction
 
@@ -1445,169 +1570,57 @@ endfunction
 " Exchange the current element with an adjacent sibling element. Does nothing
 " if there is no current or sibling element.
 "
-" If form equals 1, the current form is treated as the current element.
+" If form equals 1, the current form is treated as the selected element.
 "
 " If mode equals 'v' (regardless of the value of form), the current selection
-" is expanded to include any partially selected elements, then is swapped with
-" the next element as a unit. The marks are set to the new position and visual
-" mode is re-entered.
+" is expanded to include any partially selected elements, then is swapped
+" with the next element as a unit. If the selection contains an even number
+" of elements, the swap is done with the next couple of elements in order to
+" maintain the original associative structure of the form. Visual marks are
+" set to the new position and visual mode is re-entered.
 "
 " Note that swapping comments with other elements can lead to structural
 " imbalance since trailing brackets may be included as part of a comment after
 " a swap. Fixing this is on the TODO list.
-"
-" This implementation is conservative and verbose because I found that the
-" syntax state of the buffer is not updated while doing quick successions of
-" normal! commands, which is the obvious and concise implementation method.
 function! sexp#swap_element(mode, next, form)
-    let reg_save = [@a, @b]
     let visual = a:mode ==? 'v'
     let cursor = getpos('.')
-    let by_pairs = 0
+    let pairwise = 0
 
-    " Extend both ends of visual selection to nearest element. If there exist
-    " any unpaired brackets in the resulting selection, the selection is
-    " extended to include those forms.
-    "
     " Moving formwise with a:mode 'v' will be treated like a regular
     " element-wise swap.
     if visual
-        let vmarks = s:get_visual_marks()
-
-        call setpos('.', vmarks[0])
-        if getline(vmarks[0][1])[vmarks[0][2] - 1] =~# '\v\s'
-            call s:move_to_adjacent_element(1, 0, 0)
-        endif
-        let head = s:current_element_terminal(0)
-        if head[1] > 0 | call setpos("'<", head) | endif
-
-        call setpos('.', vmarks[1])
-        if getline(vmarks[1][1])[vmarks[1][2] - 1] =~# '\v\s'
-            call s:move_to_adjacent_element(1, 0, 0)
-        endif
-        let tail = s:current_element_terminal(1)
-        if tail[1] > 0 | call setpos("'>", tail) | endif
-
-        if head[1] > 0 && tail[1] > 0
-            " Find any unbalanced brackets in our selection
-            let bcount = s:count_brackets(head, tail, s:bracket, s:opening_bracket)
-
-            " Expand head for every ket and tail for every bra.
-            if bcount['ket'] > 0
-                call setpos('.', head)
-                call sexp#docount(bcount['ket'], 's:move_to_nearest_bracket', 0)
-                call setpos("'<", getpos('.'))
-            endif
-
-            if bcount['bra'] > 0
-                call setpos('.', tail)
-                call sexp#docount(bcount['bra'], 's:move_to_nearest_bracket', 1)
-                call setpos("'>", getpos('.'))
-            endif
-        endif
+        let marks = s:get_visual_marks()
 
         " Ensure visual marks are set character-wise
         call s:select_current_marks('v')
         execute "normal! \<C-Bslash>\<C-n>"
 
-        let by_pairs = (call('s:count_elements', s:get_visual_marks()) % 2) == 0
-        let selected = s:select_current_marks('v')
-    " Otherwise select the current form (with leading macro chars) or element
+        call s:set_visual_marks(s:positions_with_element_terminals(marks))
+        let pairwise = (call('s:count_elements', s:get_visual_marks()) % 2) == 0
+    " Otherwise select the current form or element (with leading macro chars)
     elseif a:form
-        " Check element end in case we are on leading macro chars
+        " Move to element end first in case we are on leading macro chars
         let pos = s:current_element_terminal(1)
         let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
                    \ ? pos
                    \ : s:nearest_bracket(1)
         if tail[1] < 1
-            let selected = 0
+            call s:clear_visual_marks()
         else
             call setpos('.', tail)
-            let selected = sexp#select_current_element('o', 1)
+            call s:set_marks_around_current_element('o', 1)
         endif
     else
-        let selected = sexp#select_current_element('o', 1)
+        call s:set_marks_around_current_element('o', 1)
     endif
 
-    " Abort if nothing selected
-    if !selected
+    if getpos("'<")[1] < 1 || !s:swap_current_selection(a:mode, a:next, pairwise)
+        " Restore visual state
         if visual
-            " Restore visual state
-            call s:set_visual_marks(vmarks)
-            normal! gv
-        endif
-        return
-    endif
-
-    " Yank selection and mark with START OF TEXT and END OF TEXT if necessary
-    silent! normal! "ay
-    if a:next | let @a = nr2char(0x02) . @a . nr2char(0x03) | endif
-
-    let marks = {}
-    let marks['a'] = s:get_visual_marks()
-
-    " Record the sibling element
-    call setpos('.', marks['a'][!!a:next])
-    call sexp#select_adjacent_element('n', a:next)
-    if by_pairs
-        if !a:next | execute 'normal! o' | endif
-        call s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:next, 0)
-    endif
-    silent! normal! "by
-    let marks['b'] = s:get_visual_marks()
-
-    " Abort if we are already at the head or tail of the current form; we can
-    " determine this by seeing if the adjacent element envelops the original
-    " element. Also abort if the selections are the same, which indicates that
-    " we are at the top or bottom of the file.
-    let b_cmp_a = s:compare_pos(marks['b'][0], marks['a'][0])
-    if b_cmp_a == 0
-        \ || (a:next && b_cmp_a < 0)
-        \ || (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
-        if visual
-            " Restore visual state
-            call s:set_visual_marks(vmarks)
+            call s:set_visual_marks(marks)
             normal! gv
         endif
         call setpos('.', cursor)
-        return
     endif
-
-    " We change the buffer from the bottom up so that the marks remain
-    " accurate.
-    let b = a:next ? 'b' : 'a'
-    let a = a:next ? 'a' : 'b'
-
-    call s:set_visual_marks(marks[b])
-    call s:select_current_marks('v')
-    execute 'silent! normal! "' . a . 'p'
-
-    call s:set_visual_marks(marks[a])
-    call s:select_current_marks('v')
-    execute 'silent! normal! "' . b . 'p'
-
-    " Set marks around next element using the ^B and ^C markers
-    if a:next
-        call setpos('.', marks['a'][0])
-
-        let [sl, sc] = s:findpos(nr2char(0x02), 1)
-        call setpos('.', [0, sl, sc, 0])
-        normal! x
-        call setpos("'<", [0, sl, sc, 0])
-
-        let [el, ec] = s:findpos(nr2char(0x03), 1)
-        call setpos('.', [0, el, ec, 0])
-        normal! x
-        call setpos("'>", [0, el, ec - 1, 0])
-    endif
-
-    if visual
-        call s:select_current_marks('v')
-    elseif a:next
-        call setpos('.', getpos("'<"))
-    else
-        call setpos('.', marks['b'][0])
-    endif
-
-    let [@a, @b] = reg_save
 endfunction

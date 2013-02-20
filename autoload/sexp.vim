@@ -1406,8 +1406,7 @@ endfunction
 " syntax state of the buffer is not updated while doing quick successions of
 " normal! commands, which is the obvious and concise implementation method.
 function! sexp#swap_element(mode, next, form)
-    let reg_a = @a
-    let reg_b = @b
+    let reg_save = [@a, @b]
     let visual = a:mode ==? 'v'
     let cursor = getpos('.')
     let by_pairs = 0
@@ -1556,6 +1555,5 @@ function! sexp#swap_element(mode, next, form)
         call setpos('.', marks['b'][0])
     endif
 
-    let @a = reg_a
-    let @b = reg_b
+    let [@a, @b] = reg_save
 endfunction

@@ -25,8 +25,7 @@ let g:sexp_autoloaded = 1
 " * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
 " * Element selection should include trailing commas in Clojure
-" * Handle counts for swap; should specify the number of adjacent elements to
-"   swap with
+" * Handle counts for swap
 " * Indenting with a motion should not move the cursor
 
 """ PATTERNS AND STATE {{{1
@@ -517,7 +516,7 @@ endfunction
 " Returns dict { 'bra': number, 'ket': number }, which indicates the number
 " of unpaired opening brackets ('bra') and the number of unpaired closing
 " brackets ('ket') in the selection from start to end.
-function! s:bracket_count(start, end, all_brackets, opening_brackets)
+function! s:count_brackets(start, end, all_brackets, opening_brackets)
     let cursor = getpos('.')
     let bcount = { 'bra': 0, 'ket': 0 }
 
@@ -555,6 +554,29 @@ function! s:bracket_count(start, end, all_brackets, opening_brackets)
 
     call setpos('.', cursor)
     return bcount
+endfunction
+
+" Returns the number of elements in the given range
+function! s:count_elements(start, end)
+    let cursor = getpos('.')
+    let pos = a:start
+    let n = 1
+
+    call setpos('.', pos)
+    while 1
+        let nextpos = s:move_to_adjacent_element(1, 0, 0)
+        if s:compare_pos(nextpos, a:end) > 0
+            break
+        endif
+        let n += 1
+        if s:compare_pos(pos, nextpos) == 0
+            break
+        endif
+        let pos = nextpos
+    endwhile
+
+    call setpos('.', cursor)
+    return n
 endfunction
 
 """ PREDICATES AND COMPARATORS {{{1
@@ -1301,16 +1323,16 @@ function! sexp#stackop(mode, last, capture)
             if a:last
                 let nextpos = s:current_element_terminal(1)
                 call setpos('.', nextpos)
-                execute 'normal! "bp'
+                execute 'silent! normal! "bp'
                 call setpos('.', pos)
-                execute 'normal! "_d' . blen . 'l'
+                execute 'silent! normal! "_d' . blen . 'l'
                 call setpos('.', s:pos_with_col_offset(nextpos, 1 + -(pos[1] == nextpos[1])))
             else
                 call setpos('.', pos)
-                execute 'normal! "_d' . blen . 'l'
+                execute 'silent! normal! "_d' . blen . 'l'
                 call setpos('.', nextpos)
-                execute 'normal! "bP'
-                if blen > 1 | execute 'normal! ' . (blen - 1) . 'h' | endif
+                execute 'silent! normal! "bP'
+                if blen > 1 | execute 'silent! normal! ' . (blen - 1) . 'h' | endif
             endif
         else
             " Move inwards onto the terminal element, then find the
@@ -1335,14 +1357,14 @@ function! sexp#stackop(mode, last, capture)
             " recalculating our marks
             if a:last
                 call setpos('.', pos)
-                execute 'normal! "_d' . blen . 'l'
+                execute 'silent! normal! "_d' . blen . 'l'
                 call setpos('.', nextpos)
-                execute 'normal! "bp'
+                execute 'silent! normal! "bp'
             else
                 call setpos('.', nextpos)
-                execute 'normal! "bP'
+                execute 'silent! normal! "bP'
                 call setpos('.', pos)
-                execute 'normal! "_d' . blen . 'l'
+                execute 'silent! normal! "_d' . blen . 'l'
                 call setpos('.', s:pos_with_col_offset(nextpos, -(pos[1] == nextpos[1]) - blen + 1))
             endif
         endif
@@ -1388,6 +1410,7 @@ function! sexp#swap_element(mode, next, form)
     let reg_b = @b
     let visual = a:mode ==? 'v'
     let cursor = getpos('.')
+    let by_pairs = 0
 
     " Extend both ends of visual selection to nearest element. If there exist
     " any unpaired brackets in the resulting selection, the selection is
@@ -1414,7 +1437,7 @@ function! sexp#swap_element(mode, next, form)
 
         if head[1] > 0 && tail[1] > 0
             " Find any unbalanced brackets in our selection
-            let bcount = s:bracket_count(head, tail, s:bracket, s:opening_bracket)
+            let bcount = s:count_brackets(head, tail, s:bracket, s:opening_bracket)
 
             " Expand head for every ket and tail for every bra.
             if bcount['ket'] > 0
@@ -1430,6 +1453,11 @@ function! sexp#swap_element(mode, next, form)
             endif
         endif
 
+        " Ensure visual marks are set character-wise
+        call s:select_current_marks('v')
+        execute "normal! \<C-Bslash>\<C-n>"
+
+        let by_pairs = (call('s:count_elements', s:get_visual_marks()) % 2) == 0
         let selected = s:select_current_marks('v')
     " Otherwise select the current form (with leading macro chars) or element
     elseif a:form
@@ -1459,7 +1487,7 @@ function! sexp#swap_element(mode, next, form)
     endif
 
     " Yank selection and mark with START OF TEXT and END OF TEXT if necessary
-    normal! "ay
+    silent! normal! "ay
     if a:next | let @a = nr2char(0x02) . @a . nr2char(0x03) | endif
 
     let marks = {}
@@ -1468,7 +1496,11 @@ function! sexp#swap_element(mode, next, form)
     " Record the sibling element
     call setpos('.', marks['a'][!!a:next])
     call sexp#select_adjacent_element('n', a:next)
-    normal! "by
+    if by_pairs
+        if !a:next | execute 'normal! o' | endif
+        call s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:next, 0)
+    endif
+    silent! normal! "by
     let marks['b'] = s:get_visual_marks()
 
     " Abort if we are already at the head or tail of the current form; we can
@@ -1495,11 +1527,11 @@ function! sexp#swap_element(mode, next, form)
 
     call s:set_visual_marks(marks[b])
     call s:select_current_marks('v')
-    execute 'normal! "' . a . 'p'
+    execute 'silent! normal! "' . a . 'p'
 
     call s:set_visual_marks(marks[a])
     call s:select_current_marks('v')
-    execute 'normal! "' . b . 'p'
+    execute 'silent! normal! "' . b . 'p'
 
     " Set marks around next element using the ^B and ^C markers
     if a:next

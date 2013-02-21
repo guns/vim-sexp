@@ -579,9 +579,9 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
     while 1
         let [line, col] = searchpos(a:all_brackets, 'cW')
 
-        " Start next iteration from end of ignored scope if necessary
+        " Start next iteration at next element if in ignored scope
         if s:syntax_match(s:ignored_region, line, col)
-            call s:move_to_current_element_terminal(1)
+            call s:move_to_adjacent_element(1, 0, 0)
             continue
         endif
 

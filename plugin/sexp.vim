@@ -138,12 +138,12 @@ endfor
 "     without setting the cursor position to '<. This is necessary to detect
 "     which end the user is using to adjust the selection.
 "
-nnoremap <silent> <Plug>sexp_move_to_prev_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)<CR>
-vnoremap <silent> <Plug>sexp_move_to_prev_element   <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
-onoremap <silent> <Plug>sexp_move_to_prev_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)<CR>
-nnoremap <silent> <Plug>sexp_move_to_next_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)<CR>
-vnoremap <silent> <Plug>sexp_move_to_next_element   <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
-onoremap <silent> <Plug>sexp_move_to_next_element   :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)<CR>
+nnoremap <silent> <Plug>sexp_move_to_prev_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_move_to_prev_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
+onoremap <silent> <Plug>sexp_move_to_prev_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)<CR>
+nnoremap <silent> <Plug>sexp_move_to_next_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)<CR>
+vnoremap <silent> <Plug>sexp_move_to_next_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
+onoremap <silent> <Plug>sexp_move_to_next_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)<CR>
 "
 "   * Inclusive operator pending motions require a visual mode selection to
 "     include the last character of a line.

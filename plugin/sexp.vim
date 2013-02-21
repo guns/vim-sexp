@@ -83,12 +83,13 @@ augroup END
 """ Utility functions {{{1
 
 function! s:filetype_autocmd(...)
-    if empty(g:sexp_filetypes) | return | endif
-    augroup sexp_autocommands
-        for cmd in a:000
-            execute 'autocmd FileType ' . g:sexp_filetypes . ' ' . cmd
-        endfor
-    augroup END
+    if !empty(g:sexp_filetypes)
+        augroup sexp_autocommands
+            for cmd in a:000
+                execute 'autocmd FileType ' . g:sexp_filetypes . ' ' . cmd
+            endfor
+        augroup END
+    endif
 endfunction
 
 """ Text objects {{{1

@@ -22,7 +22,6 @@ let g:sexp_autoloaded = 1
 "
 " * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
-" * Use tpope's repeat.vim to enable '.' command for our <Plug> mappings
 " * Comments should always be swapped to their own line
 " * Element selection should include trailing commas in Clojure
 " * Indenting with a motion should not move the cursor

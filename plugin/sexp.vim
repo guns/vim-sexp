@@ -76,7 +76,7 @@ let s:sexp_default_mappings = {
     \ 'sexp_capture_next_element':        '<M-L>',
     \ }
 
-augroup sexp_autocommands
+augroup sexp_filetypes
     autocmd!
 augroup END
 
@@ -84,7 +84,7 @@ augroup END
 
 function! s:filetype_autocmd(...)
     if !empty(g:sexp_filetypes)
-        augroup sexp_autocommands
+        augroup sexp_filetypes
             for cmd in a:000
                 execute 'autocmd FileType ' . g:sexp_filetypes . ' ' . cmd
             endfor

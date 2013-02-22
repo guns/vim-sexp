@@ -101,19 +101,18 @@ function! s:repeat_set(buf)
     augroup END
 endfunction
 
-function! s:defplug(repeat, args)
-    let [mapmode, name; rest] = split(a:args)
-    let map = mapmode . ' <silent> <Plug>' . name . ' ' . join(rest)
+function! s:defplug(repeat, mapmode, name, ...)
+    let map = a:mapmode . ' <silent> <Plug>' . a:name . ' ' . join(a:000)
 
     if empty(a:repeat) || !exists('*repeat#set')
         execute map . '<CR>'
     else
-        let op = mapmode[0] ==# 'o' ? 'v:operator . ' : ''
-        execute map . ' \| call <SID>repeat_set(' . op . '"\<Plug>' . name . '")<CR>'
+        let op = a:mapmode[0] ==# 'o' ? 'v:operator . ' : ''
+        execute map . ' \| call <SID>repeat_set(' . op . '"\<Plug>' . a:name . '")<CR>'
     endif
 endfunction
 
-command! -nargs=+ -bar -bang Defplug call <SID>defplug('<bang>', <q-args>)
+command! -nargs=+ -bar -bang Defplug call <SID>defplug('<bang>', <f-args>)
 
 """ Text objects {{{1
 
@@ -174,8 +173,8 @@ Defplug! onoremap sexp_move_to_next_element :<C-u>call sexp#docount(v:count, 'se
 "
 Defplug  nnoremap sexp_move_to_end_of_next_element :<C-u>call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
 Defplug  vnoremap sexp_move_to_end_of_next_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
-Defplug! onoremap sexp_move_to_end_of_next_element :call setpos("'<", getpos('.')) \|
-                                                  \ call setpos("'>", getpos('.')) \|
+Defplug! onoremap sexp_move_to_end_of_next_element :call setpos(\"'<\", getpos('.')) \\|
+                                                  \ call setpos(\"'>\", getpos('.')) \\|
                                                   \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
 
 " Adjacent top element

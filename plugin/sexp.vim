@@ -333,3 +333,9 @@ if g:sexp_enable_insert_mode_mappings
         \ 'imap <buffer> "    <Plug>sexp_insert_double_quote',
         \ 'imap <buffer> <BS> <Plug>sexp_insert_backspace')
 endif
+
+""" Cleanup {{{1
+
+delcommand Defplug
+delfunction s:defplug
+delfunction s:filetype_autocmd

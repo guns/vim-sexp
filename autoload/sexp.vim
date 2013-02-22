@@ -9,7 +9,6 @@
 "    `"                                                                   888       "'
 "                                                                        o888o
 " Author:   guns <self@sungpae.com>
-" Version:  0.1
 " License:  MIT
 " Homepage: https://github.com/guns/vim-sexp
 

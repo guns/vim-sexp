@@ -1136,7 +1136,7 @@ function! s:stackop_emit(last, spos, bpos)
         execute 'silent! normal! "bP'
         call setpos('.', a:spos)
         execute 'silent! normal! "_d' . blen . 'l'
-        call setpos('.', s:pos_with_col_offset(nextpos, -(a:spos[1] == nextpos[1]) - blen + 1))
+        call setpos('.', s:pos_with_col_offset(nextpos, (a:spos[1] == nextpos[1] ? -1 : 1) - blen + 1))
     endif
 
     let @b = reg_save

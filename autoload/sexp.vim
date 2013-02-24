@@ -820,8 +820,8 @@ endfunction
 " Set visual marks to the positions of the nearest paired brackets. Offset is
 " the number of columns inwards from the brackets to set the marks.
 "
-" Under the following circumstances the visual marks are set to the next outer
-" pair of brackets:
+" If allow_expansion is 1, the visual marks are set to the next outer pair of
+" brackets under the following circumstances:
 "
 "   * Mode equals 'v', the cursor is on an opening bracket, the mark '< is
 "     valid, and the marks '< and '> are not equal. This occurs when calling
@@ -831,7 +831,7 @@ endfunction
 "     called by sexp#docount()
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
-function! s:set_marks_around_current_form(mode, offset)
+function! s:set_marks_around_current_form(mode, offset, allow_expansion)
     " We may potentially move the cursor.
     let cursor = getpos('.')
     let cursor_moved = 0
@@ -842,7 +842,7 @@ function! s:set_marks_around_current_form(mode, offset)
     let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
     let have_selection = start_is_valid && start != getpos("'>")
-    let expanding = counting || (visual && have_selection)
+    let expanding = a:allow_expansion && (counting || (visual && have_selection))
 
     " When evaluating via sexp#docount the cursor position will not be updated
     " to '<, so do it now.
@@ -1039,7 +1039,7 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
 endfunction
 
 function! s:insert_brackets_around_current_form(bra, ket, at_tail, headspace)
-    call s:set_marks_around_current_form('n', 0)
+    call s:set_marks_around_current_form('n', 0, 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
@@ -1243,8 +1243,8 @@ endfunction
 " Set visual marks at current form's brackets, then enter visual mode with
 " that selection. If no brackets are found and mode equals 'o', nothing is
 " done.
-function! sexp#select_current_form(mode, offset)
-    call s:set_marks_around_current_form(a:mode, a:offset)
+function! sexp#select_current_form(mode, offset, allow_expansion)
+    call s:set_marks_around_current_form(a:mode, a:offset, a:allow_expansion)
     return s:select_current_marks(a:mode)
 endfunction
 
@@ -1338,9 +1338,7 @@ function! sexp#splice_form()
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
 
-    " Ensure we are not deleting chars at old marks
-    call s:clear_visual_marks()
-    call s:set_marks_around_current_form('n', 0)
+    call s:set_marks_around_current_form('n', 0, 0)
 
     let start = getpos("'<")
 
@@ -1553,7 +1551,7 @@ function! sexp#stackop(mode, last, capture)
         endif
 
         if a:mode ==? 'v'
-            call sexp#select_current_form('n', 0)
+            call sexp#select_current_form('n', 0, 0)
         endif
     catch /sexp-error/
         " Cleanup after error

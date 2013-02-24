@@ -23,7 +23,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
 " * Element selection should include trailing commas in Clojure
-" * Indenting with a motion should not move the cursor
 " * Repeating change operations should repeat the insertion, not just delete
 "   and start insert mode
 

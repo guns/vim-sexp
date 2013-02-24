@@ -121,8 +121,12 @@ function! s:defplug(mode, mapmode, name, ...)
         execute lhs . ' :<C-u>call ' . rhs . '<CR>'
     elseif a:mode ==# '!'
         let op = a:mapmode[0] ==# 'o' ? 'v:operator . ' : ''
+        " We need to set curwin->w_curswant to the current cursor position
+        " before completing the operator-pending command. This is a Vim bug.
+        let set_visual_state = a:mapmode[0] ==# 'o' ? 'execute "normal! vv" \| ' : ''
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
+                \ . set_visual_state
                 \ . 'call ' . rhs . ' \| '
                 \ . 'call <SID>repeat_set(' . op . '"\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif

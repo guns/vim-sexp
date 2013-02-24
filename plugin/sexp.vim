@@ -114,21 +114,31 @@ endfunction
 function! s:defplug(mode, mapmode, name, ...)
     let lhs = a:mapmode . ' <silent> <Plug>' . a:name
     let rhs = join(a:000)
+    let should_repeat = a:mode ==# '!'
 
     if a:mode ==# '*'
         execute lhs . ' ' . rhs
-    elseif empty(a:mode) || (a:mode ==# '!' && !exists('*repeat#set'))
+    elseif empty(a:mode) || (should_repeat && !exists('*repeat#set'))
         execute lhs . ' :<C-u>call ' . rhs . '<CR>'
-    elseif a:mode ==# '!'
-        let op = a:mapmode[0] ==# 'o' ? 'v:operator . ' : ''
-        " We need to set curwin->w_curswant to the current cursor position
-        " before completing the operator-pending command. This is a Vim bug.
-        let set_visual_state = a:mapmode[0] ==# 'o' ? 'execute "normal! vv" \| ' : ''
+    elseif should_repeat && a:mapmode[0] ==# 'o'
+        " Due to a bug in vim, we need to set curwin->w_curswant to the
+        " current cursor position by entering and exiting character-wise
+        " visual mode before completing the operator-pending command so that
+        " the cursor returns to it's original position after an = command.
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . set_visual_state
+                \ . 'execute "normal! vv" \| '
                 \ . 'call ' . rhs . ' \| '
-                \ . 'call <SID>repeat_set(' . op . '"\<Plug>' . a:name . '", b:sexp_count)<CR>'
+                \ . 'if v:operator ==? "c" \| '
+                \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
+                \ . 'else \| '
+                \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '", b:sexp_count) \| '
+                \ . 'endif<CR>'
+    elseif should_repeat
+        execute lhs . ' '
+                \ . ':<C-u>let b:sexp_count = v:count \| '
+                \ . 'call ' . rhs . ' \| '
+                \ . 'call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif
 endfunction
 

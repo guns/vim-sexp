@@ -1332,6 +1332,18 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     endif
 endfunction
 
+" Replace parent form with current form or visual selection.
+function! sexp#lift_form(mode)
+    if a:mode ==# 'v'
+        call s:select_current_marks('v')
+    else
+        call sexp#select_current_form('n', 0, 0)
+    endif
+    normal! d
+    call sexp#select_current_form('n', 0, 0)
+    normal! p
+endfunction
+
 " Remove brackets from current form, placing cursor at position of deleted
 " first bracket.
 function! sexp#splice_form()

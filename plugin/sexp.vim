@@ -17,7 +17,7 @@ if exists('g:sexp_loaded')
 endif
 let g:sexp_loaded = 1
 
-""" Default options {{{1
+""" Global State {{{1
 
 if !exists('g:sexp_filetypes')
     let g:sexp_filetypes = 'clojure,scheme,lisp'
@@ -93,7 +93,7 @@ function! s:filetype_autocmd(filetypes, ...)
     endif
 endfunction
 
-" Calls repeat#set and registers a one-time CursorMoved handler to correctly
+" Calls repeat#set() and registers a one-time CursorMoved handler to correctly
 " set the value of g:repeat_tick.
 "
 " cf. https://github.com/tpope/vim-repeat/issues/8#issuecomment-13951082
@@ -105,11 +105,11 @@ function! s:repeat_set(buf, count)
     augroup END
 endfunction
 
-" Create a <Plug> mapping. The mode parameter dictates the behavior:
+" Create a <Plug> mapping. The 'mode' parameter dictates the behavior:
 "
-"   * mode '':  Map to calling rhs as expression
-"   * mode '!': Map to calling rhs as expression, setting up repeat
-"   * mode '*': Map to rhs as a key sequence
+"   * mode == '' : Map to calling rhs as expression
+"   * mode == '!': Map to calling rhs as expression, setting up repeat
+"   * mode == '*': Map to rhs as a key sequence
 "
 function! s:defplug(mode, mapmode, name, ...)
     let lhs = a:mapmode . ' <silent> <Plug>' . a:name

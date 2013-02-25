@@ -214,6 +214,15 @@ function! s:current_string_terminal(end)
         endif
     endwhile
 
+    " We may be on leading metacharacters if they have been defined as part of
+    " the string region
+    if !a:end
+        let [_b, l, c, _o] = s:current_macro_character_terminal(1)
+        if l > 0
+            let [termline, termcol] = [l, c + 1]
+        endif
+    endif
+
     call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
 endfunction

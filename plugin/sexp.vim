@@ -40,13 +40,13 @@ let s:sexp_default_mappings = {
     \ 'sexp_select_top_form':             'F',
     \ 'sexp_select_string':               's',
     \ 'sexp_select_element':              'e',
+    \ 'sexp_move_to_prev_bracket':        '(',
+    \ 'sexp_move_to_next_bracket':        ')',
     \ 'sexp_move_to_prev_element':        '<M-b>',
     \ 'sexp_move_to_next_element':        '<M-w>',
     \ 'sexp_move_to_end_of_next_element': '<M-e>',
     \ 'sexp_move_to_prev_top_element':    '[[',
     \ 'sexp_move_to_next_top_element':    ']]',
-    \ 'sexp_move_to_prev_bracket':        '(',
-    \ 'sexp_move_to_next_bracket':        ')',
     \ 'sexp_select_prev_element':         '[e',
     \ 'sexp_select_next_element':         ']e',
     \ 'sexp_form_wrap_round_head':        '<Leader>i',
@@ -184,6 +184,14 @@ endfor
 
 """ Directional motions {{{1
 
+" Nearest bracket
+Defplug  nnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)
+DEFPLUG  vnoremap sexp_move_to_prev_bracket <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 0)<CR>
+Defplug! onoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 0)
+Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 1)
+DEFPLUG  vnoremap sexp_move_to_next_bracket <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
+Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 1)
+
 " Adjacent element
 "
 " NOTES:
@@ -215,14 +223,6 @@ Defplug  nnoremap sexp_move_to_next_top_element sexp#docount(v:count, 'sexp#move
 DEFPLUG  vnoremap sexp_move_to_next_top_element <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 1)<CR>
 Defplug! onoremap sexp_move_to_next_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 1)
 
-" Nearest bracket
-Defplug  nnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)
-DEFPLUG  vnoremap sexp_move_to_prev_bracket <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 0)<CR>
-Defplug! onoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 0)
-Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 1)
-DEFPLUG  vnoremap sexp_move_to_next_bracket <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
-Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 1)
-
 " Adjacent element selection
 "
 " Unlike the other directional motions, calling this from normal mode places
@@ -234,9 +234,9 @@ Defplug  nnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 Defplug  vnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 1)
 Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 1)
 
-for s:plug in ['sexp_move_to_prev_element', 'sexp_move_to_next_element', 'sexp_move_to_end_of_next_element',
+for s:plug in ['sexp_move_to_prev_bracket', 'sexp_move_to_next_bracket',
+             \ 'sexp_move_to_prev_element', 'sexp_move_to_next_element', 'sexp_move_to_end_of_next_element',
              \ 'sexp_move_to_prev_top_element', 'sexp_move_to_next_top_element',
-             \ 'sexp_move_to_prev_bracket', 'sexp_move_to_next_bracket',
              \ 'sexp_select_prev_element', 'sexp_select_next_element']
     let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
     if !empty(s:lhs)

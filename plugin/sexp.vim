@@ -69,10 +69,10 @@ let s:sexp_default_mappings = {
     \ 'sexp_swap_form_forward':           '<M-j>',
     \ 'sexp_swap_element_backward':       '<M-h>',
     \ 'sexp_swap_element_forward':        '<M-l>',
-    \ 'sexp_emit_first_element':          '<M-J>',
-    \ 'sexp_emit_last_element':           '<M-K>',
-    \ 'sexp_capture_prev_element':        '<M-H>',
-    \ 'sexp_capture_next_element':        '<M-L>',
+    \ 'sexp_emit_first_element':          '<M-S-j>',
+    \ 'sexp_emit_last_element':           '<M-S-k>',
+    \ 'sexp_capture_prev_element':        '<M-S-h>',
+    \ 'sexp_capture_next_element':        '<M-S-l>',
     \ }
 
 augroup sexp_filetypes

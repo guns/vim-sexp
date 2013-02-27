@@ -36,10 +36,14 @@ if !exists('g:sexp_mappings')
 endif
 
 let s:sexp_mappings = {
-    \ 'sexp_select_form':                 'f',
-    \ 'sexp_select_top_form':             'F',
-    \ 'sexp_select_string':               's',
-    \ 'sexp_select_element':              'e',
+    \ 'sexp_select_form_outer':           'af',
+    \ 'sexp_select_form_inner':           'if',
+    \ 'sexp_select_top_form_outer':       'aF',
+    \ 'sexp_select_top_form_inner':       'iF',
+    \ 'sexp_select_string_outer':         'as',
+    \ 'sexp_select_string_inner':         'is',
+    \ 'sexp_select_element_outer':        'ae',
+    \ 'sexp_select_element_inner':        'ie',
     \ 'sexp_move_to_prev_bracket':        '(',
     \ 'sexp_move_to_next_bracket':        ')',
     \ 'sexp_move_to_prev_element':        '<M-b>',
@@ -141,13 +145,14 @@ endfunction
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 function! s:sexp_create_mappings()
-    for plug in ['sexp_select_form', 'sexp_select_top_form', 'sexp_select_string', 'sexp_select_element']
+    for plug in ['sexp_select_form_outer',     'sexp_select_form_inner',
+               \ 'sexp_select_top_form_outer', 'sexp_select_top_form_inner',
+               \ 'sexp_select_string_outer',   'sexp_select_string_inner',
+               \ 'sexp_select_element_outer',  'sexp_select_element_inner']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
-            execute 'vmap <silent><buffer> a' . lhs . ' <Plug>' . plug . '_outer'
-            execute 'omap <silent><buffer> a' . lhs . ' <Plug>' . plug . '_outer'
-            execute 'vmap <silent><buffer> i' . lhs . ' <Plug>' . plug . '_inner'
-            execute 'omap <silent><buffer> i' . lhs . ' <Plug>' . plug . '_inner'
+            execute 'vmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'omap <silent><buffer> ' . lhs . ' <Plug>' . plug
         endif
     endfor
 

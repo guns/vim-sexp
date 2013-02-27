@@ -23,8 +23,8 @@ if !exists('g:sexp_filetypes')
     let g:sexp_filetypes = 'clojure,scheme,lisp'
 endif
 
-if !exists('g:sexp_insert_filetypes')
-    let g:sexp_insert_filetypes = g:sexp_filetypes " Note that this is a pointer
+if !exists('g:sexp_enable_insert_mode_mappings')
+    let g:sexp_enable_insert_mode_mappings = 1
 endif
 
 if !exists('g:sexp_insert_after_wrap')
@@ -83,11 +83,11 @@ silent! call repeat#set('') " Autoload repeat.vim
 
 """ Utility functions {{{1
 
-function! s:filetype_autocmd(filetypes, ...)
-    if !empty(a:filetypes)
+function! s:filetype_autocmd(...)
+    if !empty(g:sexp_filetypes)
         augroup sexp_filetypes
             for cmd in a:000
-                execute 'autocmd FileType ' . a:filetypes . ' ' . cmd
+                execute 'autocmd FileType ' . g:sexp_filetypes . ' ' . cmd
             endfor
         augroup END
     endif
@@ -174,7 +174,7 @@ Defplug! onoremap sexp_select_element_inner sexp#select_current_element('o', 1)
 for s:plug in ['sexp_select_form', 'sexp_select_top_form', 'sexp_select_string', 'sexp_select_element']
     let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
     if !empty(s:lhs)
-        call s:filetype_autocmd(g:sexp_filetypes,
+        call s:filetype_autocmd(
              \ 'vmap <silent><buffer> a' . s:lhs . ' <Plug>' . s:plug . '_outer',
              \ 'omap <silent><buffer> a' . s:lhs . ' <Plug>' . s:plug . '_outer',
              \ 'vmap <silent><buffer> i' . s:lhs . ' <Plug>' . s:plug . '_inner',
@@ -240,7 +240,7 @@ for s:plug in ['sexp_move_to_prev_bracket', 'sexp_move_to_next_bracket',
              \ 'sexp_select_prev_element', 'sexp_select_next_element']
     let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
     if !empty(s:lhs)
-        call s:filetype_autocmd(g:sexp_filetypes,
+        call s:filetype_autocmd(
              \ 'nmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug,
              \ 'vmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug,
              \ 'omap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug)
@@ -327,7 +327,7 @@ for s:plug in ['sexp_form_wrap_round_head', 'sexp_form_wrap_round_tail',
              \ 'sexp_lift_form', 'sexp_splice_form']
     let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
     if !empty(s:lhs)
-        call s:filetype_autocmd(g:sexp_filetypes,
+        call s:filetype_autocmd(
              \ 'nmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug,
              \ 'vmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug)
     endif
@@ -351,15 +351,17 @@ inoremap <silent><expr> <Plug>sexp_insert_double_quote sexp#quote_insertion('"')
 " Delete paired delimiters
 inoremap <silent><expr> <Plug>sexp_insert_backspace sexp#backspace_insertion()
 
-call s:filetype_autocmd(g:sexp_insert_filetypes,
-     \ 'imap <buffer> (    <Plug>sexp_insert_opening_round',
-     \ 'imap <buffer> [    <Plug>sexp_insert_opening_square',
-     \ 'imap <buffer> {    <Plug>sexp_insert_opening_curly',
-     \ 'imap <buffer> )    <Plug>sexp_insert_closing_round',
-     \ 'imap <buffer> ]    <Plug>sexp_insert_closing_square',
-     \ 'imap <buffer> }    <Plug>sexp_insert_closing_curly',
-     \ 'imap <buffer> "    <Plug>sexp_insert_double_quote',
-     \ 'imap <buffer> <BS> <Plug>sexp_insert_backspace')
+if g:sexp_enable_insert_mode_mappings
+    call s:filetype_autocmd(
+         \ 'imap <buffer> (    <Plug>sexp_insert_opening_round',
+         \ 'imap <buffer> [    <Plug>sexp_insert_opening_square',
+         \ 'imap <buffer> {    <Plug>sexp_insert_opening_curly',
+         \ 'imap <buffer> )    <Plug>sexp_insert_closing_round',
+         \ 'imap <buffer> ]    <Plug>sexp_insert_closing_square',
+         \ 'imap <buffer> }    <Plug>sexp_insert_closing_curly',
+         \ 'imap <buffer> "    <Plug>sexp_insert_double_quote',
+         \ 'imap <buffer> <BS> <Plug>sexp_insert_backspace')
+endif
 
 """ Cleanup {{{1
 

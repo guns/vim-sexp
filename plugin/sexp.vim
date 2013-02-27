@@ -35,7 +35,7 @@ if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
 
-let s:sexp_default_mappings = {
+let s:sexp_mappings = {
     \ 'sexp_select_form':                 'f',
     \ 'sexp_select_top_form':             'F',
     \ 'sexp_select_string':               's',
@@ -77,33 +77,17 @@ let s:sexp_default_mappings = {
 
 augroup sexp_filetypes
     autocmd!
+    if !empty(g:sexp_filetypes)
+        execute 'autocmd FileType ' . g:sexp_filetypes . ' call s:sexp_create_mappings()'
+    endif
 augroup END
 
 silent! call repeat#set('') " Autoload repeat.vim
 
-""" Utility functions {{{1
+""" Functions {{{1
 
-function! s:filetype_autocmd(...)
-    if !empty(g:sexp_filetypes)
-        augroup sexp_filetypes
-            for cmd in a:000
-                execute 'autocmd FileType ' . g:sexp_filetypes . ' ' . cmd
-            endfor
-        augroup END
-    endif
-endfunction
-
-" Calls repeat#set() and registers a one-time CursorMoved handler to correctly
-" set the value of g:repeat_tick.
-"
-" cf. https://github.com/tpope/vim-repeat/issues/8#issuecomment-13951082
-function! s:repeat_set(buf, count)
-    call repeat#set(a:buf, a:count)
-    augroup sexp_repeat
-        autocmd!
-        autocmd CursorMoved <buffer> let g:repeat_tick = b:changedtick | autocmd! sexp_repeat
-    augroup END
-endfunction
+command! -nargs=+ -bang Defplug call <SID>defplug('<bang>', <f-args>)
+command! -nargs=+ -bang DEFPLUG call <SID>defplug('<bang>*', <f-args>)
 
 " Create a <Plug> mapping. The 'mode' parameter dictates the behavior:
 "
@@ -142,8 +126,73 @@ function! s:defplug(mode, mapmode, name, ...)
     endif
 endfunction
 
-command! -nargs=+ -bang Defplug call <SID>defplug('<bang>', <f-args>)
-command! -nargs=+ -bang DEFPLUG call <SID>defplug('<bang>*', <f-args>)
+" Calls repeat#set() and registers a one-time CursorMoved handler to correctly
+" set the value of g:repeat_tick.
+"
+" cf. https://github.com/tpope/vim-repeat/issues/8#issuecomment-13951082
+function! s:repeat_set(buf, count)
+    call repeat#set(a:buf, a:count)
+    augroup sexp_repeat
+        autocmd!
+        autocmd CursorMoved <buffer> let g:repeat_tick = b:changedtick | autocmd! sexp_repeat
+    augroup END
+endfunction
+
+" Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
+" s:sexp_mappings
+function! s:sexp_create_mappings()
+    for plug in ['sexp_select_form', 'sexp_select_top_form', 'sexp_select_string', 'sexp_select_element']
+        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
+        if !empty(lhs)
+            execute 'vmap <silent><buffer> a' . lhs . ' <Plug>' . plug . '_outer'
+            execute 'omap <silent><buffer> a' . lhs . ' <Plug>' . plug . '_outer'
+            execute 'vmap <silent><buffer> i' . lhs . ' <Plug>' . plug . '_inner'
+            execute 'omap <silent><buffer> i' . lhs . ' <Plug>' . plug . '_inner'
+        endif
+    endfor
+
+    for plug in ['sexp_move_to_prev_bracket',     'sexp_move_to_next_bracket',
+               \ 'sexp_move_to_prev_element',     'sexp_move_to_next_element',     'sexp_move_to_end_of_next_element',
+               \ 'sexp_move_to_prev_top_element', 'sexp_move_to_next_top_element',
+               \ 'sexp_select_prev_element',      'sexp_select_next_element']
+        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
+        if !empty(lhs)
+            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'vmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'omap <silent><buffer> ' . lhs . ' <Plug>' . plug
+        endif
+    endfor
+
+    for plug in ['sexp_form_wrap_round_head',     'sexp_form_wrap_round_tail',
+               \ 'sexp_form_wrap_square_head',    'sexp_form_wrap_square_tail',
+               \ 'sexp_form_wrap_curly_head',     'sexp_form_wrap_curly_tail',
+               \ 'sexp_element_wrap_round_head',  'sexp_element_wrap_round_tail',
+               \ 'sexp_element_wrap_square_head', 'sexp_element_wrap_square_tail',
+               \ 'sexp_element_wrap_curly_head',  'sexp_element_wrap_curly_tail',
+               \ 'sexp_insert_at_form_head',      'sexp_insert_at_form_tail',
+               \ 'sexp_swap_form_backward',       'sexp_swap_form_forward',
+               \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
+               \ 'sexp_emit_first_element',       'sexp_emit_last_element',
+               \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
+               \ 'sexp_lift_form',                'sexp_splice_form']
+        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
+        if !empty(lhs)
+            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'vmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+        endif
+    endfor
+
+    if g:sexp_enable_insert_mode_mappings
+        imap <buffer> (    <Plug>sexp_insert_opening_round
+        imap <buffer> [    <Plug>sexp_insert_opening_square
+        imap <buffer> {    <Plug>sexp_insert_opening_curly
+        imap <buffer> )    <Plug>sexp_insert_closing_round
+        imap <buffer> ]    <Plug>sexp_insert_closing_square
+        imap <buffer> }    <Plug>sexp_insert_closing_curly
+        imap <buffer> "    <Plug>sexp_insert_double_quote
+        imap <buffer> <BS> <Plug>sexp_insert_backspace
+    endif
+endfunction
 
 """ Text objects {{{1
 
@@ -170,17 +219,6 @@ Defplug  vnoremap sexp_select_element_outer sexp#select_current_element('v', 0)
 Defplug! onoremap sexp_select_element_outer sexp#select_current_element('o', 0)
 Defplug  vnoremap sexp_select_element_inner sexp#select_current_element('v', 1)
 Defplug! onoremap sexp_select_element_inner sexp#select_current_element('o', 1)
-
-for s:plug in ['sexp_select_form', 'sexp_select_top_form', 'sexp_select_string', 'sexp_select_element']
-    let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
-    if !empty(s:lhs)
-        call s:filetype_autocmd(
-             \ 'vmap <silent><buffer> a' . s:lhs . ' <Plug>' . s:plug . '_outer',
-             \ 'omap <silent><buffer> a' . s:lhs . ' <Plug>' . s:plug . '_outer',
-             \ 'vmap <silent><buffer> i' . s:lhs . ' <Plug>' . s:plug . '_inner',
-             \ 'omap <silent><buffer> i' . s:lhs . ' <Plug>' . s:plug . '_inner')
-    endif
-endfor
 
 """ Directional motions {{{1
 
@@ -234,20 +272,7 @@ Defplug  nnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 Defplug  vnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 1)
 Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 1)
 
-for s:plug in ['sexp_move_to_prev_bracket', 'sexp_move_to_next_bracket',
-             \ 'sexp_move_to_prev_element', 'sexp_move_to_next_element', 'sexp_move_to_end_of_next_element',
-             \ 'sexp_move_to_prev_top_element', 'sexp_move_to_next_top_element',
-             \ 'sexp_select_prev_element', 'sexp_select_next_element']
-    let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
-    if !empty(s:lhs)
-        call s:filetype_autocmd(
-             \ 'nmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug,
-             \ 'vmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug,
-             \ 'omap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug)
-    endif
-endfor
-
-""" S-expression commands {{{1
+""" Commands {{{1
 
 " Wrap form
 Defplug! nnoremap sexp_form_wrap_round_head  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
@@ -313,26 +338,6 @@ Defplug  vnoremap sexp_lift_form sexp#docount(v:count, 'sexp#lift_form', 'v')
 Defplug! nnoremap sexp_splice_form sexp#docount(v:count, 'sexp#splice_form')
 Defplug  vnoremap sexp_splice_form sexp#docount(v:count, 'sexp#splice_form')
 
-for s:plug in ['sexp_form_wrap_round_head', 'sexp_form_wrap_round_tail',
-             \ 'sexp_form_wrap_square_head', 'sexp_form_wrap_square_tail',
-             \ 'sexp_form_wrap_curly_head', 'sexp_form_wrap_curly_tail',
-             \ 'sexp_element_wrap_round_head', 'sexp_element_wrap_round_tail',
-             \ 'sexp_element_wrap_square_head', 'sexp_element_wrap_square_tail',
-             \ 'sexp_element_wrap_curly_head', 'sexp_element_wrap_curly_tail',
-             \ 'sexp_insert_at_form_head', 'sexp_insert_at_form_tail',
-             \ 'sexp_swap_form_backward', 'sexp_swap_form_forward',
-             \ 'sexp_swap_element_backward', 'sexp_swap_element_forward',
-             \ 'sexp_emit_first_element', 'sexp_emit_last_element',
-             \ 'sexp_capture_prev_element', 'sexp_capture_next_element',
-             \ 'sexp_lift_form', 'sexp_splice_form']
-    let s:lhs = get(g:sexp_mappings, s:plug, s:sexp_default_mappings[s:plug])
-    if !empty(s:lhs)
-        call s:filetype_autocmd(
-             \ 'nmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug,
-             \ 'vmap <silent><buffer> ' . s:lhs . ' <Plug>' . s:plug)
-    endif
-endfor
-
 """ Insert mode mappings {{{1
 
 " Insert opening delimiter
@@ -351,21 +356,8 @@ inoremap <silent><expr> <Plug>sexp_insert_double_quote sexp#quote_insertion('"')
 " Delete paired delimiters
 inoremap <silent><expr> <Plug>sexp_insert_backspace sexp#backspace_insertion()
 
-if g:sexp_enable_insert_mode_mappings
-    call s:filetype_autocmd(
-         \ 'imap <buffer> (    <Plug>sexp_insert_opening_round',
-         \ 'imap <buffer> [    <Plug>sexp_insert_opening_square',
-         \ 'imap <buffer> {    <Plug>sexp_insert_opening_curly',
-         \ 'imap <buffer> )    <Plug>sexp_insert_closing_round',
-         \ 'imap <buffer> ]    <Plug>sexp_insert_closing_square',
-         \ 'imap <buffer> }    <Plug>sexp_insert_closing_curly',
-         \ 'imap <buffer> "    <Plug>sexp_insert_double_quote',
-         \ 'imap <buffer> <BS> <Plug>sexp_insert_backspace')
-endif
-
 """ Cleanup {{{1
 
 delcommand Defplug
 delcommand DEFPLUG
 delfunction s:defplug
-delfunction s:filetype_autocmd

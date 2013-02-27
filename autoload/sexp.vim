@@ -23,6 +23,9 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
 " * Element selection should include trailing commas in Clojure
+" * Scheme macro_filetype_characters
+" * Common Lisp macro_filetype_characters
+" * Arc macro_filetype_characters
 
 """ PATTERNS AND STATE {{{1
 

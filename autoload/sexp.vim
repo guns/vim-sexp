@@ -64,7 +64,7 @@ endfunction
 " stopline parameter.
 "
 " The original purpose of this function was to correct a bug in Vim where a
-" backwards search() from a multibyte character returned the wrong position:
+" backward search() from a multibyte character returned the wrong position:
 "
 " cf. https://groups.google.com/forum/?fromgroups=#!topic/vim_dev/s7c_Qq3K1Io
 "
@@ -1513,7 +1513,7 @@ function! sexp#quote_insertion(quote)
     endif
 endfunction
 
-" Return keys to be inserted when deleting backwards:
+" Return keys to be inserted when deleting backward:
 "
 "   * Delete adjacent double quotes when previous position is in a string,
 "     unless the first quote is preceded by another quote or a backslash

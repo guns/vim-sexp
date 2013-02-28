@@ -507,8 +507,8 @@ endfunction
 "     by something other than whitespace, in which case end' is set to include
 "     only the trailing whitespace to the end of line.
 "   * If no trailing whitespace after end, start' is set to include leading
-"     whitespace up to the the previous element
-"   * Otherwise start and end are returned verbatim
+"     whitespace up to the previous element on the same line if any exist.
+"   * Otherwise start and end are returned verbatim.
 "
 " This behavior diverges from the behavior of native text object aw in that it
 " allows multiline whitespace selections.
@@ -518,21 +518,24 @@ function! s:terminals_with_whitespace(start, end)
 
     " There is trailing whitespace
     if end != ws_end
-        " Trailing WS is on the same line as end, so accept it
+        " ws_end is on the same line as end, so accept it
         if end[1] == ws_end[1]
             let end = ws_end
-        " Start begins its line, so include all of ws_end
-        elseif getline(start[1])[: start[2]][: -3] =~# '\v^\s*$'
+        " start begins its line, so include all of ws_end, which is on a
+        " subsequent line
+        elseif getline(start[1])[: start[2] - 2] =~# '\v^\s*$'
             let end = ws_end
-        " Include any trailing whitespace to eol
+        " start does not begin its line, so just include any trailing
+        " whitespace to eol, not to ws_end
         elseif getline(end[1])[end[2]] =~# '\v\s'
             let end = s:pos_with_col_offset(end, col([end[1], '$']) - 1 - end[2])
-        " No trailing whitespace on end's line, use leading whitespace
+        " end does not have trailing whitespace on its own line, so include
+        " leading whitespace to previous element on same line
         else
             let start = s:adjacent_whitespace_terminal(start, 0)
         endif
-    " Otherwise include leading whitespace
-    else
+    " Otherwise include leading whitespace unless start begins its line
+    elseif getline(start[1])[: start[2] - 2] !~# '\v^\s*$'
         let start = s:adjacent_whitespace_terminal(start, 0)
     endif
 

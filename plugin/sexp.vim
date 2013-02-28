@@ -116,7 +116,7 @@ function! s:defplug(mode, mapmode, name, ...)
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
                 \ . 'execute "normal! vv" \| '
-                \ . 'call ' . rhs . ' \| '
+                \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'if v:operator ==? "c" \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
                 \ . 'else \| '
@@ -125,7 +125,7 @@ function! s:defplug(mode, mapmode, name, ...)
     elseif should_repeat
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . 'call ' . rhs . ' \| '
+                \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif
 endfunction

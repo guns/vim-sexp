@@ -26,6 +26,7 @@ let g:sexp_autoloaded = 1
 " * Scheme macro_filetype_characters
 " * Common Lisp macro_filetype_characters
 " * Arc macro_filetype_characters
+" * Ignore non-changing operators when repeating?
 
 """ PATTERNS AND STATE {{{1
 

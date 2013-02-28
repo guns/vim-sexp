@@ -1,0 +1,112 @@
+Symbolic Expression manipulation                                *vim-sexp.txt*
+
+  .o            o8o                                                              o.
+ .8'            '"'                                                              `8.
+.8' oooo    ooooooo ooo. .oo.  .oo.        .oooo.o .ooooo. oooo    ooooo.ooooo.   `8.
+88   `88.  .8' `888 `888P"Y88bP"Y88b      d88(  "8d88' `88b `88b..8P'  888' `88b   88
+88    `88..8'   888  888   888   888 8888 `"Y88b. 888ooo888   Y888'    888   888   88
+`8.    `888'    888  888   888   888      o.  )88b888    .o .o8"'88b   888   888  .8'
+ `8.    `8'    o888oo888o o888o o888o     8""888P'`Y8bod8P'o88'   888o 888bod8P' .8'
+  `"                                                                   888       "'
+                                                                      o888o
+
+==============================================================================
+I. INTRODUCTION                                        *vim-sexp-introduction*
+
+Symbolic Expressions are the simplest way to express recursive tree-like
+structures with text, and give Lisps their distinctive look and feel. Emacs
+users know that what appear to be a preponderance of brackets are really hooks
+the editor may use to effortlessly transform the text before them.
+
+Vim, possessing |cursor-motions| and an |operator-pending| mode, is well
+suited for editing structured text. This plugin provides new motions and
+commands tailored specifically to S-Expressions as they occur in both
+classical Lisps like Scheme and new Lisps like Clojure, which use square and
+curly brackets for representing data.
+
+A handful of features found in the popular S-Expression plugin for emacs,
+paredit.el, are also provided.
+
+==============================================================================
+II. MAPPINGS                                               *vim-sexp-mappings*
+
+This is the list of mappings provided by vim-sexp grouped by type. The default
+mapping is shown on the left and the full <Plug> name on the right.
+
+Note that all actions that result in visual selections will always be
+|characterwise|, regardless of the current visual state.
+
+If vim-repeat [1] is installed, repeating the last change with the |.| command
+will work as expected, even for changes made with operator-pending commands.
+
+[1]: http://www.vim.org/scripts/script.php?script_id=2136
+
+TEXT OBJECTS~
+
+af                                                    *sexp_select_form_outer*
+if                                                    *sexp_select_form_inner*
+        Select [count] forms delimited by any of '(' and ')', '[' and ']', or
+        '{' and '}'. Outer motion includes the delimiting brackets and the
+        inner motion excludes them.
+
+        Does not include surrounding whitespace.
+
+aF                                                *sexp_select_top_form_outer*
+iF                                                *sexp_select_top_form_inner*
+        Select the current top-level form delimited by any of '(' and ')', '['
+        and ']', or '{' or '}'. Outer motion includes the delimiting brackets
+        and the inner motion excludes them.
+
+        Does not include surrounding whitespace.
+
+        If |g:sexp_maxlines| is -1, the top form is determined to be the
+        first parent form with a opening bracket on the first column. This is
+        typically much faster than calling |searchpairpos()| recursively.
+
+as                                                  *sexp_select_string_outer*
+is                                                  *sexp_select_string_inner*
+        Select the current string or regular expression pattern as defined by
+        the syntax engine. Outer motion includes surrounding quotes, inner
+        motion excludes them.
+
+        Does not include surrounding whitespace.
+
+        The default mapping shadows the internal |as| and |is| mappings.
+        These sentence text-object are rarely used in code buffers, but if
+        this conflict bothers you, see |g:sexp_mappings| for documentation on
+        changing the default mappings.
+
+ae                                                 *sexp_select_element_outer*
+ie                                                 *sexp_select_element_inner*
+
+        Select the current element. An element is defined as:
+
+                * Current string if cursor is in a string
+                * Current comment if cursor is in a comment, or in the
+                  whitespace between two line comments
+                * Current form if and only if cursor is on a paired bracket
+                * Current atom otherwise (contiguous region of non-whitespace,
+                  non-bracket characters that are not part of a string or
+                  comment)
+
+        If the cursor is on a macro metacharacter, the current sequence of
+        metacharacters and the following element are selected. An element
+        always includes leading macro metacharacters.
+
+        Inner motion does not include surrounding whitespace, but the outer
+        motion includes (ordered by priority):
+
+                * Trailing whitespace up to the next element if next element
+                  is on the same line
+                * Trailing whitespace up to the next element on a subsequent
+                  line if the current element begins on its own line
+                * Trailing whitespace up to the end of line if the current
+                  element is preceded by another element on the same line
+                * Leading whitespace up to the previous element if it exists
+                  on the same line as the current element and no trailing
+                  whitespace exists
+
+        If the cursor is on whitespace that is not in a string or between line
+        comments, the next element is selected.
+
+ vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

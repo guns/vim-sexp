@@ -571,10 +571,11 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
     call setpos('.', a:start)
 
     while 1
-        let [line, col] = searchpos(a:all_brackets, 'cW')
+        let [line, col] = searchpos(a:all_brackets, 'cnW')
 
         " Start next iteration at next element if in ignored scope
         if s:syntax_match(s:ignored_region, line, col)
+            call cursor(line, col)
             call s:move_to_adjacent_element(1, 0, 0)
             continue
         endif
@@ -1271,7 +1272,8 @@ function! sexp#move_to_nearest_bracket(mode, next)
     elseif a:mode ==? 'o' && !a:next
         let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
         if l > 0
-            let [l, c] = searchpos('\v\_.', 'W')
+            let [l, c] = findpos('\v\_.', 1)
+            call cursor(l, c)
         endif
         return [0, l, c, 0]
     else

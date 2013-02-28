@@ -27,7 +27,6 @@ let g:sexp_autoloaded = 1
 " * Common Lisp macro_filetype_characters
 " * Arc macro_filetype_characters
 " * Ignore non-changing operators when repeating?
-" * Inner motions should not delete delimiters when contents are empty
 
 """ PATTERNS AND STATE {{{1
 
@@ -862,7 +861,9 @@ function! s:set_marks_around_current_form(mode, offset, allow_expansion)
         let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
     endif
 
-    if open[1] > 0 && close[1] > 0
+    " Inner selection on adjacent brackets results in open being one character
+    " past close due to offset calculations
+    if open[1] > 0 && close[1] > 0 && s:compare_pos(open, close) < 0
         call s:set_visual_marks([open, close])
     " Don't erase marks when in visual mode
     elseif !visual
@@ -887,8 +888,13 @@ function! s:set_marks_around_current_top_form(mode, offset)
         let opening = s:nearest_bracket(0)
         call setpos('.', cursor)
 
-        call setpos("'<", s:pos_with_col_offset(opening, a:offset))
-        call setpos("'>", s:pos_with_col_offset(closing, -a:offset))
+        " Don't delete adjacent brackets with an inner motion
+        if a:offset > 0 && opening[1] == closing[1] && opening[2] == closing[2] - 1
+            call s:clear_visual_marks()
+        else
+            call setpos("'<", s:pos_with_col_offset(opening, a:offset))
+            call setpos("'>", s:pos_with_col_offset(closing, -a:offset))
+        endif
     elseif a:mode !=? 'v'
         call s:clear_visual_marks()
     endif
@@ -898,9 +904,17 @@ endfunction
 " to [0, 0, 0, 0] if not currently in a string and mode does not equal 'v'.
 function! s:set_marks_around_current_string(mode, offset)
     let end = s:current_string_terminal(1)
+
     if end[1] > 0
-        call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
-        call setpos("'>", s:pos_with_col_offset(end, -a:offset))
+        let start = s:current_string_terminal(0)
+
+        " Don't delete adjacent quotes with an inner motion
+        if a:offset > 0 && start[1] == end[1] && start[2] == end[2] - 1
+            call s:clear_visual_marks()
+        else
+            call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
+            call setpos("'>", s:pos_with_col_offset(end, -a:offset))
+        endif
     elseif a:mode !=? 'v'
         call s:clear_visual_marks()
     endif
@@ -1272,7 +1286,7 @@ function! sexp#move_to_nearest_bracket(mode, next)
     elseif a:mode ==? 'o' && !a:next
         let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
         if l > 0
-            let [l, c] = findpos('\v\_.', 1)
+            let [l, c] = s:findpos('\v\_.', 1)
             call cursor(l, c)
         endif
         return [0, l, c, 0]

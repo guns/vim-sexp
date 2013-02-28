@@ -199,8 +199,8 @@ function! s:current_string_terminal(end)
         endif
     endwhile
 
-    " We may be on leading metacharacters if they have been defined as part of
-    " the string region by the syntax engine
+    " We may be on leading macro characters if they have been defined as part
+    " of the string region by the syntax engine
     if !a:end
         let [_b, l, c, _o] = s:current_macro_character_terminal(1)
         if l > 0
@@ -269,10 +269,9 @@ function! s:current_atom_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
-" Position of start/end of current sequence of macro metacharacters: 0
-" for start, 1 for end. Returns [0, 0, 0, 0] if not currently in a macro
-" metacharacter sequence or no macro characters are defined for the current
-" filetype.
+" Position of start/end of current sequence of macro characters: 0 for start,
+" 1 for end. Returns [0, 0, 0, 0] if not currently in a macro character
+" sequence or no macro characters are defined for the current filetype.
 function! s:current_macro_character_terminal(end)
     let macro = s:macro_chars()[1]
 
@@ -318,7 +317,7 @@ endfunction
 "     on a macro char
 "   * Current atom otherwise
 "
-" An element always includes leading macro metacharacters.
+" An element always includes leading macro characters.
 function! s:current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
@@ -361,7 +360,7 @@ function! s:current_element_terminal(end)
         return pos
     else
         " Move cursor to left of start position and soak up any leading macro
-        " metacharacters
+        " characters
         call cursor(pos[1], pos[2] - 1)
         let pre = s:current_macro_character_terminal(0)
         call cursor(line, col)
@@ -1045,9 +1044,9 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Capture element adjacent to current form, given the starting position of the
-" enclosing form's bracket plus leading metacharacters (spos) and the position
-" of the bracket itself (bpos).
+" Capture element adjacent to current form, given the starting position of
+" the enclosing form's bracket plus leading macro characters (spos) and the
+" position of the bracket itself (bpos).
 function! s:stackop_capture(last, spos, bpos)
     call setpos('.', a:spos)
     let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
@@ -1085,8 +1084,8 @@ function! s:stackop_capture(last, spos, bpos)
 endfunction
 
 " Emit terminal element in current form, given the starting position of the
-" enclosing form's bracket plus leading metacharacters (spos) and the position
-" of the bracket itself (bpos).
+" enclosing form's bracket plus leading macro characters (spos) and the
+" position of the bracket itself (bpos).
 function! s:stackop_emit(last, spos, bpos)
     " Move inwards onto the terminal element, then find the penultimate
     " element, which will become the ultimate element after the move

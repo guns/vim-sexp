@@ -200,7 +200,7 @@ function! s:current_string_terminal(end)
     endwhile
 
     " We may be on leading metacharacters if they have been defined as part of
-    " the string region
+    " the string region by the syntax engine
     if !a:end
         let [_b, l, c, _o] = s:current_macro_character_terminal(1)
         if l > 0

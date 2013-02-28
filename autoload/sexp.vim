@@ -1274,9 +1274,14 @@ endfunction
 " moving backward or forward (respectively), cursor is moved to enclosing
 " form's terminal bracket.
 "
-" If mode is 'o' and moving backward, the cursor is positioned just after the
-" opening bracket so that the selection is exclusive like when moving to the
-" closing bracket.
+" The mode 'o' is handled specially:
+"
+"   * If moving backward, the cursor is positioned just after the opening
+"     bracket so that the selection is exclusive at the head.
+"   * If moving forward and the cursor is on a bracket, an exclusive visual
+"     selection is made that omits both the current and next bracket.
+"   * If this selection is empty and the brackets are paired, make the pair of
+"     brackets the selection, otherwise do nothing and return [0, 0, 0, 0]
 "
 " If there is no enclosing form, the cursor is not moved and [0, 0, 0, 0] is
 " returned.
@@ -1290,6 +1295,26 @@ function! sexp#move_to_nearest_bracket(mode, next)
             call cursor(l, c)
         endif
         return [0, l, c, 0]
+    elseif a:mode ==? 'o' && getline('.')[col('.') - 1] =~# s:bracket
+        let cursor = getpos('.')
+        let pos = s:nearest_bracket(1)
+
+        if pos[1] < 1
+            return [0, 0, 0, 0]
+        elseif cursor[1] == pos[1] && cursor[2] == pos[2] - 1
+            if getline(cursor[1])[cursor[2] - 1] =~# s:opening_bracket
+                \ && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket
+                call s:set_visual_marks([cursor, pos])
+            else
+                return [0, 0, 0, 0]
+            endif
+        else
+            call s:set_visual_marks([s:pos_with_col_offset(cursor, 1),
+                                   \ s:pos_with_col_offset(pos, -1)])
+        endif
+
+        call s:select_current_marks('o')
+        return pos
     else
         return s:move_to_nearest_bracket(a:next)
     endif

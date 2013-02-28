@@ -27,6 +27,7 @@ let g:sexp_autoloaded = 1
 " * Common Lisp macro_filetype_characters
 " * Arc macro_filetype_characters
 " * Ignore non-changing operators when repeating?
+" * Inner motions should not delete delimiters when contents are empty
 
 """ PATTERNS AND STATE {{{1
 

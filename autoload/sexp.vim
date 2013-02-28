@@ -381,7 +381,7 @@ function! s:nearest_element_terminal(next, tail)
     try
         let terminal = s:current_element_terminal(a:next)
 
-        if terminal[1] > 0 && pos != terminal
+        if terminal[1] > 0 && s:compare_pos(pos, terminal) != 0
             let pos = terminal
             call setpos('.', pos)
             " b moves to the head of the current word if not already on the
@@ -395,7 +395,7 @@ function! s:nearest_element_terminal(next, tail)
         let adjacent = [0, l, c, 0]
 
         " We are at the beginning or end of file
-        if adjacent[1] < 1 || pos == adjacent
+        if adjacent[1] < 1 || s:compare_pos(pos, adjacent) == 0
             throw 'sexp-error
         else
             let pos = adjacent
@@ -499,7 +499,7 @@ function! s:terminals_with_whitespace(start, end)
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
 
     " There is trailing whitespace
-    if end != ws_end
+    if s:compare_pos(end, ws_end) != 0
         " ws_end is on the same line as end, so accept it
         if end[1] == ws_end[1]
             let end = ws_end
@@ -726,7 +726,7 @@ function! s:move_to_adjacent_element(next, tail, top)
 
         " Stop at current top element head if moving backward and did not
         " start on a top element head.
-        if !a:next && top[1] > 0 && top != cursor
+        if !a:next && top[1] > 0 && s:compare_pos(top, cursor) != 0
             let pos = top
         else
             let pos = s:nearest_element_terminal(a:next, a:tail)
@@ -757,7 +757,7 @@ function! s:move_cursor_extending_selection(func, ...)
     endif
 
     let [start, end] = s:get_visual_marks()
-    let omode = start == getpos('.')
+    let omode = s:compare_pos(start, getpos('.')) == 0
 
     let pos = call(a:func, a:000)
     let valid = pos[1] > 1
@@ -817,7 +817,7 @@ function! s:set_marks_around_current_form(mode, offset, allow_expansion)
     let visual = a:mode ==? 'v'
     let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
-    let have_selection = start_is_valid && start != getpos("'>")
+    let have_selection = start_is_valid && s:compare_pos(start, getpos("'>")) != 0
     let expanding = a:allow_expansion && (counting || (visual && have_selection))
 
     " When evaluating via sexp#docount the cursor position will not be updated
@@ -939,7 +939,7 @@ function! s:set_marks_around_current_element(mode, inner)
         let next = s:move_to_adjacent_element(1, 0, 0)
 
         " No next element! We are at the eof or in a blank buffer.
-        if next == cursor
+        if s:compare_pos(next, cursor) == 0
             if a:mode !=? 'v'
                 call s:clear_visual_marks()
             endif
@@ -1461,7 +1461,7 @@ function! sexp#closing_insertion(ket)
 
     if s:syntax_match(s:ignored_region, line, col)
         return a:ket
-    elseif char == a:ket
+    elseif char ==# a:ket
         return "\<Right>"
     endif
 
@@ -1501,10 +1501,10 @@ function! sexp#quote_insertion(quote)
         let curline = getline(line)
 
         " User is trying to insert an escaped quote, so do it
-        if curline[col - 2] == '\'
+        if curline[col - 2] ==# '\'
             return a:quote
         else
-            return curline[col - 1] == a:quote ? "\<Right>" : a:quote
+            return curline[col - 1] ==# a:quote ? "\<Right>" : a:quote
         endif
     elseif s:syntax_match(s:ignored_region, line, col)
         return a:quote
@@ -1527,9 +1527,9 @@ function! sexp#backspace_insertion()
     let cur = curline[col - 1]
     let prev = curline[col - 2]
 
-    if prev == '"' && cur == '"'
+    if prev ==# '"' && cur ==# '"'
         \ && s:syntax_match(s:string_region, line, col)
-        \ && curline[col - 3] !~ '\v[\"]'
+        \ && curline[col - 3] !~# '\v[\"]'
         return "\<BS>\<Del>"
     elseif !s:syntax_match(s:ignored_region, line, col)
         \ && prev =~# s:opening_bracket

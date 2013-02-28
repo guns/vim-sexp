@@ -329,7 +329,8 @@ endfunction
 " An element is defined as:
 "
 "   * Current string if cursor is in a string
-"   * Current comment if cursor is in a comment
+"   * Current comment if cursor is in a comment, or in the whitespace between
+"     two line comments
 "   * Current form if and only if cursor is on a paired bracket
 "   * Current sequence of macro characters and following element if cursor is
 "     on a macro char
@@ -510,9 +511,7 @@ endfunction
 "   * Otherwise start and end are returned verbatim
 "
 " This behavior diverges from the behavior of native text object aw in that it
-" allows multiline whitespace selections. Also unlike aw, we do not include
-" the next element if currently in whitespace, because this is somewhat
-" confusing.
+" allows multiline whitespace selections.
 function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
@@ -942,8 +941,8 @@ endfunction
 " inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
 "
-" If cursor is on whitespace that is not in a string or comment, the marks are
-" set around the next element.
+" If cursor is on whitespace that is not in a string or between line comments,
+" the marks are set around the next element.
 "
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.

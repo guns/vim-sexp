@@ -1009,7 +1009,7 @@ endfunction
 function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
     let [start, end] = s:get_visual_marks()
 
-    " No form, just insert brackets
+    " No selection, just insert brackets
     if start[1] < 1
         execute 'normal! i' . a:bra . a:ket
     elseif a:at_tail

@@ -1418,6 +1418,7 @@ function! sexp#opening_insertion(bra)
     let [_b, line, col, _o] = getpos('.')
 
     if s:syntax_match(s:ignored_region, line, col)
+        \ && s:compare_pos(s:current_element_terminal(0), [0, line, col, 0]) < 0
         return a:bra
     endif
 
@@ -1460,6 +1461,7 @@ function! sexp#closing_insertion(ket)
     let char = getline(line)[col - 1]
 
     if s:syntax_match(s:ignored_region, line, col)
+        \ && s:compare_pos(s:current_element_terminal(0), [0, line, col, 0]) < 0
         return a:ket
     elseif char ==# a:ket
         return "\<Right>"
@@ -1478,12 +1480,15 @@ function! sexp#closing_insertion(ket)
 
     let close = s:nearest_bracket(1, bra, ket)
 
+    " Brackets are balanced, jump to closing bracket
     if close[1] > 0
-        " Brackets are balanced, jump to closing bracket
         return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
-    else
-        " Brackets are short closing brackets, insert bracket
+    " Brackets are short closing brackets of this type, insert bracket
+    elseif char ==# a:ket
         return a:ket
+    " No brackets of this type, insert nothing
+    else
+        return ''
     endif
 endfunction
 

@@ -664,11 +664,9 @@ endfunction
 function! s:is_atom(line, col)
     let char = getline(a:line)[a:col - 1]
 
-    if empty(char) || char =~# s:delimiter
-        return 0
-    else
-        return !s:syntax_match(s:string_region . '|comment', a:line, a:col)
-    endif
+    return (empty(char) || char =~# s:delimiter)
+           \ ? 0
+           \ : !s:syntax_match(s:string_region . '|comment', a:line, a:col)
 endfunction
 
 " Returns -1 if position a is before position b, 1 if position a is after

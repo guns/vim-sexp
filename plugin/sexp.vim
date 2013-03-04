@@ -36,10 +36,10 @@ if !exists('g:sexp_mappings')
 endif
 
 let s:sexp_mappings = {
-    \ 'sexp_select_form_outer':           'af',
-    \ 'sexp_select_form_inner':           'if',
-    \ 'sexp_select_top_form_outer':       'aF',
-    \ 'sexp_select_top_form_inner':       'iF',
+    \ 'sexp_select_list_outer':           'af',
+    \ 'sexp_select_list_inner':           'if',
+    \ 'sexp_select_top_list_outer':       'aF',
+    \ 'sexp_select_top_list_inner':       'iF',
     \ 'sexp_select_string_outer':         'as',
     \ 'sexp_select_string_inner':         'is',
     \ 'sexp_select_element_outer':        'ae',
@@ -53,24 +53,24 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_top_element':    ']]',
     \ 'sexp_select_prev_element':         '[e',
     \ 'sexp_select_next_element':         ']e',
-    \ 'sexp_form_wrap_round_head':        '<LocalLeader>i',
-    \ 'sexp_form_wrap_round_tail':        '<LocalLeader>I',
-    \ 'sexp_form_wrap_square_head':       '<LocalLeader>[',
-    \ 'sexp_form_wrap_square_tail':       '<LocalLeader>]',
-    \ 'sexp_form_wrap_curly_head':        '<LocalLeader>{',
-    \ 'sexp_form_wrap_curly_tail':        '<LocalLeader>}',
+    \ 'sexp_list_wrap_round_head':        '<LocalLeader>i',
+    \ 'sexp_list_wrap_round_tail':        '<LocalLeader>I',
+    \ 'sexp_list_wrap_square_head':       '<LocalLeader>[',
+    \ 'sexp_list_wrap_square_tail':       '<LocalLeader>]',
+    \ 'sexp_list_wrap_curly_head':        '<LocalLeader>{',
+    \ 'sexp_list_wrap_curly_tail':        '<LocalLeader>}',
     \ 'sexp_element_wrap_round_head':     '<LocalLeader>W',
     \ 'sexp_element_wrap_round_tail':     '<LocalLeader>w',
     \ 'sexp_element_wrap_square_head':    '<LocalLeader>e[',
     \ 'sexp_element_wrap_square_tail':    '<LocalLeader>e]',
     \ 'sexp_element_wrap_curly_head':     '<LocalLeader>e{',
     \ 'sexp_element_wrap_curly_tail':     '<LocalLeader>e}',
-    \ 'sexp_lift_form':                   '<LocalLeader>o',
-    \ 'sexp_splice_form':                 '<LocalLeader>O',
-    \ 'sexp_insert_at_form_head':         '<LocalLeader>h',
-    \ 'sexp_insert_at_form_tail':         '<LocalLeader>l',
-    \ 'sexp_swap_form_backward':          '<M-k>',
-    \ 'sexp_swap_form_forward':           '<M-j>',
+    \ 'sexp_lift_list':                   '<LocalLeader>o',
+    \ 'sexp_splice_list':                 '<LocalLeader>O',
+    \ 'sexp_insert_at_list_head':         '<LocalLeader>h',
+    \ 'sexp_insert_at_list_tail':         '<LocalLeader>l',
+    \ 'sexp_swap_list_backward':          '<M-k>',
+    \ 'sexp_swap_list_forward':           '<M-j>',
     \ 'sexp_swap_element_backward':       '<M-h>',
     \ 'sexp_swap_element_forward':        '<M-l>',
     \ 'sexp_emit_first_element':          '<M-S-j>',
@@ -145,8 +145,8 @@ endfunction
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 function! s:sexp_create_mappings()
-    for plug in ['sexp_select_form_outer',     'sexp_select_form_inner',
-               \ 'sexp_select_top_form_outer', 'sexp_select_top_form_inner',
+    for plug in ['sexp_select_list_outer',     'sexp_select_list_inner',
+               \ 'sexp_select_top_list_outer', 'sexp_select_top_list_inner',
                \ 'sexp_select_string_outer',   'sexp_select_string_inner',
                \ 'sexp_select_element_outer',  'sexp_select_element_inner']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
@@ -168,18 +168,18 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_form_wrap_round_head',     'sexp_form_wrap_round_tail',
-               \ 'sexp_form_wrap_square_head',    'sexp_form_wrap_square_tail',
-               \ 'sexp_form_wrap_curly_head',     'sexp_form_wrap_curly_tail',
+    for plug in ['sexp_list_wrap_round_head',     'sexp_list_wrap_round_tail',
+               \ 'sexp_list_wrap_square_head',    'sexp_list_wrap_square_tail',
+               \ 'sexp_list_wrap_curly_head',     'sexp_list_wrap_curly_tail',
                \ 'sexp_element_wrap_round_head',  'sexp_element_wrap_round_tail',
                \ 'sexp_element_wrap_square_head', 'sexp_element_wrap_square_tail',
                \ 'sexp_element_wrap_curly_head',  'sexp_element_wrap_curly_tail',
-               \ 'sexp_insert_at_form_head',      'sexp_insert_at_form_tail',
-               \ 'sexp_swap_form_backward',       'sexp_swap_form_forward',
+               \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
+               \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_first_element',       'sexp_emit_last_element',
                \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
-               \ 'sexp_lift_form',                'sexp_splice_form']
+               \ 'sexp_lift_list',                'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
@@ -201,17 +201,17 @@ endfunction
 
 """ Text objects {{{1
 
-" Current form
-Defplug  vnoremap sexp_select_form_outer sexp#docount(v:count, 'sexp#select_current_form', 'v', 0, 1)
-Defplug! onoremap sexp_select_form_outer sexp#docount(v:count, 'sexp#select_current_form', 'o', 0, 1)
-Defplug  vnoremap sexp_select_form_inner sexp#docount(v:count, 'sexp#select_current_form', 'v', 1, 1)
-Defplug! onoremap sexp_select_form_inner sexp#docount(v:count, 'sexp#select_current_form', 'o', 1, 1)
+" Current list
+Defplug  vnoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
+Defplug! onoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'o', 0, 1)
+Defplug  vnoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
+Defplug! onoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'o', 1, 1)
 
-" Current top-level form
-Defplug  vnoremap sexp_select_top_form_outer sexp#select_current_top_form('v', 0)
-Defplug! onoremap sexp_select_top_form_outer sexp#select_current_top_form('o', 0)
-Defplug  vnoremap sexp_select_top_form_inner sexp#select_current_top_form('v', 1)
-Defplug! onoremap sexp_select_top_form_inner sexp#select_current_top_form('o', 1)
+" Current top-level list
+Defplug  vnoremap sexp_select_top_list_outer sexp#select_current_top_list('v', 0)
+Defplug! onoremap sexp_select_top_list_outer sexp#select_current_top_list('o', 0)
+Defplug  vnoremap sexp_select_top_list_inner sexp#select_current_top_list('v', 1)
+Defplug! onoremap sexp_select_top_list_inner sexp#select_current_top_list('o', 1)
 
 " Current string
 Defplug  vnoremap sexp_select_string_outer sexp#select_current_string('v', 0)
@@ -279,19 +279,19 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 
 """ Commands {{{1
 
-" Wrap form
-Defplug! nnoremap sexp_form_wrap_round_head  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_form_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_form_wrap_round_tail  sexp#wrap('f', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_form_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_form_wrap_square_head sexp#wrap('f', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_form_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_form_wrap_square_tail sexp#wrap('f', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_form_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_form_wrap_curly_head  sexp#wrap('f', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_form_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_form_wrap_curly_tail  sexp#wrap('f', '{', '}', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_form_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
+" Wrap list
+Defplug! nnoremap sexp_list_wrap_round_head  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug  vnoremap sexp_list_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_list_wrap_round_tail  sexp#wrap('f', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug  vnoremap sexp_list_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_list_wrap_square_head sexp#wrap('f', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug  vnoremap sexp_list_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_list_wrap_square_tail sexp#wrap('f', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug  vnoremap sexp_list_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_list_wrap_curly_head  sexp#wrap('f', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug  vnoremap sexp_list_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_list_wrap_curly_tail  sexp#wrap('f', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug  vnoremap sexp_list_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
 " Wrap element
 Defplug! nnoremap sexp_element_wrap_round_head  sexp#wrap('e', '(', ')', 0, g:sexp_insert_after_wrap)
@@ -307,17 +307,17 @@ Defplug  vnoremap sexp_element_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:se
 Defplug! nnoremap sexp_element_wrap_curly_tail  sexp#wrap('e', '{', '}', 1, g:sexp_insert_after_wrap)
 Defplug  vnoremap sexp_element_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
-" Insert at form terminal
-Defplug! nnoremap sexp_insert_at_form_head sexp#insert_at_form_terminal(0)
-Defplug  vnoremap sexp_insert_at_form_head sexp#insert_at_form_terminal(0)
-Defplug! nnoremap sexp_insert_at_form_tail sexp#insert_at_form_terminal(1)
-Defplug  vnoremap sexp_insert_at_form_tail sexp#insert_at_form_terminal(1)
+" Insert at list terminal
+Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
+Defplug  vnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
+Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
+Defplug  vnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
-" Swap form
-Defplug! nnoremap sexp_swap_form_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)
-DEFPLUG  vnoremap sexp_swap_form_backward <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)<CR>
-Defplug! nnoremap sexp_swap_form_forward  sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 1)
-DEFPLUG  vnoremap sexp_swap_form_forward  <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 1)<CR>
+" Swap list
+Defplug! nnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)
+DEFPLUG  vnoremap sexp_swap_list_backward <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)<CR>
+Defplug! nnoremap sexp_swap_list_forward  sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 1)
+DEFPLUG  vnoremap sexp_swap_list_forward  <C-Bslash><C-n>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 1)<CR>
 
 " Swap element
 Defplug! nnoremap sexp_swap_element_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 0)
@@ -335,13 +335,13 @@ Defplug  vnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop'
 Defplug! nnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'n', 1, 1)
 Defplug  vnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'v', 1, 1)
 
-" Lift form
-Defplug! nnoremap sexp_lift_form sexp#docount(v:count, 'sexp#lift_form', 'n')
-Defplug  vnoremap sexp_lift_form sexp#docount(v:count, 'sexp#lift_form', 'v')
+" Lift list
+Defplug! nnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'n')
+Defplug  vnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'v')
 
-" Splice form
-Defplug! nnoremap sexp_splice_form sexp#docount(v:count, 'sexp#splice_form')
-Defplug  vnoremap sexp_splice_form sexp#docount(v:count, 'sexp#splice_form')
+" Splice list
+Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
+Defplug  vnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
 
 """ Insert mode mappings {{{1
 

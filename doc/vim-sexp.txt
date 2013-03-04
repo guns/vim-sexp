@@ -43,24 +43,24 @@ will work as expected, even for changes made with operator-pending commands.
 
 TEXT OBJECTS~
 
-af                                                    *sexp_select_form_outer*
-if                                                    *sexp_select_form_inner*
-        Select [count] forms delimited by any of '(' and ')', '[' and ']', or
+af                                                    *sexp_select_list_outer*
+if                                                    *sexp_select_list_inner*
+        Select [count] lists delimited by any of '(' and ')', '[' and ']', or
         '{' and '}'. Outer motion includes the delimiting brackets and the
         inner motion excludes them.
 
         Does not include surrounding whitespace.
 
-aF                                                *sexp_select_top_form_outer*
-iF                                                *sexp_select_top_form_inner*
-        Select the current top-level form delimited by any of '(' and ')', '['
+aF                                                *sexp_select_top_list_outer*
+iF                                                *sexp_select_top_list_inner*
+        Select the current top-level list delimited by any of '(' and ')', '['
         and ']', or '{' or '}'. Outer motion includes the delimiting brackets
         and the inner motion excludes them.
 
         Does not include surrounding whitespace.
 
-        If |g:sexp_maxlines| is -1, the top form is determined to be the
-        first parent form with a opening bracket on the first column. This is
+        If |g:sexp_maxlines| is -1, the top list is determined to be the
+        first parent list with a opening bracket on the first column. This is
         typically much faster than calling |searchpairpos()| recursively.
 
 as                                                  *sexp_select_string_outer*
@@ -84,7 +84,7 @@ ie                                                 *sexp_select_element_inner*
                 * Current string if cursor is in a string
                 * Current comment if cursor is in a comment, or in the
                   whitespace between two line comments
-                * Current form if and only if cursor is on a paired bracket
+                * Current list if and only if cursor is on a paired bracket
                 * Current atom otherwise (contiguous region of non-whitespace,
                   non-bracket characters that are not part of a string or
                   comment)

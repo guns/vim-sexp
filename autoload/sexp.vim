@@ -31,7 +31,7 @@ let g:sexp_autoloaded = 1
 """ PATTERNS AND STATE {{{1
 
 if !exists('g:sexp_maxlines')
-    let g:sexp_maxlines = -1 " Use fast best-effort top form search
+    let g:sexp_maxlines = -1 " Use fast best-effort top list search
 endif
 
 let s:countindex = 0 " Stores current count index during sexp#docount
@@ -105,10 +105,10 @@ endfunction
 "
 " If global variable g:sexp_maxlines is -1, a fast best-effort approach is
 " used instead of a recursive searchpairpos()
-function! s:current_top_form_bracket(closing)
+function! s:current_top_list_bracket(closing)
     return g:sexp_maxlines < 0
-           \ ? s:current_top_form_bracket_by_first_column(a:closing)
-           \ : s:current_top_form_bracket_by_maxlines(a:closing)
+           \ ? s:current_top_list_bracket_by_first_column(a:closing)
+           \ : s:current_top_list_bracket_by_maxlines(a:closing)
 endfunction
 
 " Recursive searchpairpos() is excruciatingly slow on a large file. This can
@@ -116,7 +116,7 @@ endfunction
 " the call a best-effort approach. If we are sacrificing correctness for
 " performance, we can do even better by assuming that all opening brackets on
 " the first column of a line are toplevel.
-function! s:current_top_form_bracket_by_first_column(closing)
+function! s:current_top_list_bracket_by_first_column(closing)
     let cursor = getpos('.')
     let at_top = 0
     let [_b, line, col, _o] = s:current_element_terminal(0)
@@ -147,9 +147,9 @@ function! s:current_top_form_bracket_by_first_column(closing)
            \ : [0, 0, 0, 0]
 endfunction
 
-" Return current form's top-level bracket using searchpairpos() with
+" Return current list's top-level bracket using searchpairpos() with
 " g:sexp_maxlines
-function! s:current_top_form_bracket_by_maxlines(closing)
+function! s:current_top_list_bracket_by_maxlines(closing)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     let flags = a:closing ? 'cnr' : 'bcnr'
     let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
@@ -312,7 +312,7 @@ endfunction
 "   * Current string if cursor is in a string
 "   * Current comment if cursor is in a comment, or in the whitespace between
 "     two line comments
-"   * Current form if and only if cursor is on a paired bracket
+"   * Current list if and only if cursor is on a paired bracket
 "   * Current sequence of macro characters and following element if cursor is
 "     on a macro char
 "   * Current atom otherwise
@@ -369,8 +369,8 @@ function! s:current_element_terminal(end)
 endfunction
 
 " Returns position of previous/next element's head/tail. If the current
-" element is the first or last element in the current form, the enclosing
-" form's terminal bracket position is returned instead.
+" element is the first or last element in the current list, the enclosing
+" list's terminal bracket position is returned instead.
 "
 " Returns current element's terminal if no adjacent element exists.
 function! s:nearest_element_terminal(next, tail)
@@ -526,7 +526,7 @@ endfunction
 
 " Extend given positions to the terminals of any partially contained elements.
 " If there exist any unpaired brackets in the region, the positions are
-" extended to include those forms.
+" extended to include those lists.
 function! s:positions_with_element_terminals(positions)
     let cursor = getpos('.')
     let [start, end] = a:positions
@@ -691,11 +691,11 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
-" Tries to move cursor to outermost form's opening or closing bracket,
+" Tries to move cursor to outermost list's opening or closing bracket,
 " returning its position; 0 for opening, 1 for closing. Does not move cursor
-" if not in a form.
+" if not in a list.
 function! s:move_to_top_bracket(closing)
-    let pos = s:current_top_form_bracket(a:closing)
+    let pos = s:current_top_list_bracket(a:closing)
     if pos[1] > 0 | call setpos('.', pos) | endif
     return pos
 endfunction
@@ -797,13 +797,13 @@ endfunction
 "
 "   * Mode equals 'v', the cursor is on an opening bracket, the mark '< is
 "     valid, and the marks '< and '> are not equal. This occurs when calling
-"     this function while already having a form selected in visual mode.
+"     this function while already having a list selected in visual mode.
 "
 "   * s:countindex is greater than 0 and the mark '< is valid. Occurs when
 "     called by sexp#docount()
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
-function! s:set_marks_around_current_form(mode, offset, allow_expansion)
+function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     " We may potentially move the cursor.
     let cursor = getpos('.')
     let cursor_moved = 0
@@ -874,8 +874,8 @@ endfunction
 " Set visual marks to the positions of the outermost paired brackets from the
 " current location. Will set both to [0, 0, 0, 0] if none are found and mode
 " does not equal 'v'.
-function! s:set_marks_around_current_top_form(mode, offset)
-    let closing = s:current_top_form_bracket(1)
+function! s:set_marks_around_current_top_list(mode, offset)
+    let closing = s:current_top_list_bracket(1)
 
     if closing[1] > 0
         " Calling searchpairpos() is faster when you start from an end
@@ -1025,8 +1025,8 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
     endif
 endfunction
 
-function! s:insert_brackets_around_current_form(bra, ket, at_tail, headspace)
-    call s:set_marks_around_current_form('n', 0, 0)
+function! s:insert_brackets_around_current_list(bra, ket, at_tail, headspace)
+    call s:set_marks_around_current_list('n', 0, 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
@@ -1040,14 +1040,14 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Capture element adjacent to current form, given the starting position of
-" the enclosing form's bracket plus leading macro characters (spos) and the
+" Capture element adjacent to current list, given the starting position of
+" the enclosing list's bracket plus leading macro characters (spos) and the
 " position of the bracket itself (bpos).
 function! s:stackop_capture(last, spos, bpos)
     call setpos('.', a:spos)
     let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
 
-    " Ensure we are not trying to capture a parent form
+    " Ensure we are not trying to capture a parent list
     if nextpos[1] < 1 || s:compare_pos(a:spos, s:current_element_terminal(!a:last)) == (a:last ? 1 : -1)
         return 0
     endif
@@ -1079,8 +1079,8 @@ function! s:stackop_capture(last, spos, bpos)
     return 1
 endfunction
 
-" Emit terminal element in current form, given the starting position of the
-" enclosing form's bracket plus leading macro characters (spos) and the
+" Emit terminal element in current list, given the starting position of the
+" enclosing list's bracket plus leading macro characters (spos) and the
 " position of the bracket itself (bpos).
 function! s:stackop_emit(last, spos, bpos)
     " Move inwards onto the terminal element, then find the penultimate
@@ -1160,7 +1160,7 @@ function! s:swap_current_selection(mode, next, pairwise)
     silent! normal! "by
     let marks['b'] = s:get_visual_marks()
 
-    " Abort if we are already at the head or tail of the current form; we can
+    " Abort if we are already at the head or tail of the current list; we can
     " determine this by seeing if the adjacent element contains the original
     " element. Also abort if the selections are the same, which indicates that
     " we are at the top or bottom of the file.
@@ -1227,19 +1227,19 @@ function! sexp#docount(count, func, ...)
     endtry
 endfunction
 
-" Set visual marks at current form's brackets, then enter visual mode with
+" Set visual marks at current list's brackets, then enter visual mode with
 " that selection. If no brackets are found and mode equals 'o', nothing is
 " done.
-function! sexp#select_current_form(mode, offset, allow_expansion)
-    call s:set_marks_around_current_form(a:mode, a:offset, a:allow_expansion)
+function! sexp#select_current_list(mode, offset, allow_expansion)
+    call s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
     return s:select_current_marks(a:mode)
 endfunction
 
-" Set visual marks at current outermost form's brackets, then enter visual
+" Set visual marks at current outermost list's brackets, then enter visual
 " mode with that selection. If no brackets are found and mode equals 'o',
 " nothing is done.
-function! sexp#select_current_top_form(mode, offset)
-    call s:set_marks_around_current_top_form(a:mode, a:offset)
+function! sexp#select_current_top_list(mode, offset)
+    call s:set_marks_around_current_top_list(a:mode, a:offset)
     return s:select_current_marks(a:mode)
 endfunction
 
@@ -1265,10 +1265,10 @@ function! sexp#select_adjacent_element(mode, next)
     return s:select_current_marks(a:mode)
 endfunction
 
-" Move cursor to current form's terminal bracket, returning its position; 0
+" Move cursor to current list's terminal bracket, returning its position; 0
 " for previous, 1 for next. If currently on an opening or closing bracket and
 " moving backward or forward (respectively), cursor is moved to enclosing
-" form's terminal bracket.
+" list's terminal bracket.
 "
 " The mode 'o' is handled specially:
 "
@@ -1279,7 +1279,7 @@ endfunction
 "   * If this selection is empty and the brackets are paired, make the pair of
 "     brackets the selection, otherwise do nothing and return [0, 0, 0, 0]
 "
-" If there is no enclosing form, the cursor is not moved and [0, 0, 0, 0] is
+" If there is no enclosing list, the cursor is not moved and [0, 0, 0, 0] is
 " returned.
 function! sexp#move_to_nearest_bracket(mode, next)
     if a:mode ==? 'v'
@@ -1331,7 +1331,7 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     let marks = s:get_visual_marks()
 
     if a:scope ==# 'f'
-        call s:insert_brackets_around_current_form(a:bra, a:ket, a:at_tail, a:insert)
+        call s:insert_brackets_around_current_list(a:bra, a:ket, a:at_tail, a:insert)
     elseif a:scope ==# 'e'
         call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
     elseif a:scope ==# 'v'
@@ -1345,25 +1345,25 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     endif
 endfunction
 
-" Replace parent form with current form or visual selection.
-function! sexp#lift_form(mode)
+" Replace parent list with current list or visual selection.
+function! sexp#lift_list(mode)
     if a:mode ==# 'v'
         call s:select_current_marks('v')
     else
-        call sexp#select_current_form('n', 0, 0)
+        call sexp#select_current_list('n', 0, 0)
     endif
     normal! d
-    call sexp#select_current_form('n', 0, 0)
+    call sexp#select_current_list('n', 0, 0)
     normal! p
 endfunction
 
-" Remove brackets from current form, placing cursor at position of deleted
+" Remove brackets from current list, placing cursor at position of deleted
 " first bracket.
-function! sexp#splice_form()
+function! sexp#splice_list()
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
 
-    call s:set_marks_around_current_form('n', 0, 0)
+    call s:set_marks_around_current_list('n', 0, 0)
 
     let start = getpos("'<")
 
@@ -1380,10 +1380,10 @@ function! sexp#splice_form()
     call s:set_visual_marks(marks)
 endfunction
 
-" Move cursor to current form start or end and enter insert mode. Inserts
+" Move cursor to current list start or end and enter insert mode. Inserts
 " a leading space after opening bracket if inserting at head, unless there
 " already is one.
-function! sexp#insert_at_form_terminal(end)
+function! sexp#insert_at_list_terminal(end)
     let pos = s:move_to_nearest_bracket(a:end)
 
     " Handle opening bracket edge cases
@@ -1449,8 +1449,8 @@ endfunction
 "
 "   * Insert ket if cursor position is in s:ignored_region
 "   * Skip current char if equal to ket
-"   * Jump to next closing ket if current form is balanced
-"   * Insert ket if current form is unbalanced
+"   * Jump to next closing ket if current list is balanced
+"   * Insert ket if current list is unbalanced
 "
 function! sexp#closing_insertion(ket)
     let [_b, line, col, _o] = getpos('.')
@@ -1469,7 +1469,7 @@ function! sexp#closing_insertion(ket)
                \ ? [0, line, col, 0]
                \ : s:nearest_bracket(0, bra, ket)
 
-    " No enclosing form; insert nothing
+    " No enclosing list; insert nothing
     if open[1] < 1
         return ''
     endif
@@ -1541,12 +1541,12 @@ function! sexp#backspace_insertion()
     endif
 endfunction
 
-" Capture or emit the first or last element into or out of the current form.
+" Capture or emit the first or last element into or out of the current list.
 " The cursor will be placed on the new bracket position, or if mode is 'v',
-" the resulting form will be selected.
+" the resulting list will be selected.
 "
-" For implementation simplicity a form will never emit its last element, or
-" capture its containing form.
+" For implementation simplicity a list will never emit its last element, or
+" capture its containing list.
 function! sexp#stackop(mode, last, capture)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     let char = getline(cursorline)[cursorcol - 1]
@@ -1565,7 +1565,7 @@ function! sexp#stackop(mode, last, capture)
     endif
 
     try
-        " No paired bracket found, so not in a form
+        " No paired bracket found, so not in a list
         if pos[1] < 1 | throw 'sexp-error' | endif
 
         if a:last
@@ -1581,7 +1581,7 @@ function! sexp#stackop(mode, last, capture)
         endif
 
         if a:mode ==? 'v'
-            call sexp#select_current_form('n', 0, 0)
+            call sexp#select_current_list('n', 0, 0)
         endif
     catch /sexp-error/
         " Cleanup after error
@@ -1597,24 +1597,24 @@ endfunction
 " Exchange the current element with an adjacent sibling element. Does nothing
 " if there is no current or sibling element.
 "
-" If form equals 1, the current form is treated as the selected element.
+" If list equals 1, the current list is treated as the selected element.
 "
-" If mode equals 'v' (regardless of the value of form), the current selection
+" If mode equals 'v' (regardless of the value of list), the current selection
 " is expanded to include any partially selected elements, then is swapped
 " with the next element as a unit. If the selection contains an even number
 " of elements, the swap is done with the next couple of elements in order to
-" maintain the original associative structure of the form. Visual marks are
+" maintain the original associative structure of the list. Visual marks are
 " set to the new position and visual mode is re-entered.
 "
 " Note that swapping comments with other elements can lead to structural
 " imbalance since trailing brackets may be included as part of a comment after
 " a swap. Fixing this is on the TODO list.
-function! sexp#swap_element(mode, next, form)
+function! sexp#swap_element(mode, next, list)
     let visual = a:mode ==? 'v'
     let cursor = getpos('.')
     let pairwise = 0
 
-    " Moving formwise with a:mode 'v' will be treated like a regular
+    " Moving listwise with a:mode 'v' will be treated like a regular
     " element-wise swap.
     if visual
         let marks = s:get_visual_marks()
@@ -1625,8 +1625,8 @@ function! sexp#swap_element(mode, next, form)
 
         call s:set_visual_marks(s:positions_with_element_terminals(marks))
         let pairwise = (call('s:count_elements', s:get_visual_marks()) % 2) == 0
-    " Otherwise select the current form or element (with leading macro chars)
-    elseif a:form
+    " Otherwise select the current list or element (with leading macro chars)
+    elseif a:list
         " Move to element end first in case we are on leading macro chars
         let pos = s:current_element_terminal(1)
         let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)

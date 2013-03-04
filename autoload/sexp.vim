@@ -313,8 +313,8 @@ endfunction
 "   * Current comment if cursor is in a comment, or in the whitespace between
 "     two line comments
 "   * Current list if and only if cursor is on a paired bracket
-"   * Current sequence of macro characters and following element if cursor is
-"     on a macro char
+"   * Current sequence of leading macro characters and following element if
+"     cursor is on a macro character
 "   * Current atom otherwise
 "
 " An element always includes leading macro characters.

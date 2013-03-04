@@ -19,10 +19,9 @@ users know that what appear to be a preponderance of brackets are really hooks
 the editor may use to effortlessly transform the text before them.
 
 Vim, possessing |cursor-motions| and an |operator-pending| mode, is well
-suited for editing structured text. This plugin provides new motions and
-commands tailored specifically to S-Expressions as they occur in both
-classical Lisps like Scheme and new Lisps like Clojure, which use square and
-curly brackets for representing data.
+suited for editing structured text. This plugin extends these ideas to
+S-Expressions as embodied by both classical Lisps like Scheme and new Lisps
+like Clojure, which use square and curly brackets for representing data.
 
 A handful of features found in the popular S-Expression plugin for emacs,
 paredit.el, are also provided.
@@ -45,17 +44,17 @@ TEXT OBJECTS~
 
 af                                                    *sexp_select_list_outer*
 if                                                    *sexp_select_list_inner*
-        Select [count] lists delimited by any of '(' and ')', '[' and ']', or
-        '{' and '}'. Outer motion includes the delimiting brackets and the
-        inner motion excludes them.
+        Select [count] lists (compound FORMS) delimited by any of '(' and ')',
+        '[' and ']', or '{' and '}'. Outer motion includes the delimiting
+        brackets and the inner motion excludes them.
 
         Does not include surrounding whitespace.
 
 aF                                                *sexp_select_top_list_outer*
 iF                                                *sexp_select_top_list_inner*
-        Select the current top-level list delimited by any of '(' and ')', '['
-        and ']', or '{' or '}'. Outer motion includes the delimiting brackets
-        and the inner motion excludes them.
+        Select the current top-level list (compound FORM) delimited by any of
+        '(' and ')', '[' and ']', or '{' or '}'. Outer motion includes the
+        delimiting brackets and the inner motion excludes them.
 
         Does not include surrounding whitespace.
 
@@ -65,48 +64,44 @@ iF                                                *sexp_select_top_list_inner*
 
 as                                                  *sexp_select_string_outer*
 is                                                  *sexp_select_string_inner*
-        Select the current string or regular expression pattern as defined by
-        the syntax engine. Outer motion includes surrounding quotes, inner
-        motion excludes them.
+        Select the current string or regular expression. Outer motion includes
+        surrounding quotes, inner motion excludes them.
 
         Does not include surrounding whitespace.
 
-        The default mapping shadows the internal |as| and |is| mappings.
-        These sentence text-object are rarely used in code buffers, but if
-        this conflict bothers you, see |g:sexp_mappings| for documentation on
+        The default mappings shadow the internal |as| and |is| mappings. These
+        sentence text-objects are of limited use in code buffers, but if this
+        conflict bothers you, see |g:sexp_mappings| for documentation on
         changing the default mappings.
 
 ae                                                 *sexp_select_element_outer*
 ie                                                 *sexp_select_element_inner*
-
         Select the current element. An element is defined as:
 
-                * Current string if cursor is in a string
-                * Current comment if cursor is in a comment, or in the
-                  whitespace between two line comments
-                * Current list if and only if cursor is on a paired bracket
-                * Current atom otherwise (contiguous region of non-whitespace,
-                  non-bracket characters that are not part of a string or
-                  comment)
+            * Current string if cursor is in a string
+            * Current comment if cursor is in a comment, or in the whitespace
+              between two line comments
+            * Current list if and only if cursor is on a paired bracket
+            * Current sequence of leading macro characters and following
+              element if cursor is on a macro character
+            * Current atom otherwise
 
-        If the cursor is on a macro metacharacter, the current sequence of
-        metacharacters and the following element are selected. An element
-        always includes leading macro metacharacters.
+        An element always includes leading macro metacharacters.
 
         Inner motion does not include surrounding whitespace, but the outer
         motion includes (ordered by priority):
 
-                * Trailing whitespace up to the next element if next element
-                  is on the same line
-                * Trailing whitespace up to the next element on a subsequent
-                  line if the current element begins on its own line
-                * Trailing whitespace up to the end of line if the current
-                  element is preceded by another element on the same line
-                * Leading whitespace up to the previous element if it exists
-                  on the same line as the current element and no trailing
-                  whitespace exists
+            * Trailing whitespace up to the next element if next element is on
+              the same line
+            * Trailing whitespace up to the next element on a subsequent line
+              if the current element begins on its own line
+            * Trailing whitespace up to the end of line if the current element
+              is preceded by another element on the same line
+            * Leading whitespace up to the previous element if it exists on
+              the same line as the current element and no trailing whitespace
+              exists
 
         If the cursor is on whitespace that is not in a string or between line
-        comments, the next element is selected.
+        comments, the next element in the buffer is selected.
 
  vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

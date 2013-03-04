@@ -673,14 +673,12 @@ endfunction
 " position b, and 0 if they are the same position. Only compares the line and
 " column, ignoring buffer and offset.
 function! s:compare_pos(a, b)
-    let [a, b] = [a:a, a:b]
-
-    if a[1] == b[1] && a[2] == b[2]
+    if a:a[1] == a:b[1] && a:a[2] == a:b[2]
         return 0
-    elseif a[1] != b[1]
-        return a[1] < b[1] ? -1 : 1
+    elseif a:a[1] != a:b[1]
+        return a:a[1] < a:b[1] ? -1 : 1
     else
-        return a[2] < b[2] ? -1 : 1
+        return a:a[2] < a:b[2] ? -1 : 1
     endif
 endfunction
 

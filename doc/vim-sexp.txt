@@ -58,9 +58,10 @@ iF                                                *sexp_select_top_list_inner*
 
         Does not include surrounding whitespace.
 
-        If |g:sexp_maxlines| is -1, the top-level list is determined to be the
-        first parent list with a opening bracket on the first column. This is
-        typically much faster than calling |searchpairpos()| recursively.
+        If |g:sexp_maxlines| is -1 (the default), the top-level list is
+        determined to be the first parent list with a opening bracket
+        on the first column. This is typically much faster than calling
+        |searchpairpos()| recursively.
 
 as                                                  *sexp_select_string_outer*
 is                                                  *sexp_select_string_inner*
@@ -130,7 +131,7 @@ CURSOR MOTIONS~
 
         Analogous to |b| and |w| motions.
 
-<M-B>                                         *sexp_move_to_prev_element_tail*
+<M-S-b>                                       *sexp_move_to_prev_element_tail*
 <M-e>                                         *sexp_move_to_next_element_tail*
         [count] elements backward or forward, |inclusive|, placing the cursor
         on the tail of an element. If an element is at the beginning or end of
@@ -142,10 +143,10 @@ CURSOR MOTIONS~
 ]]                                             *sexp_move_to_next_top_element*
         [count] top-level elements backward or forward, |exclusive|.
 
-        If |g:sexp_maxlines| is -1 and the current element is in a list, the
-        top-level element is determined to be the first parent list with a
-        opening bracket on the first column. This is typically much faster
-        than calling |searchpairpos()| recursively.
+        If |g:sexp_maxlines| is -1 (the default) and the current element is
+        in a list, the top-level element is determined to be the first parent
+        list with a opening bracket on the first column. This is typically
+        much faster than calling |searchpairpos()| recursively.
 
 [e                                                  *sexp_select_prev_element*
 ]e                                                  *sexp_select_next_element*
@@ -154,18 +155,37 @@ CURSOR MOTIONS~
         even when called from visual mode (typically the current selection is
         extended).
 
+WRAP COMMANDS~
+
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
 <LocalLeader>I                                     *sexp_list_wrap_round_tail*
 <LocalLeader>[                                    *sexp_list_wrap_square_head*
 <LocalLeader>]                                    *sexp_list_wrap_square_tail*
 <LocalLeader>{                                     *sexp_list_wrap_curly_head*
 <LocalLeader>}                                     *sexp_list_wrap_curly_tail*
+        Wrap the current list (compound FORM) with '(' and ')', '[' and ']',
+        or '{' and '}' and place the cursor at the head or tail of the newly
+        created list.
+
+        If |g:sexp_insert_after_wrap| is set (true by default), insert mode is
+        entered. Additionally, if the cursor is to be set at the head of the
+        list, a space is conditionally appended after the opening bracket so
+        that any typed characters will be separated from the next element.
+
 <LocalLeader>W                                  *sexp_element_wrap_round_head*
 <LocalLeader>w                                  *sexp_element_wrap_round_tail*
 <LocalLeader>e[                                *sexp_element_wrap_square_head*
 <LocalLeader>e]                                *sexp_element_wrap_square_tail*
 <LocalLeader>e{                                 *sexp_element_wrap_curly_head*
 <LocalLeader>e}                                 *sexp_element_wrap_curly_tail*
+        Wrap the current element with '(' and ')', '[' and ']', or '{' and '}'
+        and place the cursor at the head or tail of the newly created list.
+
+        If |g:sexp_insert_after_wrap| is set (true by default), insert mode is
+        entered. Additionally, if the cursor is to be set at the head of the
+        list, a space is conditionally appended after the opening bracket so
+        that any typed characters will be separated from the next element.
+
 <LocalLeader>o                                                *sexp_lift_list*
 <LocalLeader>O                                              *sexp_splice_list*
 <LocalLeader>h                                      *sexp_insert_at_list_head*

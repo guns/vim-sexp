@@ -390,8 +390,9 @@ function! s:nearest_element_terminal(next, tail)
             let pos = terminal
             call setpos('.', pos)
             " b moves to the head of the current word if not already on the
-            " head and e moves to the tail if not on the tail.
-            if !a:next || a:tail
+            " head and e moves to the tail if not on the tail. However, ge
+            " does not!
+            if (!a:next || a:tail) && !(!a:next && a:tail)
                 throw 'sexp-error'
             endif
         endif

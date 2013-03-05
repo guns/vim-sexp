@@ -48,6 +48,7 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_bracket':        ')',
     \ 'sexp_move_to_prev_element':        '<M-b>',
     \ 'sexp_move_to_next_element':        '<M-w>',
+    \ 'sexp_move_to_end_of_prev_element': '<M-B>',
     \ 'sexp_move_to_end_of_next_element': '<M-e>',
     \ 'sexp_move_to_prev_top_element':    '[[',
     \ 'sexp_move_to_next_top_element':    ']]',
@@ -156,10 +157,11 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_move_to_prev_bracket',     'sexp_move_to_next_bracket',
-               \ 'sexp_move_to_prev_element',     'sexp_move_to_next_element',     'sexp_move_to_end_of_next_element',
-               \ 'sexp_move_to_prev_top_element', 'sexp_move_to_next_top_element',
-               \ 'sexp_select_prev_element',      'sexp_select_next_element']
+    for plug in ['sexp_move_to_prev_bracket',        'sexp_move_to_next_bracket',
+               \ 'sexp_move_to_prev_element',        'sexp_move_to_next_element',
+               \ 'sexp_move_to_end_of_prev_element', 'sexp_move_to_end_of_next_element',
+               \ 'sexp_move_to_prev_top_element',    'sexp_move_to_next_top_element',
+               \ 'sexp_select_prev_element',         'sexp_select_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
@@ -235,23 +237,25 @@ Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_
 DEFPLUG  vnoremap sexp_move_to_next_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
 Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 1)
 
-" Adjacent element
+" Adjacent element head
 "
-" NOTES:
-"
-"   * Visual mappings must break out of visual mode in order to detect which
-"     end the user is using to adjust the selection.
-"
+" Visual mappings must break out of visual mode in order to detect which end
+" the user is using to adjust the selection.
 Defplug  nnoremap sexp_move_to_prev_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)
 DEFPLUG  vnoremap sexp_move_to_prev_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
 Defplug! onoremap sexp_move_to_prev_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)
 Defplug  nnoremap sexp_move_to_next_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)
 DEFPLUG  vnoremap sexp_move_to_next_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
 Defplug! onoremap sexp_move_to_next_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)
+
+" Adjacent element tail
 "
-"   * Inclusive operator pending motions require a visual mode selection to
-"     include the last character of a line.
-"
+" Inclusive operator pending motions require a visual mode selection to
+" include the last character of a line.
+Defplug  nnoremap sexp_move_to_end_of_prev_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
+DEFPLUG  vnoremap sexp_move_to_end_of_prev_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
+Defplug! onoremap sexp_move_to_end_of_prev_element setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
+                                                 \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
 Defplug  nnoremap sexp_move_to_end_of_next_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
 DEFPLUG  vnoremap sexp_move_to_end_of_next_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
 Defplug! onoremap sexp_move_to_end_of_next_element setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|

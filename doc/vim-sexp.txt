@@ -104,4 +104,55 @@ ie                                                 *sexp_select_element_inner*
         If the cursor is on whitespace that is not in a string or between line
         comments, the next element in the buffer is selected.
 
+CURSOR MOTIONS~
+
+(                                                  *sexp_move_to_prev_bracket*
+)                                                  *sexp_move_to_next_bracket*
+        [count] paired brackets backward or forward. |exclusive| motion.
+
+        When used in |operator-pending| mode, the following exceptions apply:
+
+            * Backward motion excludes the foremost bracket
+            * Forward motion from a bracket excludes both the current bracket
+              and the last bracket, unless the resulting selection is empty,
+              in which case the motion includes both brackets
+
+        The default mappings shadow the internal |(| and |)| mappings. These
+        sentence cursor motions are of limited use in code buffers, but if
+        this conflict bothers you, see |g:sexp_mappings| for documentation on
+        changing the default mappings.
+
+<M-b>                                              *sexp_move_to_prev_element*
+<M-w>                                              *sexp_move_to_next_element*
+<M-B>                                       *sexp_move_to_end_of_prev_element*
+<M-e>                                       *sexp_move_to_end_of_next_element*
+[[                                             *sexp_move_to_prev_top_element*
+]]                                             *sexp_move_to_next_top_element*
+[e                                                  *sexp_select_prev_element*
+]e                                                  *sexp_select_next_element*
+<LocalLeader>i                                     *sexp_list_wrap_round_head*
+<LocalLeader>I                                     *sexp_list_wrap_round_tail*
+<LocalLeader>[                                    *sexp_list_wrap_square_head*
+<LocalLeader>]                                    *sexp_list_wrap_square_tail*
+<LocalLeader>{                                     *sexp_list_wrap_curly_head*
+<LocalLeader>}                                     *sexp_list_wrap_curly_tail*
+<LocalLeader>W                                  *sexp_element_wrap_round_head*
+<LocalLeader>w                                  *sexp_element_wrap_round_tail*
+<LocalLeader>e[                                *sexp_element_wrap_square_head*
+<LocalLeader>e]                                *sexp_element_wrap_square_tail*
+<LocalLeader>e{                                 *sexp_element_wrap_curly_head*
+<LocalLeader>e}                                 *sexp_element_wrap_curly_tail*
+<LocalLeader>o                                                *sexp_lift_list*
+<LocalLeader>O                                              *sexp_splice_list*
+<LocalLeader>h                                      *sexp_insert_at_list_head*
+<LocalLeader>l                                      *sexp_insert_at_list_tail*
+<M-k>                                                *sexp_swap_list_backward*
+<M-j>                                                 *sexp_swap_list_forward*
+<M-h>                                             *sexp_swap_element_backward*
+<M-l>                                              *sexp_swap_element_forward*
+<M-S-j>                                              *sexp_emit_first_element*
+<M-S-k>                                               *sexp_emit_last_element*
+<M-S-h>                                            *sexp_capture_prev_element*
+<M-S-l>                                            *sexp_capture_next_element*
+
  vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

@@ -11,7 +11,7 @@ oooo    ooooooo ooo. .oo.  .oo.        .oooo.o  .ooooo. oooo    ooooo.ooooo.
                                                                    o888o
 
 ==============================================================================
-I. INTRODUCTION                                        *vim-sexp-introduction*
+I. INTRODUCTION                                            *sexp-introduction*
 
 Symbolic Expressions are the simplest way to express recursive tree-like
 structures with text, and give Lisps their distinctive look and feel. Emacs
@@ -27,7 +27,7 @@ A handful of features found in the popular S-Expression plugin for emacs,
 paredit.el, are also provided.
 
 ==============================================================================
-II. MAPPINGS                                               *vim-sexp-mappings*
+II. MAPPINGS                                                   *sexp-mappings*
 
 This is the list of mappings provided by vim-sexp grouped by type. The default
 mapping is shown on the left and the full <Plug> name on the right.
@@ -36,7 +36,18 @@ Note that all actions that result in visual selections will always be
 |characterwise|, regardless of the current visual state.
 
 If vim-repeat [1] is installed, repeating the last change with the |.| command
-will work as expected, even for changes made with operator-pending commands.
+will work as expected, even for changes made with |operator-pending| commands.
+
+The key mappings are only available in |FileType|s that match the
+|g:sexp_filetypes| option, but the <Plug> mappings are available globally, so
+you can bind them manually in any filetype:
+>
+        " Select the current compound form and send the selection to
+        " a hypothetical Lisp REPL
+        nmap <Leader><Leader> v<Plug>sexp_select_list_outer:SendToREPL<CR>
+<
+Insert mode mappings are enabled when |g:sexp_enable_insert_mode_mappings| is
+set, which is true by default.
 
 [1]: http://www.vim.org/scripts/script.php?script_id=2136
 
@@ -236,5 +247,46 @@ S-EXPRESSION MANIPULATION~
         element and will never capture its parent.
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
+
+INSERT MODE MAPPINGS (OPTIONAL)~
+
+(                                                  *sexp_insert_opening_round*
+[                                                 *sexp_insert_opening_square*
+{                                                  *sexp_insert_opening_curly*
+        Insert a pair of '(' and ')', '[' and ']', or '{' and '}', inserting
+        spaces as necessary to separate the new list from adjacent
+        non-compound elements.
+
+        If the cursor is in a string, regular expression, comment, or
+        character atom, insert the bracket as normal.
+
+        To force insertion of a single bracket, precede it with |i_Ctrl-V|.
+
+)                                                  *sexp_insert_closing_round*
+]                                                 *sexp_insert_closing_square*
+}                                                  *sexp_insert_closing_curly*
+        Insert a closing ')', ']', or '}' if the corresponding opening bracket
+        is unpaired. If it is paired, jump to the next paired instance of
+        the closing bracket. If the cursor is on the paired closing bracket,
+        advance one character to the right.
+
+        If the cursor is in a string, regular expression, comment, or
+        character atom, insert the bracket as normal.
+
+        To force insertion of a single bracket, precede it with |i_Ctrl-V|.
+
+"                                                   *sexp_insert_double_quote*
+<BS>                                                   *sexp_insert_backspace*
+
+==============================================================================
+III. OPTIONS                                                    *sexp-options*
+
+                                                            *g:sexp_filetypes*
+A string representing an |autocmd-pattern| for the |FileType|s that you wish
+to activate vim-sexp mappings.
+>
+        " Default
+        let g:sexp_filetypes = 'clojure,scheme,lisp'
+<
 
  vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

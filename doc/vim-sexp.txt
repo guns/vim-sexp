@@ -18,10 +18,10 @@ structures with text, and give Lisps their distinctive look and feel. Emacs
 users know that what appear to be a preponderance of brackets are really hooks
 the editor may use to effortlessly transform the text before them.
 
-Vim, possessing |cursor-motions| and an |operator-pending| mode, is well
-suited for editing structured text. This plugin extends these ideas to
-S-Expressions as embodied by both classical Lisps like Scheme and new Lisps
-like Clojure, which use square and curly brackets for representing data.
+Vim, possessing |text-objects|, |cursor-motions|, and an |operator-pending|
+mode, is well suited for editing structured text. This plugin extends these
+ideas to S-Expressions as embodied by both classical Lisps like Scheme and new
+Lisps like Clojure.
 
 A handful of features found in the popular S-Expression plugin for emacs,
 paredit.el, are also provided.
@@ -81,7 +81,7 @@ ie                                                 *sexp_select_element_inner*
             * Current string if cursor is in a string
             * Current comment if cursor is in a comment, or in the whitespace
               between two line comments
-            * Current list if and only if cursor is on a paired bracket
+            * Current compound form if cursor is on a paired bracket
             * Current sequence of leading macro characters and following
               element if cursor is on a macro character
             * Current atom otherwise

@@ -201,13 +201,13 @@ endfunction
 
 """ Text objects {{{1
 
-" Current list
+" Current list (compound FORM)
 Defplug  vnoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
 Defplug! onoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'o', 0, 1)
 Defplug  vnoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
 Defplug! onoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'o', 1, 1)
 
-" Current top-level list
+" Current top-level list (compound FORM)
 Defplug  vnoremap sexp_select_top_list_outer sexp#select_current_top_list('v', 0)
 Defplug! onoremap sexp_select_top_list_outer sexp#select_current_top_list('o', 0)
 Defplug  vnoremap sexp_select_top_list_inner sexp#select_current_top_list('v', 1)

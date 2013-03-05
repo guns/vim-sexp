@@ -290,6 +290,13 @@ INSERT MODE MAPPINGS (OPTIONAL)~
         To force insertion of the quote, precede it with |i_Ctrl-V|.
 
 <BS>                                                   *sexp_insert_backspace*
+        Delete adjacent double quotes from within a string, unless the leading
+        quote is preceded by another quote or a backslash.
+
+        Delete adjacent paired brackets, unless the cursor is in a string,
+        regular expression, comment, or character atom.
+
+        Normal backspace otherwise.
 
 ==============================================================================
 III. OPTIONS                                                    *sexp-options*

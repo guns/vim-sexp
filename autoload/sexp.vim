@@ -1682,4 +1682,3 @@ function! sexp#backspace_insertion()
         return "\<BS>"
     endif
 endfunction
-

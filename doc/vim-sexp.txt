@@ -122,10 +122,22 @@ CURSOR MOTIONS~
         this conflict bothers you, see |g:sexp_mappings| for documentation on
         changing the default mappings.
 
-<M-b>                                              *sexp_move_to_prev_element*
-<M-w>                                              *sexp_move_to_next_element*
-<M-B>                                       *sexp_move_to_end_of_prev_element*
-<M-e>                                       *sexp_move_to_end_of_next_element*
+<M-b>                                         *sexp_move_to_prev_element_head*
+<M-w>                                         *sexp_move_to_next_element_head*
+        [count] backward or forward to the beginning of an adjacent element,
+        |exclusive|. If an element is at the head or tail of a compound form,
+        the cursor is moved to the parent list's bracket.
+
+        Analogous to |b| and |w| motions.
+
+<M-B>                                         *sexp_move_to_prev_element_tail*
+<M-e>                                         *sexp_move_to_next_element_tail*
+        [count] backward or forward to the tail of an adjacent element,
+        |inclusive|. If an element is at the head or tail of a compound form,
+        the cursor is moved to the parent list's bracket.
+
+        Analogous to |ge| and |e| motions.
+
 [[                                             *sexp_move_to_prev_top_element*
 ]]                                             *sexp_move_to_next_top_element*
 [e                                                  *sexp_select_prev_element*

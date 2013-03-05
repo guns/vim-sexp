@@ -36,48 +36,48 @@ if !exists('g:sexp_mappings')
 endif
 
 let s:sexp_mappings = {
-    \ 'sexp_select_list_outer':           'af',
-    \ 'sexp_select_list_inner':           'if',
-    \ 'sexp_select_top_list_outer':       'aF',
-    \ 'sexp_select_top_list_inner':       'iF',
-    \ 'sexp_select_string_outer':         'as',
-    \ 'sexp_select_string_inner':         'is',
-    \ 'sexp_select_element_outer':        'ae',
-    \ 'sexp_select_element_inner':        'ie',
-    \ 'sexp_move_to_prev_bracket':        '(',
-    \ 'sexp_move_to_next_bracket':        ')',
-    \ 'sexp_move_to_prev_element':        '<M-b>',
-    \ 'sexp_move_to_next_element':        '<M-w>',
-    \ 'sexp_move_to_end_of_prev_element': '<M-B>',
-    \ 'sexp_move_to_end_of_next_element': '<M-e>',
-    \ 'sexp_move_to_prev_top_element':    '[[',
-    \ 'sexp_move_to_next_top_element':    ']]',
-    \ 'sexp_select_prev_element':         '[e',
-    \ 'sexp_select_next_element':         ']e',
-    \ 'sexp_list_wrap_round_head':        '<LocalLeader>i',
-    \ 'sexp_list_wrap_round_tail':        '<LocalLeader>I',
-    \ 'sexp_list_wrap_square_head':       '<LocalLeader>[',
-    \ 'sexp_list_wrap_square_tail':       '<LocalLeader>]',
-    \ 'sexp_list_wrap_curly_head':        '<LocalLeader>{',
-    \ 'sexp_list_wrap_curly_tail':        '<LocalLeader>}',
-    \ 'sexp_element_wrap_round_head':     '<LocalLeader>W',
-    \ 'sexp_element_wrap_round_tail':     '<LocalLeader>w',
-    \ 'sexp_element_wrap_square_head':    '<LocalLeader>e[',
-    \ 'sexp_element_wrap_square_tail':    '<LocalLeader>e]',
-    \ 'sexp_element_wrap_curly_head':     '<LocalLeader>e{',
-    \ 'sexp_element_wrap_curly_tail':     '<LocalLeader>e}',
-    \ 'sexp_lift_list':                   '<LocalLeader>o',
-    \ 'sexp_splice_list':                 '<LocalLeader>O',
-    \ 'sexp_insert_at_list_head':         '<LocalLeader>h',
-    \ 'sexp_insert_at_list_tail':         '<LocalLeader>l',
-    \ 'sexp_swap_list_backward':          '<M-k>',
-    \ 'sexp_swap_list_forward':           '<M-j>',
-    \ 'sexp_swap_element_backward':       '<M-h>',
-    \ 'sexp_swap_element_forward':        '<M-l>',
-    \ 'sexp_emit_first_element':          '<M-S-j>',
-    \ 'sexp_emit_last_element':           '<M-S-k>',
-    \ 'sexp_capture_prev_element':        '<M-S-h>',
-    \ 'sexp_capture_next_element':        '<M-S-l>',
+    \ 'sexp_select_list_outer':         'af',
+    \ 'sexp_select_list_inner':         'if',
+    \ 'sexp_select_top_list_outer':     'aF',
+    \ 'sexp_select_top_list_inner':     'iF',
+    \ 'sexp_select_string_outer':       'as',
+    \ 'sexp_select_string_inner':       'is',
+    \ 'sexp_select_element_outer':      'ae',
+    \ 'sexp_select_element_inner':      'ie',
+    \ 'sexp_move_to_prev_bracket':      '(',
+    \ 'sexp_move_to_next_bracket':      ')',
+    \ 'sexp_move_to_prev_element_head': '<M-b>',
+    \ 'sexp_move_to_next_element_head': '<M-w>',
+    \ 'sexp_move_to_prev_element_tail': '<M-B>',
+    \ 'sexp_move_to_next_element_tail': '<M-e>',
+    \ 'sexp_move_to_prev_top_element':  '[[',
+    \ 'sexp_move_to_next_top_element':  ']]',
+    \ 'sexp_select_prev_element':       '[e',
+    \ 'sexp_select_next_element':       ']e',
+    \ 'sexp_list_wrap_round_head':      '<LocalLeader>i',
+    \ 'sexp_list_wrap_round_tail':      '<LocalLeader>I',
+    \ 'sexp_list_wrap_square_head':     '<LocalLeader>[',
+    \ 'sexp_list_wrap_square_tail':     '<LocalLeader>]',
+    \ 'sexp_list_wrap_curly_head':      '<LocalLeader>{',
+    \ 'sexp_list_wrap_curly_tail':      '<LocalLeader>}',
+    \ 'sexp_element_wrap_round_head':   '<LocalLeader>W',
+    \ 'sexp_element_wrap_round_tail':   '<LocalLeader>w',
+    \ 'sexp_element_wrap_square_head':  '<LocalLeader>e[',
+    \ 'sexp_element_wrap_square_tail':  '<LocalLeader>e]',
+    \ 'sexp_element_wrap_curly_head':   '<LocalLeader>e{',
+    \ 'sexp_element_wrap_curly_tail':   '<LocalLeader>e}',
+    \ 'sexp_lift_list':                 '<LocalLeader>o',
+    \ 'sexp_splice_list':               '<LocalLeader>O',
+    \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
+    \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
+    \ 'sexp_swap_list_backward':        '<M-k>',
+    \ 'sexp_swap_list_forward':         '<M-j>',
+    \ 'sexp_swap_element_backward':     '<M-h>',
+    \ 'sexp_swap_element_forward':      '<M-l>',
+    \ 'sexp_emit_first_element':        '<M-S-j>',
+    \ 'sexp_emit_last_element':         '<M-S-k>',
+    \ 'sexp_capture_prev_element':      '<M-S-h>',
+    \ 'sexp_capture_next_element':      '<M-S-l>',
     \ }
 
 augroup sexp_filetypes
@@ -157,11 +157,11 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_move_to_prev_bracket',        'sexp_move_to_next_bracket',
-               \ 'sexp_move_to_prev_element',        'sexp_move_to_next_element',
-               \ 'sexp_move_to_end_of_prev_element', 'sexp_move_to_end_of_next_element',
-               \ 'sexp_move_to_prev_top_element',    'sexp_move_to_next_top_element',
-               \ 'sexp_select_prev_element',         'sexp_select_next_element']
+    for plug in ['sexp_move_to_prev_bracket',      'sexp_move_to_next_bracket',
+               \ 'sexp_move_to_prev_element_head', 'sexp_move_to_next_element_head',
+               \ 'sexp_move_to_prev_element_tail', 'sexp_move_to_next_element_tail',
+               \ 'sexp_move_to_prev_top_element',  'sexp_move_to_next_top_element',
+               \ 'sexp_select_prev_element',       'sexp_select_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
@@ -241,24 +241,24 @@ Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_
 "
 " Visual mappings must break out of visual mode in order to detect which end
 " the user is using to adjust the selection.
-Defplug  nnoremap sexp_move_to_prev_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)
-DEFPLUG  vnoremap sexp_move_to_prev_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
-Defplug! onoremap sexp_move_to_prev_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)
-Defplug  nnoremap sexp_move_to_next_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)
-DEFPLUG  vnoremap sexp_move_to_next_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
-Defplug! onoremap sexp_move_to_next_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)
+Defplug  nnoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)
+DEFPLUG  vnoremap sexp_move_to_prev_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
+Defplug! onoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)
+Defplug  nnoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)
+DEFPLUG  vnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
+Defplug! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)
 
 " Adjacent element tail
 "
 " Inclusive operator pending motions require a visual mode selection to
 " include the last character of a line.
-Defplug  nnoremap sexp_move_to_end_of_prev_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
-DEFPLUG  vnoremap sexp_move_to_end_of_prev_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
-Defplug! onoremap sexp_move_to_end_of_prev_element setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
+Defplug  nnoremap sexp_move_to_prev_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
+DEFPLUG  vnoremap sexp_move_to_prev_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
+Defplug! onoremap sexp_move_to_prev_element_tail setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
                                                  \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
-Defplug  nnoremap sexp_move_to_end_of_next_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
-DEFPLUG  vnoremap sexp_move_to_end_of_next_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
-Defplug! onoremap sexp_move_to_end_of_next_element setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
+Defplug  nnoremap sexp_move_to_next_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
+DEFPLUG  vnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
+Defplug! onoremap sexp_move_to_next_element_tail setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
                                                  \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
 
 " Adjacent top element

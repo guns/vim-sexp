@@ -22,7 +22,6 @@ let g:sexp_autoloaded = 1
 " * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
-" * Element selection should include trailing commas in Clojure
 " * Scheme macro_filetype_characters
 " * Common Lisp macro_filetype_characters
 " * Arc macro_filetype_characters
@@ -334,10 +333,17 @@ function! s:current_element_terminal(end)
             let pos = s:nearest_bracket(a:end)
         end
     elseif char =~# s:macro_chars()[1]
-        " Let the rest of the function find the macro head
         if !a:end
+            " Let the rest of the function find the macro head
             let include_macro_characters = 1
-            let pos = [0, line, col, 0]
+            " If the macro character is at the tail of an atom, treat it as
+            " part of the atom and return the head of the preceding element.
+            if !s:is_atom(line, col + 1) && s:is_atom(line, col - 1)
+                call cursor(line, col - 1)
+                let pos = s:current_element_terminal(0)
+            else
+                let pos = [0, line, col, 0]
+            endif
         " Otherwise search for the attached element's tail
         else
             let include_macro_characters = 0

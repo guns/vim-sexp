@@ -1387,6 +1387,117 @@ function! sexp#splice_list()
     call s:set_visual_marks(marks)
 endfunction
 
+" Capture or emit the first or last element into or out of the current list.
+" The cursor will be placed on the new bracket position, or if mode is 'v',
+" the resulting list will be selected.
+"
+" For implementation simplicity a list will never emit its last element, or
+" capture its containing list.
+function! sexp#stackop(mode, last, capture)
+    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    let char = getline(cursorline)[cursorcol - 1]
+
+    if a:mode ==? 'v'
+        execute "normal! \<C-Bslash>\<C-n>"
+        let marks = s:get_visual_marks()
+    endif
+
+    " Move to element tail first so we can skip leading macro chars
+    let pos = s:move_to_current_element_terminal(1)
+
+    " Move to closing bracket unless we are on one
+    if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
+        let pos = s:move_to_nearest_bracket(1)
+    endif
+
+    try
+        " No paired bracket found, so not in a list
+        if pos[1] < 1 | throw 'sexp-error' | endif
+
+        if a:last
+            let bpos = pos
+        else
+            let bpos = s:move_to_nearest_bracket(0)
+            let pos = s:move_to_current_element_terminal(0)
+        endif
+
+        if !(a:capture ? s:stackop_capture(a:last, pos, bpos)
+                     \ : s:stackop_emit(a:last, pos, bpos))
+            throw 'sexp-error'
+        endif
+
+        if a:mode ==? 'v'
+            call sexp#select_current_list('n', 0, 0)
+        endif
+    catch /sexp-error/
+        " Cleanup after error
+        if a:mode ==? 'v'
+            call s:set_visual_marks(marks)
+            normal! gv
+        else
+            call cursor(cursorline, cursorcol)
+        endif
+    endtry
+endfunction
+
+" Exchange the current element with an adjacent sibling element. Does nothing
+" if there is no current or sibling element.
+"
+" If list equals 1, the current list is treated as the selected element.
+"
+" If mode equals 'v' (regardless of the value of list), the current selection
+" is expanded to include any partially selected elements, then is swapped
+" with the next element as a unit. If the selection contains an even number
+" of elements, the swap is done with the next couple of elements in order to
+" maintain the original associative structure of the list. Visual marks are
+" set to the new position and visual mode is re-entered.
+"
+" Note that swapping comments with other elements can lead to structural
+" imbalance since trailing brackets may be included as part of a comment after
+" a swap. Fixing this is on the TODO list.
+function! sexp#swap_element(mode, next, list)
+    let visual = a:mode ==? 'v'
+    let cursor = getpos('.')
+    let pairwise = 0
+
+    " Moving listwise with a:mode 'v' will be treated like a regular
+    " element-wise swap.
+    if visual
+        let marks = s:get_visual_marks()
+
+        " Ensure visual marks are set character-wise
+        call s:select_current_marks('v')
+        execute "normal! \<C-Bslash>\<C-n>"
+
+        call s:set_visual_marks(s:positions_with_element_terminals(marks))
+        let pairwise = (call('s:count_elements', s:get_visual_marks()) % 2) == 0
+    " Otherwise select the current list or element (with leading macro chars)
+    elseif a:list
+        " Move to element end first in case we are on leading macro chars
+        let pos = s:current_element_terminal(1)
+        let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
+                   \ ? pos
+                   \ : s:nearest_bracket(1)
+        if tail[1] < 1
+            call s:clear_visual_marks()
+        else
+            call setpos('.', tail)
+            call s:set_marks_around_current_element('o', 1)
+        endif
+    else
+        call s:set_marks_around_current_element('o', 1)
+    endif
+
+    if getpos("'<")[1] < 1 || !s:swap_current_selection(a:mode, a:next, pairwise)
+        " Restore visual state
+        if visual
+            call s:set_visual_marks(marks)
+            normal! gv
+        endif
+        call setpos('.', cursor)
+    endif
+endfunction
+
 " Move cursor to current list start or end and enter insert mode. Inserts
 " a leading space after opening bracket if inserting at head, unless there
 " already is one.
@@ -1548,113 +1659,3 @@ function! sexp#backspace_insertion()
     endif
 endfunction
 
-" Capture or emit the first or last element into or out of the current list.
-" The cursor will be placed on the new bracket position, or if mode is 'v',
-" the resulting list will be selected.
-"
-" For implementation simplicity a list will never emit its last element, or
-" capture its containing list.
-function! sexp#stackop(mode, last, capture)
-    let [_b, cursorline, cursorcol, _o] = getpos('.')
-    let char = getline(cursorline)[cursorcol - 1]
-
-    if a:mode ==? 'v'
-        execute "normal! \<C-Bslash>\<C-n>"
-        let marks = s:get_visual_marks()
-    endif
-
-    " Move to element tail first so we can skip leading macro chars
-    let pos = s:move_to_current_element_terminal(1)
-
-    " Move to closing bracket unless we are on one
-    if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
-        let pos = s:move_to_nearest_bracket(1)
-    endif
-
-    try
-        " No paired bracket found, so not in a list
-        if pos[1] < 1 | throw 'sexp-error' | endif
-
-        if a:last
-            let bpos = pos
-        else
-            let bpos = s:move_to_nearest_bracket(0)
-            let pos = s:move_to_current_element_terminal(0)
-        endif
-
-        if !(a:capture ? s:stackop_capture(a:last, pos, bpos)
-                     \ : s:stackop_emit(a:last, pos, bpos))
-            throw 'sexp-error'
-        endif
-
-        if a:mode ==? 'v'
-            call sexp#select_current_list('n', 0, 0)
-        endif
-    catch /sexp-error/
-        " Cleanup after error
-        if a:mode ==? 'v'
-            call s:set_visual_marks(marks)
-            normal! gv
-        else
-            call cursor(cursorline, cursorcol)
-        endif
-    endtry
-endfunction
-
-" Exchange the current element with an adjacent sibling element. Does nothing
-" if there is no current or sibling element.
-"
-" If list equals 1, the current list is treated as the selected element.
-"
-" If mode equals 'v' (regardless of the value of list), the current selection
-" is expanded to include any partially selected elements, then is swapped
-" with the next element as a unit. If the selection contains an even number
-" of elements, the swap is done with the next couple of elements in order to
-" maintain the original associative structure of the list. Visual marks are
-" set to the new position and visual mode is re-entered.
-"
-" Note that swapping comments with other elements can lead to structural
-" imbalance since trailing brackets may be included as part of a comment after
-" a swap. Fixing this is on the TODO list.
-function! sexp#swap_element(mode, next, list)
-    let visual = a:mode ==? 'v'
-    let cursor = getpos('.')
-    let pairwise = 0
-
-    " Moving listwise with a:mode 'v' will be treated like a regular
-    " element-wise swap.
-    if visual
-        let marks = s:get_visual_marks()
-
-        " Ensure visual marks are set character-wise
-        call s:select_current_marks('v')
-        execute "normal! \<C-Bslash>\<C-n>"
-
-        call s:set_visual_marks(s:positions_with_element_terminals(marks))
-        let pairwise = (call('s:count_elements', s:get_visual_marks()) % 2) == 0
-    " Otherwise select the current list or element (with leading macro chars)
-    elseif a:list
-        " Move to element end first in case we are on leading macro chars
-        let pos = s:current_element_terminal(1)
-        let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
-                   \ ? pos
-                   \ : s:nearest_bracket(1)
-        if tail[1] < 1
-            call s:clear_visual_marks()
-        else
-            call setpos('.', tail)
-            call s:set_marks_around_current_element('o', 1)
-        endif
-    else
-        call s:set_marks_around_current_element('o', 1)
-    endif
-
-    if getpos("'<")[1] < 1 || !s:swap_current_selection(a:mode, a:next, pairwise)
-        " Restore visual state
-        if visual
-            call s:set_visual_marks(marks)
-            normal! gv
-        endif
-        call setpos('.', cursor)
-    endif
-endfunction

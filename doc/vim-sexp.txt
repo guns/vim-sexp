@@ -155,6 +155,11 @@ CURSOR MOTIONS~
         even when called from visual mode (typically the current selection is
         extended).
 
+        This motion is particularly useful in |operator-pending| mode. For
+        instance, in an (if pred then else) form with the cursor on "pred",
+        c]e will delete and insert at the "then" form, while c2]e will delete
+        and insert at the "else" form.
+
 WRAPPING AND CURSOR INSERTION~
 
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
@@ -201,10 +206,7 @@ S-EXPRESSION MANIPULATION~
 <LocalLeader>o                                                *sexp_lift_list*
         Select the current list (compound FORM) or visual selection and
         replace [count] enclosing lists with the selection.
->
-            (foo (|bar) baz) ; Cursor at |
-            (|bar)           ; Replaces parent list with subform (bar)
-<
+
 <LocalLeader>O                                              *sexp_splice_list*
         Splice the current list (compound FORM) into its parent scope [count]
         times by deleting the list's brackets.
@@ -213,9 +215,26 @@ S-EXPRESSION MANIPULATION~
 <M-j>                                                 *sexp_swap_list_forward*
 <M-h>                                             *sexp_swap_element_backward*
 <M-l>                                              *sexp_swap_element_forward*
+        Swap the current list (compound FORM), element, or visual selection
+        [count] times with the adjacent list or element. Does nothing if there
+        is no adjacent element in the desired direction.
+
+        If moving a visual selection, the selection is first expanded to cover
+        all partially selected lists and elements so that structural integrity
+        is maintained.
+
+        If moving an even number of elements with a visual selection, the
+        swap is done pairwise to preserve the associative structure of the
+        containing compound form.
+
 <M-S-j>                                              *sexp_emit_first_element*
 <M-S-k>                                               *sexp_emit_last_element*
 <M-S-h>                                            *sexp_capture_prev_element*
 <M-S-l>                                            *sexp_capture_next_element*
+        Emit [count] terminal elements of the current list, or capture [count]
+        elements adjacent to the current list. A list will never emit its last
+        element and will never capture its parent.
+
+        These commands are similar to "barfage" and "slurpage" in paredit.el.
 
  vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

@@ -1558,8 +1558,8 @@ function! sexp#stackop(mode, last, capture)
     let char = getline(cursorline)[cursorcol - 1]
 
     if a:mode ==? 'v'
-        let marks = s:get_visual_marks()
         execute "normal! \<C-Bslash>\<C-n>"
+        let marks = s:get_visual_marks()
     endif
 
     " Move to element tail first so we can skip leading macro chars

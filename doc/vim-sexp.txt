@@ -86,7 +86,7 @@ ie                                                 *sexp_select_element_inner*
               element if cursor is on a macro character
             * Current atom otherwise
 
-        An element always includes leading macro metacharacters.
+        An element always includes leading macro characters.
 
         Inner motion does not include surrounding whitespace, but the outer
         motion includes (ordered by priority):

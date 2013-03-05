@@ -108,7 +108,7 @@ CURSOR MOTIONS~
 
 (                                                  *sexp_move_to_prev_bracket*
 )                                                  *sexp_move_to_next_bracket*
-        [count] paired brackets backward or forward. |exclusive| motion.
+        [count] paired brackets backward or forward, |exclusive|.
 
         When used in |operator-pending| mode, the following exceptions apply:
 

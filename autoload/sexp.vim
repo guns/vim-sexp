@@ -42,7 +42,7 @@ let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|char'
 let s:macro_filetype_characters = {
     \ 'clojure': ['#', "\\v[#'`~@^_=]"],
-\ }
+    \ }
 let s:pairs = {
     \ '(': ')',
     \ '[': ']',
@@ -51,7 +51,7 @@ let s:pairs = {
     \ ']': '[',
     \ '}': '{',
     \ '"': '"'
-\ }
+    \ }
 
 function! s:macro_chars()
     return get(s:macro_filetype_characters, &filetype, [nr2char(0x01), nr2char(0x01)])

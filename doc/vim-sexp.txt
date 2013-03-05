@@ -58,7 +58,7 @@ iF                                                *sexp_select_top_list_inner*
 
         Does not include surrounding whitespace.
 
-        If |g:sexp_maxlines| is -1, the top list is determined to be the
+        If |g:sexp_maxlines| is -1, the top-level list is determined to be the
         first parent list with a opening bracket on the first column. This is
         typically much faster than calling |searchpairpos()| recursively.
 
@@ -124,24 +124,36 @@ CURSOR MOTIONS~
 
 <M-b>                                         *sexp_move_to_prev_element_head*
 <M-w>                                         *sexp_move_to_next_element_head*
-        [count] backward or forward to the beginning of an adjacent element,
-        |exclusive|. If an element is at the head or tail of a compound form,
-        the cursor is moved to the parent list's bracket.
+        [count] elements backward or forward, |exclusive|, placing the cursor
+        on the head of an element. If an element is at the beginning or end of
+        a compound form, the cursor is moved to that list's bracket.
 
         Analogous to |b| and |w| motions.
 
 <M-B>                                         *sexp_move_to_prev_element_tail*
 <M-e>                                         *sexp_move_to_next_element_tail*
-        [count] backward or forward to the tail of an adjacent element,
-        |inclusive|. If an element is at the head or tail of a compound form,
-        the cursor is moved to the parent list's bracket.
+        [count] elements backward or forward, |inclusive|, placing the cursor
+        on the tail of an element. If an element is at the beginning or end of
+        a compound form, the cursor is moved to that list's bracket.
 
         Analogous to |ge| and |e| motions.
 
 [[                                             *sexp_move_to_prev_top_element*
 ]]                                             *sexp_move_to_next_top_element*
+        [count] top-level elements backward or forward, |exclusive|.
+
+        If |g:sexp_maxlines| is -1 and the current element is in a list, the
+        top-level element is determined to be the first parent list with a
+        opening bracket on the first column. This is typically much faster
+        than calling |searchpairpos()| recursively.
+
 [e                                                  *sexp_select_prev_element*
 ]e                                                  *sexp_select_next_element*
+        Select [count]th element from the current element. Unlike the others,
+        these motions always result in a visual selection of a single element,
+        even when called from visual mode (typically the current selection is
+        extended).
+
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
 <LocalLeader>I                                     *sexp_list_wrap_round_tail*
 <LocalLeader>[                                    *sexp_list_wrap_square_head*

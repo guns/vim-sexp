@@ -1608,10 +1608,11 @@ endfunction
 
 " Return keys to be inserted in place of quote:
 "
-"   * Insert quote if cursor position is in s:ignored_region
-"   * If in a string, insert quote unless current char is a quote
 "   * If in a string, always insert quote if previous char is a backslash
-"   * Insert pair of quotes otherwise
+"   * If in a string, insert quote unless current char is a quote
+"   * Insert quote if cursor position is in s:ignored_region
+"   * Otherwise insert pair of quotes with a leading and/or trailing space to
+"     separate from other elements.
 "
 function! sexp#quote_insertion(quote)
     let [_b, line, col, _o] = getpos('.')
@@ -1628,7 +1629,30 @@ function! sexp#quote_insertion(quote)
     elseif s:syntax_match(s:ignored_region, line, col)
         return a:quote
     else
-        return a:quote . a:quote . "\<Left>"
+        let curline = getline(line)
+        let cur = curline[col - 1]
+        let prev = curline[col - 2]
+        let pprev = curline[col - 3]
+        let [dispatch, macro] = s:macro_chars()
+
+        let buf = ''
+        let buftail = ''
+
+        if prev =~# '\v\S'
+            \ && prev !~# s:opening_bracket
+            \ && (pprev !=# dispatch && prev !~# macro)
+            let buf .= ' '
+        endif
+
+        let buf .= a:quote . a:quote
+        let buftail .= "\<Left>"
+
+        if cur =~# '\v\S' && cur !~# s:closing_bracket
+            let buf .= ' '
+            let buftail .= "\<Left>"
+        endif
+
+        return buf . buftail
     endif
 endfunction
 

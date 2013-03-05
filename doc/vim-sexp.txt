@@ -258,9 +258,9 @@ INSERT MODE MAPPINGS (OPTIONAL)~
         non-compound elements.
 
         If the cursor is in a string, regular expression, comment, or
-        character atom, insert the bracket as normal.
+        character atom, insert an unpaired bracket.
 
-        To force insertion of a single bracket, precede it with |i_Ctrl-V|.
+        To force insertion of the bracket, precede it with |i_Ctrl-V|.
 
 )                                                  *sexp_insert_closing_round*
 ]                                                 *sexp_insert_closing_square*
@@ -271,11 +271,24 @@ INSERT MODE MAPPINGS (OPTIONAL)~
         advance one character to the right.
 
         If the cursor is in a string, regular expression, comment, or
-        character atom, insert the bracket as normal.
+        character atom, insert an unpaired bracket.
 
-        To force insertion of a single bracket, precede it with |i_Ctrl-V|.
+        To force insertion of the bracket, precede it with |i_Ctrl-V|.
 
 "                                                   *sexp_insert_double_quote*
+        Insert a pair of double quotes, inserting spaces as necessary to
+        separate the new string from adjacent non-compound elements.
+
+        If the cursor is in a string or regular expression, insert an unpaired
+        quote. If the cursor is on a double quote, advance one character to
+        the right, unless the previous character is a backslash, in which case
+        the quote is inserted regardless.
+
+        If the cursor is in a comment or character atom, insert an unpaired
+        quote.
+
+        To force insertion of the quote, precede it with |i_Ctrl-V|.
+
 <BS>                                                   *sexp_insert_backspace*
 
 ==============================================================================

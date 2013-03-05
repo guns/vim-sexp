@@ -66,10 +66,10 @@ let s:sexp_mappings = {
     \ 'sexp_element_wrap_square_tail':  '<LocalLeader>e]',
     \ 'sexp_element_wrap_curly_head':   '<LocalLeader>e{',
     \ 'sexp_element_wrap_curly_tail':   '<LocalLeader>e}',
-    \ 'sexp_lift_list':                 '<LocalLeader>o',
-    \ 'sexp_splice_list':               '<LocalLeader>O',
     \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
     \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
+    \ 'sexp_lift_list':                 '<LocalLeader>o',
+    \ 'sexp_splice_list':               '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
     \ 'sexp_swap_list_forward':         '<M-j>',
     \ 'sexp_swap_element_backward':     '<M-h>',
@@ -177,11 +177,11 @@ function! s:sexp_create_mappings()
                \ 'sexp_element_wrap_square_head', 'sexp_element_wrap_square_tail',
                \ 'sexp_element_wrap_curly_head',  'sexp_element_wrap_curly_tail',
                \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
+               \ 'sexp_lift_list',                'sexp_splice_list',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_first_element',       'sexp_emit_last_element',
-               \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
-               \ 'sexp_lift_list',                'sexp_splice_list']
+               \ 'sexp_capture_prev_element',     'sexp_capture_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
@@ -316,6 +316,14 @@ Defplug  vnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
 Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 Defplug  vnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
+" Lift list
+Defplug! nnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'n')
+Defplug  vnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'v')
+
+" Splice list
+Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
+Defplug  vnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
+
 " Swap list
 Defplug! nnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)
 DEFPLUG  vnoremap sexp_swap_list_backward <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)<CR>
@@ -337,14 +345,6 @@ Defplug! nnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop'
 Defplug  vnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'v', 0, 1)
 Defplug! nnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'n', 1, 1)
 Defplug  vnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'v', 1, 1)
-
-" Lift list
-Defplug! nnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'n')
-Defplug  vnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'v')
-
-" Splice list
-Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
-Defplug  vnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
 
 """ Insert mode mappings {{{1
 

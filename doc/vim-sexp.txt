@@ -1,4 +1,4 @@
-Symbolic Expression manipulation                                *vim-sexp.txt*
+Symbolic Expressions plugin                                     *vim-sexp.txt*
 
             o8o
             '"'
@@ -155,7 +155,7 @@ CURSOR MOTIONS~
         even when called from visual mode (typically the current selection is
         extended).
 
-WRAP COMMANDS~
+WRAPPING AND CURSOR INSERTION~
 
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
 <LocalLeader>I                                     *sexp_list_wrap_round_tail*
@@ -163,9 +163,9 @@ WRAP COMMANDS~
 <LocalLeader>]                                    *sexp_list_wrap_square_tail*
 <LocalLeader>{                                     *sexp_list_wrap_curly_head*
 <LocalLeader>}                                     *sexp_list_wrap_curly_tail*
-        Wrap the current list (compound FORM) with '(' and ')', '[' and ']',
-        or '{' and '}' and place the cursor at the head or tail of the newly
-        created list.
+        Wrap the current list (compound FORM) or visual selection with '(' and
+        ')', '[' and ']', or '{' and '}' and place the cursor at the head or
+        tail of the newly created list.
 
         If |g:sexp_insert_after_wrap| is set (true by default), insert mode is
         entered. Additionally, if the cursor is to be set at the head of the
@@ -178,18 +178,37 @@ WRAP COMMANDS~
 <LocalLeader>e]                                *sexp_element_wrap_square_tail*
 <LocalLeader>e{                                 *sexp_element_wrap_curly_head*
 <LocalLeader>e}                                 *sexp_element_wrap_curly_tail*
-        Wrap the current element with '(' and ')', '[' and ']', or '{' and '}'
-        and place the cursor at the head or tail of the newly created list.
+        Wrap the current element or visual selection with '(' and ')', '[' and
+        ']', or '{' and '}' and place the cursor at the head or tail of the
+        newly created list.
 
         If |g:sexp_insert_after_wrap| is set (true by default), insert mode is
         entered. Additionally, if the cursor is to be set at the head of the
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
-<LocalLeader>o                                                *sexp_lift_list*
-<LocalLeader>O                                              *sexp_splice_list*
 <LocalLeader>h                                      *sexp_insert_at_list_head*
 <LocalLeader>l                                      *sexp_insert_at_list_tail*
+        Move cursor to head or tail of current list (compound FORM) and enter
+        insert mode.
+
+        If inserting at the head, a space is conditionally appended after the
+        opening bracket so that any typed characters will be separated from
+        the next element.
+
+S-EXPRESSION MANIPULATION~
+
+<LocalLeader>o                                                *sexp_lift_list*
+        Select the current list (compound FORM) or visual selection and
+        replace [count] enclosing lists with the selection.
+>
+            (foo (|bar) baz) ; Cursor at |
+            (|bar)           ; Replaces parent list with subform (bar)
+<
+<LocalLeader>O                                              *sexp_splice_list*
+        Splice the current list (compound FORM) into its parent scope [count]
+        times by deleting the list's brackets.
+
 <M-k>                                                *sexp_swap_list_backward*
 <M-j>                                                 *sexp_swap_list_forward*
 <M-h>                                             *sexp_swap_element_backward*

@@ -30,7 +30,7 @@ paredit.el, are also provided.
 II. MAPPINGS                                                   *sexp-mappings*
 
 This is the list of mappings provided by vim-sexp grouped by type. The default
-mapping is shown on the left and the full <Plug> name on the right.
+key mapping is shown on the left and the full <Plug> name on the right.
 
 Note that all actions that result in visual selections will always be
 |characterwise|, regardless of the current visual state.
@@ -49,9 +49,11 @@ you can bind them manually in any filetype:
 Insert mode mappings are enabled when |g:sexp_enable_insert_mode_mappings| is
 set, which is true by default.
 
+All mappings can be easily changed via |g:sexp_mappings|.
+
 [1]: http://www.vim.org/scripts/script.php?script_id=2136
 
-TEXT OBJECTS (available in visual and operator-pending modes)~
+TEXT OBJECTS (visual, operator-pending)~
 
 af                                                    *sexp_select_list_outer*
 if                                                    *sexp_select_list_inner*
@@ -116,7 +118,7 @@ ie                                                 *sexp_select_element_inner*
         If the cursor is on whitespace that is not in a string or between line
         comments, the next element in the buffer is selected.
 
-CURSOR MOTIONS (available in normal, visual, and operator-pending modes)~
+CURSOR MOTIONS (normal, visual, operator-pending)~
 
 (                                                  *sexp_move_to_prev_bracket*
 )                                                  *sexp_move_to_next_bracket*
@@ -171,7 +173,7 @@ CURSOR MOTIONS (available in normal, visual, and operator-pending modes)~
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
-WRAPPING AND CURSOR INSERTION (available in normal and visual modes)~
+WRAPPING AND CURSOR INSERTION (normal, visual)~
 
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
 <LocalLeader>I                                     *sexp_list_wrap_round_tail*
@@ -212,7 +214,7 @@ WRAPPING AND CURSOR INSERTION (available in normal and visual modes)~
         opening bracket so that any typed characters will be separated from
         the next element.
 
-S-EXPRESSION MANIPULATION (available in normal and visual modes)~
+S-EXPRESSION MANIPULATION (normal, visual)~
 
 <LocalLeader>o                                                *sexp_lift_list*
         Select the current list (compound FORM) or visual selection and
@@ -248,7 +250,7 @@ S-EXPRESSION MANIPULATION (available in normal and visual modes)~
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 
-INSERT MODE MAPPINGS (optional)~
+INSERT MODE MAPPINGS (insert, optional)~
 
 (                                                  *sexp_insert_opening_round*
 [                                                 *sexp_insert_opening_square*
@@ -302,11 +304,117 @@ INSERT MODE MAPPINGS (optional)~
 III. OPTIONS                                                    *sexp-options*
 
                                                             *g:sexp_filetypes*
-A string representing an |autocmd-pattern| for the |FileType|s that you wish
-to activate vim-sexp mappings.
+A string representing an |autocmd-pattern| for the |FileType|s in which you
+wish to activate vim-sexp mappings.
 >
         " Default
         let g:sexp_filetypes = 'clojure,scheme,lisp'
+<
+                                          *g:sexp_enable_insert_mode_mappings*
+Enable or disable insert mode mappings.
+>
+        " Default
+        let g:sexp_enable_insert_mode_mappings = 1
+<
+                                                    *g:sexp_insert_after_wrap*
+Enter insert mode (and append a space after the opening bracket when inserting
+at head) after using a wrap command like |sexp_list_wrap_round_head|.
+>
+        " Default
+        let g:sexp_insert_after_wrap = 1
+<
+                                                             *g:sexp_mappings*
+Dictionary of user vim-sexp mappings. Keys are the <Plug> names without
+"<Plug>", and the values are the key sequences you wish to bind to.
+
+This dictionary is merged over the dictionary of default mappings, so it is
+not necessary to copy all the entries to change a few.
+
+To unbind a mapping, keep the key in the dictionary with an empty string as
+the value.
+>
+        " Default
+        let g:sexp_mappings = {}
+
+        " vim-sexp mappings
+        let g:SEXP_DEFAULT_MAPPINGS = {
+            \ 'sexp_select_list_outer':         'af',
+            \ 'sexp_select_list_inner':         'if',
+            \ 'sexp_select_top_list_outer':     'aF',
+            \ 'sexp_select_top_list_inner':     'iF',
+            \ 'sexp_select_string_outer':       'as',
+            \ 'sexp_select_string_inner':       'is',
+            \ 'sexp_select_element_outer':      'ae',
+            \ 'sexp_select_element_inner':      'ie',
+            \ 'sexp_move_to_prev_bracket':      '(',
+            \ 'sexp_move_to_next_bracket':      ')',
+            \ 'sexp_move_to_prev_element_head': '<M-b>',
+            \ 'sexp_move_to_next_element_head': '<M-w>',
+            \ 'sexp_move_to_prev_element_tail': '<M-S-b>',
+            \ 'sexp_move_to_next_element_tail': '<M-e>',
+            \ 'sexp_move_to_prev_top_element':  '[[',
+            \ 'sexp_move_to_next_top_element':  ']]',
+            \ 'sexp_select_prev_element':       '[e',
+            \ 'sexp_select_next_element':       ']e',
+            \ 'sexp_list_wrap_round_head':      '<LocalLeader>i',
+            \ 'sexp_list_wrap_round_tail':      '<LocalLeader>I',
+            \ 'sexp_list_wrap_square_head':     '<LocalLeader>[',
+            \ 'sexp_list_wrap_square_tail':     '<LocalLeader>]',
+            \ 'sexp_list_wrap_curly_head':      '<LocalLeader>{',
+            \ 'sexp_list_wrap_curly_tail':      '<LocalLeader>}',
+            \ 'sexp_element_wrap_round_head':   '<LocalLeader>W',
+            \ 'sexp_element_wrap_round_tail':   '<LocalLeader>w',
+            \ 'sexp_element_wrap_square_head':  '<LocalLeader>e[',
+            \ 'sexp_element_wrap_square_tail':  '<LocalLeader>e]',
+            \ 'sexp_element_wrap_curly_head':   '<LocalLeader>e{',
+            \ 'sexp_element_wrap_curly_tail':   '<LocalLeader>e}',
+            \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
+            \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
+            \ 'sexp_lift_list':                 '<LocalLeader>o',
+            \ 'sexp_splice_list':               '<LocalLeader>O',
+            \ 'sexp_swap_list_backward':        '<M-k>',
+            \ 'sexp_swap_list_forward':         '<M-j>',
+            \ 'sexp_swap_element_backward':     '<M-h>',
+            \ 'sexp_swap_element_forward':      '<M-l>',
+            \ 'sexp_emit_first_element':        '<M-S-j>',
+            \ 'sexp_emit_last_element':         '<M-S-k>',
+            \ 'sexp_capture_prev_element':      '<M-S-h>',
+            \ 'sexp_capture_next_element':      '<M-S-l>',
+            \ }
+<
+For example, if you wanted to avoid shadowing vim's sentence motions:
+>
+        let g:sexp_mappings = {
+            \ 'sexp_select_string_outer':       'aS',
+            \ 'sexp_select_string_inner':       'iS',
+            \ 'sexp_move_to_prev_bracket':      '',
+            \ 'sexp_move_to_next_bracket':      '',
+            \ }
+<
+This would remap the string text object mappings and remove the adjacent
+bracket cursor motion mappings.
+
+                                                             *g:sexp_maxlines*
+Searching for paired brackets is accomplished with the |searchpairpos()|
+function, and it is invoked quite often in this plugin.
+
+If |g:sexp_maxlines| is 0 or -1, searchpairpos() scans the entire buffer for
+its match. If |g:sexp_maxlines| is a positive integer, the scan is limited to
+this number of lines, trading accuracy for potential performance.
+
+If searching for a top-level compound form via |sexp_select_top_list_outer|
+or |sexp_move_to_prev_top_element| with g:sexp_maxlines equal to 0,
+searchpairpos() will be run recursively until the whole buffer is scanned for
+possible unpaired brackets. In moderately large buffers, the time required to
+do this is very disruptive. Setting |g:sexp_maxlines| to about 100 removes
+this speed penalty, but the accuracy often suffers noticeably.
+
+If |g:sexp_maxlines| is set to -1, top-level bracket searches stop when a
+bracket is found in the first column. For most Lisp buffers, this is both
+accurate and extremely fast, so it is the default setting.
+>
+        " Default
+        let g:sexp_maxlines = -1
 <
 
  vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

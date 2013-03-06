@@ -222,7 +222,7 @@ S-EXPRESSION MANIPULATION (normal, visual)~
 
 <LocalLeader>O                                              *sexp_splice_list*
         Splice the current list (compound FORM) into its parent scope [count]
-        times by deleting the list's brackets.
+        times by deleting each list's brackets.
 
 <M-k>                                                *sexp_swap_list_backward*
 <M-j>                                                 *sexp_swap_list_forward*
@@ -311,7 +311,7 @@ wish to activate vim-sexp mappings.
         let g:sexp_filetypes = 'clojure,scheme,lisp'
 <
                                           *g:sexp_enable_insert_mode_mappings*
-Enable or disable insert mode mappings.
+Toggle insert mode mappings in |g:sexp_filetypes|.
 >
         " Default
         let g:sexp_enable_insert_mode_mappings = 1
@@ -329,15 +329,12 @@ Dictionary of user vim-sexp mappings. Keys are the <Plug> names without
 
 This dictionary is merged over the dictionary of default mappings, so it is
 not necessary to copy all the entries to change a few.
-
-To unbind a mapping, keep the key in the dictionary with an empty string as
-the value.
 >
         " Default
         let g:sexp_mappings = {}
 
-        " vim-sexp mappings
-        let g:SEXP_DEFAULT_MAPPINGS = {
+        " vim-sexp internal mappings
+        let s:sexp_mappings = {
             \ 'sexp_select_list_outer':         'af',
             \ 'sexp_select_list_inner':         'if',
             \ 'sexp_select_top_list_outer':     'aF',
@@ -382,7 +379,9 @@ the value.
             \ 'sexp_capture_next_element':      '<M-S-l>',
             \ }
 <
-For example, if you wanted to avoid shadowing vim's sentence motions:
+To unbind a mapping, keep the key in the dictionary with an empty string
+as the value. For example, if you wanted to avoid shadowing vim's sentence
+motions:
 >
         let g:sexp_mappings = {
             \ 'sexp_select_string_outer':       'aS',
@@ -392,26 +391,27 @@ For example, if you wanted to avoid shadowing vim's sentence motions:
             \ }
 <
 This would remap the string text object mappings and remove the adjacent
-bracket cursor motion mappings.
+bracket cursor motion mappings altogether.
 
                                                              *g:sexp_maxlines*
 Searching for paired brackets is accomplished with the |searchpairpos()|
 function, and it is invoked quite often in this plugin.
 
-If |g:sexp_maxlines| is 0 or -1, searchpairpos() scans the entire buffer for
-its match. If |g:sexp_maxlines| is a positive integer, the scan is limited to
-this number of lines, trading accuracy for potential performance.
+If g:sexp_maxlines is 0 or -1, |searchpairpos()| scans the entire buffer for
+its match, which can be slow if the nearest bracket is far from the cursor.
+If g:sexp_maxlines is positive, the scan is limited to this number of lines,
+trading accuracy for performance.
 
 If searching for a top-level compound form via |sexp_select_top_list_outer|
 or |sexp_move_to_prev_top_element| with g:sexp_maxlines equal to 0,
-searchpairpos() will be run recursively until the whole buffer is scanned for
-possible unpaired brackets. In moderately large buffers, the time required to
-do this is very disruptive. Setting |g:sexp_maxlines| to about 100 removes
-this speed penalty, but the accuracy often suffers noticeably.
+|searchpairpos()| will be run recursively until the whole buffer is scanned
+for possible unpaired brackets. In moderately large buffers, this is an
+extremely slow operation. Setting g:sexp_maxlines to about 100 removes this
+speed penalty, but the accuracy often suffers noticeably.
 
-If |g:sexp_maxlines| is set to -1, top-level bracket searches stop when a
+If g:sexp_maxlines is set to -1, top-level bracket searches stop when a
 bracket is found in the first column. For most Lisp buffers, this is both
-accurate and extremely fast, so it is the default setting.
+accurate and relatively quick, so it is the default setting.
 >
         " Default
         let g:sexp_maxlines = -1

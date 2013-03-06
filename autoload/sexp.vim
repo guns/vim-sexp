@@ -22,9 +22,6 @@ let g:sexp_autoloaded = 1
 " * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
-" * Scheme macro_filetype_characters
-" * Common Lisp macro_filetype_characters
-" * Arc macro_filetype_characters
 " * Ignore non-changing operators when repeating?
 
 """ PATTERNS AND STATE {{{1
@@ -42,6 +39,8 @@ let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|char'
 let s:macro_filetype_characters = {
     \ 'clojure': ['#', "\\v[#'`~@^_=]"],
+    \ 'scheme':  ['#', "\\v[#'`,@]"],
+    \ 'lisp':    ['#', "\\v[#'`,@]"],
     \ }
 let s:pairs = {
     \ '(': ')',
@@ -53,8 +52,16 @@ let s:pairs = {
     \ '"': '"'
     \ }
 
+" Return macro characters for current filetype. Defaults to Scheme's macro
+" characters if 'lisp' is set, invalid characters otherwise.
 function! s:macro_chars()
-    return get(s:macro_filetype_characters, &filetype, [nr2char(0x01), nr2char(0x01)])
+    if has_key(s:macro_filetype_characters, &filetype)
+        return s:macro_filetype_characters[&filetype]
+    elseif &lisp
+        return s:macro_filetype_characters['scheme']
+    else
+        return [nr2char(0x01), nr2char(0x01)]
+    endif
 endfunction
 
 """ QUERIES AT CURSOR {{{1

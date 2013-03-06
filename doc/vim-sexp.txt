@@ -51,7 +51,7 @@ set, which is true by default.
 
 [1]: http://www.vim.org/scripts/script.php?script_id=2136
 
-TEXT OBJECTS~
+TEXT OBJECTS (available in visual and operator-pending modes)~
 
 af                                                    *sexp_select_list_outer*
 if                                                    *sexp_select_list_inner*
@@ -116,7 +116,7 @@ ie                                                 *sexp_select_element_inner*
         If the cursor is on whitespace that is not in a string or between line
         comments, the next element in the buffer is selected.
 
-CURSOR MOTIONS~
+CURSOR MOTIONS (available in normal, visual, and operator-pending modes)~
 
 (                                                  *sexp_move_to_prev_bracket*
 )                                                  *sexp_move_to_next_bracket*
@@ -171,7 +171,7 @@ CURSOR MOTIONS~
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
-WRAPPING AND CURSOR INSERTION~
+WRAPPING AND CURSOR INSERTION (available in normal and visual modes)~
 
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
 <LocalLeader>I                                     *sexp_list_wrap_round_tail*
@@ -212,7 +212,7 @@ WRAPPING AND CURSOR INSERTION~
         opening bracket so that any typed characters will be separated from
         the next element.
 
-S-EXPRESSION MANIPULATION~
+S-EXPRESSION MANIPULATION (available in normal and visual modes)~
 
 <LocalLeader>o                                                *sexp_lift_list*
         Select the current list (compound FORM) or visual selection and
@@ -248,7 +248,7 @@ S-EXPRESSION MANIPULATION~
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 
-INSERT MODE MAPPINGS (OPTIONAL)~
+INSERT MODE MAPPINGS (optional)~
 
 (                                                  *sexp_insert_opening_round*
 [                                                 *sexp_insert_opening_square*

@@ -1427,7 +1427,7 @@ function! sexp#stackop(mode, last, capture)
         endif
 
         if a:mode ==? 'v'
-            call sexp#select_current_list('n', 0, 0)
+            call sexp#select_current_element('n', 1)
         endif
     catch /sexp-error/
         " Cleanup after error

@@ -1,4 +1,4 @@
-Symbolic Expressions plugin                                     *vim-sexp.txt*
+Precision Editing for Symbolic Expressions                      *vim-sexp.txt*
 
             o8o
             '"'

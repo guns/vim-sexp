@@ -1008,15 +1008,27 @@ function! s:select_current_marks(mode)
     endif
 endfunction
 
+" Convert visual marks to a characterwise selection if visualmode() is not 'v'
+function! s:set_marks_characterwise()
+    if visualmode() !=# 'v'
+        call s:select_current_marks('v')
+        execute "normal! \<Esc>"
+    endif
+endfunction
+
 """ BUFFER MUTATION {{{1
 
-" Insert bra and ket around current visual marks. If mark '< is invalid,
-" inserts brackets at cursor.
+" Insert bra and ket around current visual marks. Selection is converted to a
+" characterwise selection if last visualmode() was not 'v'.
+"
+" If mark '< is invalid, inserts brackets at cursor.
 "
 " Parameter at_tail sets cursor at head or tail (0 or 1), and parameter
 " headspace determines whether to insert a space after the opening bracket
 " when placing cursor at the head.
 function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
+    call s:set_marks_characterwise()
+
     let [start, end] = s:get_visual_marks()
 
     " No selection, just insert brackets
@@ -1342,8 +1354,6 @@ endfunction
 " leaving off in insert mode if specified. Insert also sets the headspace
 " parameter when inserting brackets.
 function! sexp#wrap(scope, bra, ket, at_tail, insert)
-    let marks = s:get_visual_marks()
-
     if a:scope ==# 'f'
         call s:insert_brackets_around_current_list(a:bra, a:ket, a:at_tail, a:insert)
     elseif a:scope ==# 'e'
@@ -1351,8 +1361,6 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     elseif a:scope ==# 'v'
         call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
     endif
-
-    call s:set_visual_marks(marks)
 
     if a:insert
         startinsert
@@ -1374,6 +1382,8 @@ endfunction
 " Remove brackets from current list, placing cursor at position of deleted
 " first bracket.
 function! sexp#splice_list()
+    call s:set_marks_characterwise()
+
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
 

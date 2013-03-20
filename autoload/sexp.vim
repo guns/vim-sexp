@@ -98,7 +98,7 @@ function! s:nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
     let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
     let stopline = g:sexp_maxlines > 0
-                   \ ? line('.') + (a:closing ? g:sexp_maxlines : -g:sexp_maxlines)
+                   \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
                    \ : 0
     let open = a:0 ? a:1 : s:opening_bracket
     let close = a:0 ? a:2 : s:closing_bracket
@@ -160,7 +160,7 @@ function! s:current_top_list_bracket_by_maxlines(closing)
     let flags = a:closing ? 'cnr' : 'bcnr'
     let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
     let stopline = g:sexp_maxlines > 0
-                   \ ? cursorline + ((a:closing ? 1 : -1) * g:sexp_maxlines)
+                   \ ? max([1, cursorline + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
                    \ : 0
     let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
 

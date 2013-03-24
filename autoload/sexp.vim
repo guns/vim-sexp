@@ -1614,12 +1614,8 @@ function! sexp#closing_insertion(ket)
     " Brackets are balanced, jump to closing bracket
     if close[1] > 0
         return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
-    " Brackets are short closing brackets of this type, insert bracket
-    elseif char ==# a:ket
-        return a:ket
-    " No brackets of this type, insert nothing
     else
-        return ''
+        return a:ket
     endif
 endfunction
 

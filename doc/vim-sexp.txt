@@ -173,7 +173,7 @@ CURSOR MOTIONS (normal, visual, operator-pending)~
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
-WRAPPING AND CURSOR INSERTION (normal, visual)~
+WRAP COMMANDS (normal, visual)~
 
 <LocalLeader>i                                     *sexp_list_wrap_round_head*
 <LocalLeader>I                                     *sexp_list_wrap_round_tail*
@@ -205,6 +205,8 @@ WRAPPING AND CURSOR INSERTION (normal, visual)~
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
+CURSOR INSERTION (normal, visual)~
+
 <LocalLeader>h                                      *sexp_insert_at_list_head*
 <LocalLeader>l                                      *sexp_insert_at_list_tail*
         Move cursor to head or tail of current list (compound FORM) and enter
@@ -214,7 +216,7 @@ WRAPPING AND CURSOR INSERTION (normal, visual)~
         opening bracket so that any typed characters will be separated from
         the next element.
 
-S-EXPRESSION MANIPULATION (normal, visual)~
+LIST MANIPULATION (normal, visual)~
 
 <LocalLeader>o                                                *sexp_lift_list*
         Select the current list (compound FORM) or visual selection and

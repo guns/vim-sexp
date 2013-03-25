@@ -44,7 +44,7 @@ you can bind them manually in any filetype:
 >
         " Select the current compound form and send the selection to
         " a hypothetical Lisp REPL
-        nmap <Leader><Leader> v<Plug>sexp_select_list_outer:SendToREPL<CR>
+        nmap <Leader><Leader> v<Plug>sexp_select_outer_list:SendToREPL<CR>
 <
 Insert mode mappings are enabled when |g:sexp_enable_insert_mode_mappings| is
 set, which is true by default.
@@ -55,16 +55,16 @@ All mappings can be easily changed via |g:sexp_mappings|.
 
 TEXT OBJECTS (visual, operator-pending)~
 
-af                                                    *sexp_select_list_outer*
-if                                                    *sexp_select_list_inner*
+af                                                    *sexp_select_outer_list*
+if                                                    *sexp_select_inner_list*
         Select [count] lists (compound FORMS) delimited by any of '(' and ')',
         '[' and ']', or '{' and '}'. Outer motion includes the delimiting
         brackets and the inner motion excludes them.
 
         Does not include surrounding whitespace.
 
-aF                                                *sexp_select_top_list_outer*
-iF                                                *sexp_select_top_list_inner*
+aF                                                *sexp_select_outer_top_list*
+iF                                                *sexp_select_inner_top_list*
         Select the current top-level list (compound FORM) delimited by any of
         '(' and ')', '[' and ']', or '{' or '}'. Outer motion includes the
         delimiting brackets and the inner motion excludes them.
@@ -76,8 +76,8 @@ iF                                                *sexp_select_top_list_inner*
         on the first column. This is typically much faster than calling
         |searchpairpos()| recursively.
 
-as                                                  *sexp_select_string_outer*
-is                                                  *sexp_select_string_inner*
+as                                                  *sexp_select_outer_string*
+is                                                  *sexp_select_inner_string*
         Select the current string or regular expression. Outer motion includes
         surrounding quotes, inner motion excludes them.
 
@@ -88,8 +88,8 @@ is                                                  *sexp_select_string_inner*
         conflict bothers you, see |g:sexp_mappings| for documentation on
         changing the default mappings.
 
-ae                                                 *sexp_select_element_outer*
-ie                                                 *sexp_select_element_inner*
+ae                                                 *sexp_select_outer_element*
+ie                                                 *sexp_select_inner_element*
         Select the current element. An element is defined as:
 
             * Current string if cursor is in a string
@@ -337,14 +337,14 @@ not necessary to copy all the entries to change a few.
 
         " vim-sexp internal mappings
         let s:sexp_mappings = {
-            \ 'sexp_select_list_outer':         'af',
-            \ 'sexp_select_list_inner':         'if',
-            \ 'sexp_select_top_list_outer':     'aF',
-            \ 'sexp_select_top_list_inner':     'iF',
-            \ 'sexp_select_string_outer':       'as',
-            \ 'sexp_select_string_inner':       'is',
-            \ 'sexp_select_element_outer':      'ae',
-            \ 'sexp_select_element_inner':      'ie',
+            \ 'sexp_select_outer_list':         'af',
+            \ 'sexp_select_inner_list':         'if',
+            \ 'sexp_select_outer_top_list':     'aF',
+            \ 'sexp_select_inner_top_list':     'iF',
+            \ 'sexp_select_outer_string':       'as',
+            \ 'sexp_select_inner_string':       'is',
+            \ 'sexp_select_outer_element':      'ae',
+            \ 'sexp_select_inner_element':      'ie',
             \ 'sexp_move_to_prev_bracket':      '(',
             \ 'sexp_move_to_next_bracket':      ')',
             \ 'sexp_move_to_prev_element_head': '<M-b>',
@@ -386,8 +386,8 @@ as the value. For example, if you wanted to avoid shadowing vim's sentence
 motions:
 >
         let g:sexp_mappings = {
-            \ 'sexp_select_string_outer':       'aS',
-            \ 'sexp_select_string_inner':       'iS',
+            \ 'sexp_select_outer_string':       'aS',
+            \ 'sexp_select_inner_string':       'iS',
             \ 'sexp_move_to_prev_bracket':      '',
             \ 'sexp_move_to_next_bracket':      '',
             \ }
@@ -404,7 +404,7 @@ its match, which can be slow if the nearest bracket is far from the cursor.
 If g:sexp_maxlines is positive, the scan is limited to this number of lines,
 trading accuracy for performance.
 
-If searching for a top-level compound form via |sexp_select_top_list_outer|
+If searching for a top-level compound form via |sexp_select_outer_top_list|
 or |sexp_move_to_prev_top_element| with g:sexp_maxlines equal to 0,
 |searchpairpos()| will be run recursively until the whole buffer is scanned
 for possible unpaired brackets. In moderately large buffers, this is an

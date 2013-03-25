@@ -152,7 +152,7 @@ function! s:sexp_create_mappings()
                \ 'sexp_select_element_outer',  'sexp_select_element_inner']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
-            execute 'vmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
             execute 'omap <silent><buffer> ' . lhs . ' <Plug>' . plug
         endif
     endfor
@@ -165,7 +165,7 @@ function! s:sexp_create_mappings()
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
-            execute 'vmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
             execute 'omap <silent><buffer> ' . lhs . ' <Plug>' . plug
         endif
     endfor
@@ -185,7 +185,7 @@ function! s:sexp_create_mappings()
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
-            execute 'vmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
         endif
     endfor
 
@@ -204,37 +204,37 @@ endfunction
 """ Text objects {{{1
 
 " Current list (compound FORM)
-Defplug  vnoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
+Defplug  xnoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
 Defplug! onoremap sexp_select_list_outer sexp#docount(v:count, 'sexp#select_current_list', 'o', 0, 1)
-Defplug  vnoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
+Defplug  xnoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
 Defplug! onoremap sexp_select_list_inner sexp#docount(v:count, 'sexp#select_current_list', 'o', 1, 1)
 
 " Current top-level list (compound FORM)
-Defplug  vnoremap sexp_select_top_list_outer sexp#select_current_top_list('v', 0)
+Defplug  xnoremap sexp_select_top_list_outer sexp#select_current_top_list('v', 0)
 Defplug! onoremap sexp_select_top_list_outer sexp#select_current_top_list('o', 0)
-Defplug  vnoremap sexp_select_top_list_inner sexp#select_current_top_list('v', 1)
+Defplug  xnoremap sexp_select_top_list_inner sexp#select_current_top_list('v', 1)
 Defplug! onoremap sexp_select_top_list_inner sexp#select_current_top_list('o', 1)
 
 " Current string
-Defplug  vnoremap sexp_select_string_outer sexp#select_current_string('v', 0)
+Defplug  xnoremap sexp_select_string_outer sexp#select_current_string('v', 0)
 Defplug! onoremap sexp_select_string_outer sexp#select_current_string('o', 0)
-Defplug  vnoremap sexp_select_string_inner sexp#select_current_string('v', 1)
+Defplug  xnoremap sexp_select_string_inner sexp#select_current_string('v', 1)
 Defplug! onoremap sexp_select_string_inner sexp#select_current_string('o', 1)
 
 " Current element
-Defplug  vnoremap sexp_select_element_outer sexp#select_current_element('v', 0)
+Defplug  xnoremap sexp_select_element_outer sexp#select_current_element('v', 0)
 Defplug! onoremap sexp_select_element_outer sexp#select_current_element('o', 0)
-Defplug  vnoremap sexp_select_element_inner sexp#select_current_element('v', 1)
+Defplug  xnoremap sexp_select_element_inner sexp#select_current_element('v', 1)
 Defplug! onoremap sexp_select_element_inner sexp#select_current_element('o', 1)
 
 """ Directional motions {{{1
 
 " Nearest bracket
 Defplug  nnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)
-DEFPLUG  vnoremap sexp_move_to_prev_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 0)<CR>
+DEFPLUG  xnoremap sexp_move_to_prev_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 0)<CR>
 Defplug! onoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 0)
 Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 1)
-DEFPLUG  vnoremap sexp_move_to_next_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
+DEFPLUG  xnoremap sexp_move_to_next_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
 Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'o', 1)
 
 " Adjacent element head
@@ -242,10 +242,10 @@ Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_
 " Visual mappings must break out of visual mode in order to detect which end
 " the user is using to adjust the selection.
 Defplug  nnoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)
-DEFPLUG  vnoremap sexp_move_to_prev_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
+DEFPLUG  xnoremap sexp_move_to_prev_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
 Defplug! onoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)
 Defplug  nnoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)
-DEFPLUG  vnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
+DEFPLUG  xnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
 Defplug! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)
 
 " Adjacent element tail
@@ -253,20 +253,20 @@ Defplug! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#mov
 " Inclusive operator pending motions require a visual mode selection to
 " include the last character of a line.
 Defplug  nnoremap sexp_move_to_prev_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
-DEFPLUG  vnoremap sexp_move_to_prev_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
+DEFPLUG  xnoremap sexp_move_to_prev_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
 Defplug! onoremap sexp_move_to_prev_element_tail setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
                                                  \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
 Defplug  nnoremap sexp_move_to_next_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
-DEFPLUG  vnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
+DEFPLUG  xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
 Defplug! onoremap sexp_move_to_next_element_tail setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
                                                  \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 1)
-DEFPLUG  vnoremap sexp_move_to_prev_top_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 1)<CR>
+DEFPLUG  xnoremap sexp_move_to_prev_top_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 1)<CR>
 Defplug! onoremap sexp_move_to_prev_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 1)
 Defplug  nnoremap sexp_move_to_next_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 1)
-DEFPLUG  vnoremap sexp_move_to_next_top_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 1)<CR>
+DEFPLUG  xnoremap sexp_move_to_next_top_element <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 1)<CR>
 Defplug! onoremap sexp_move_to_next_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 1)
 
 " Adjacent element selection
@@ -274,77 +274,77 @@ Defplug! onoremap sexp_move_to_next_top_element sexp#docount(v:count, 'sexp#move
 " Unlike the other directional motions, calling this from normal mode places
 " us in visual mode, with the adjacent element as our selection.
 Defplug  nnoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'n', 0)
-Defplug  vnoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 0)
+Defplug  xnoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 0)
 Defplug! onoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 0)
 Defplug  nnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'n', 1)
-Defplug  vnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 1)
+Defplug  xnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 1)
 Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 1)
 
 """ Commands {{{1
 
 " Wrap list
 Defplug! nnoremap sexp_list_wrap_round_head  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_list_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_list_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_list_wrap_round_tail  sexp#wrap('f', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_list_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_list_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_list_wrap_square_head sexp#wrap('f', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_list_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_list_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_list_wrap_square_tail sexp#wrap('f', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_list_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_list_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_list_wrap_curly_head  sexp#wrap('f', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_list_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_list_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_list_wrap_curly_tail  sexp#wrap('f', '{', '}', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_list_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_list_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
 " Wrap element
 Defplug! nnoremap sexp_element_wrap_round_head  sexp#wrap('e', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_element_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_element_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_element_wrap_round_tail  sexp#wrap('e', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_element_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_element_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_element_wrap_square_head sexp#wrap('e', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_element_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_element_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_element_wrap_square_tail sexp#wrap('e', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_element_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_element_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_element_wrap_curly_head  sexp#wrap('e', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_element_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_element_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
 Defplug! nnoremap sexp_element_wrap_curly_tail  sexp#wrap('e', '{', '}', 1, g:sexp_insert_after_wrap)
-Defplug  vnoremap sexp_element_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_element_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
 " Insert at list terminal
 Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
-Defplug  vnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
+Defplug  xnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
 Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
-Defplug  vnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
+Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
 " Lift list
 Defplug! nnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'n')
-Defplug  vnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'v')
+Defplug  xnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'v')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
-Defplug  vnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
+Defplug  xnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
 
 " Swap list
 Defplug! nnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)
-DEFPLUG  vnoremap sexp_swap_list_backward <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)<CR>
+DEFPLUG  xnoremap sexp_swap_list_backward <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)<CR>
 Defplug! nnoremap sexp_swap_list_forward  sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 1)
-DEFPLUG  vnoremap sexp_swap_list_forward  <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 1)<CR>
+DEFPLUG  xnoremap sexp_swap_list_forward  <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 1)<CR>
 
 " Swap element
 Defplug! nnoremap sexp_swap_element_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 0)
-DEFPLUG  vnoremap sexp_swap_element_backward <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 0)<CR>
+DEFPLUG  xnoremap sexp_swap_element_backward <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 0)<CR>
 Defplug! nnoremap sexp_swap_element_forward  sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 0)
-DEFPLUG  vnoremap sexp_swap_element_forward  <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 0)<CR>
+DEFPLUG  xnoremap sexp_swap_element_forward  <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 0)<CR>
 
 " Emit/capture element
 Defplug! nnoremap sexp_emit_first_element   sexp#docount(v:count, 'sexp#stackop', 'n', 0, 0)
-Defplug  vnoremap sexp_emit_first_element   sexp#docount(v:count, 'sexp#stackop', 'v', 0, 0)
+Defplug  xnoremap sexp_emit_first_element   sexp#docount(v:count, 'sexp#stackop', 'v', 0, 0)
 Defplug! nnoremap sexp_emit_last_element    sexp#docount(v:count, 'sexp#stackop', 'n', 1, 0)
-Defplug  vnoremap sexp_emit_last_element    sexp#docount(v:count, 'sexp#stackop', 'v', 1, 0)
+Defplug  xnoremap sexp_emit_last_element    sexp#docount(v:count, 'sexp#stackop', 'v', 1, 0)
 Defplug! nnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'n', 0, 1)
-Defplug  vnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'v', 0, 1)
+Defplug  xnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'v', 0, 1)
 Defplug! nnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'n', 1, 1)
-Defplug  vnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'v', 1, 1)
+Defplug  xnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'v', 1, 1)
 
 """ Insert mode mappings {{{1
 

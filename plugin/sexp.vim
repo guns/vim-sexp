@@ -74,8 +74,8 @@ let s:sexp_mappings = {
     \ 'sexp_swap_list_forward':         '<M-j>',
     \ 'sexp_swap_element_backward':     '<M-h>',
     \ 'sexp_swap_element_forward':      '<M-l>',
-    \ 'sexp_emit_first_element':        '<M-S-j>',
-    \ 'sexp_emit_last_element':         '<M-S-k>',
+    \ 'sexp_emit_head_element':         '<M-S-j>',
+    \ 'sexp_emit_tail_element':         '<M-S-k>',
     \ 'sexp_capture_prev_element':      '<M-S-h>',
     \ 'sexp_capture_next_element':      '<M-S-l>',
     \ }
@@ -180,7 +180,7 @@ function! s:sexp_create_mappings()
                \ 'sexp_lift_list',                'sexp_splice_list',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
-               \ 'sexp_emit_first_element',       'sexp_emit_last_element',
+               \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
                \ 'sexp_capture_prev_element',     'sexp_capture_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
@@ -337,10 +337,10 @@ Defplug! nnoremap sexp_swap_element_forward  sexp#docount(v:count, 'sexp#swap_el
 DEFPLUG  xnoremap sexp_swap_element_forward  <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 0)<CR>
 
 " Emit/capture element
-Defplug! nnoremap sexp_emit_first_element   sexp#docount(v:count, 'sexp#stackop', 'n', 0, 0)
-Defplug  xnoremap sexp_emit_first_element   sexp#docount(v:count, 'sexp#stackop', 'v', 0, 0)
-Defplug! nnoremap sexp_emit_last_element    sexp#docount(v:count, 'sexp#stackop', 'n', 1, 0)
-Defplug  xnoremap sexp_emit_last_element    sexp#docount(v:count, 'sexp#stackop', 'v', 1, 0)
+Defplug! nnoremap sexp_emit_head_element    sexp#docount(v:count, 'sexp#stackop', 'n', 0, 0)
+Defplug  xnoremap sexp_emit_head_element    sexp#docount(v:count, 'sexp#stackop', 'v', 0, 0)
+Defplug! nnoremap sexp_emit_tail_element    sexp#docount(v:count, 'sexp#stackop', 'n', 1, 0)
+Defplug  xnoremap sexp_emit_tail_element    sexp#docount(v:count, 'sexp#stackop', 'v', 1, 0)
 Defplug! nnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'n', 0, 1)
 Defplug  xnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'v', 0, 1)
 Defplug! nnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'n', 1, 1)

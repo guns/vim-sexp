@@ -242,8 +242,8 @@ LIST MANIPULATION (normal, visual)~
         swap is done pairwise to preserve the associative structure of the
         containing compound form.
 
-<M-S-j>                                              *sexp_emit_first_element*
-<M-S-k>                                               *sexp_emit_last_element*
+<M-S-j>                                               *sexp_emit_head_element*
+<M-S-k>                                               *sexp_emit_tail_element*
 <M-S-h>                                            *sexp_capture_prev_element*
 <M-S-l>                                            *sexp_capture_next_element*
         Emit [count] terminal elements of the current list, or capture [count]
@@ -375,8 +375,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_swap_list_forward':         '<M-j>',
             \ 'sexp_swap_element_backward':     '<M-h>',
             \ 'sexp_swap_element_forward':      '<M-l>',
-            \ 'sexp_emit_first_element':        '<M-S-j>',
-            \ 'sexp_emit_last_element':         '<M-S-k>',
+            \ 'sexp_emit_head_element':         '<M-S-j>',
+            \ 'sexp_emit_tail_element':         '<M-S-k>',
             \ 'sexp_capture_prev_element':      '<M-S-h>',
             \ 'sexp_capture_next_element':      '<M-S-l>',
             \ }

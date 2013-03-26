@@ -48,7 +48,7 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_bracket':      ')',
     \ 'sexp_move_to_prev_element_head': '<M-b>',
     \ 'sexp_move_to_next_element_head': '<M-w>',
-    \ 'sexp_move_to_prev_element_tail': '<M-S-b>',
+    \ 'sexp_move_to_prev_element_tail': 'g<M-e>',
     \ 'sexp_move_to_next_element_tail': '<M-e>',
     \ 'sexp_move_to_prev_top_element':  '[[',
     \ 'sexp_move_to_next_top_element':  ']]',

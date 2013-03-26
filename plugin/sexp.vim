@@ -36,14 +36,14 @@ if !exists('g:sexp_mappings')
 endif
 
 let s:sexp_mappings = {
-    \ 'sexp_select_outer_list':         'af',
-    \ 'sexp_select_inner_list':         'if',
-    \ 'sexp_select_outer_top_list':     'aF',
-    \ 'sexp_select_inner_top_list':     'iF',
-    \ 'sexp_select_outer_string':       'as',
-    \ 'sexp_select_inner_string':       'is',
-    \ 'sexp_select_outer_element':      'ae',
-    \ 'sexp_select_inner_element':      'ie',
+    \ 'sexp_outer_list':                'af',
+    \ 'sexp_inner_list':                'if',
+    \ 'sexp_outer_top_list':            'aF',
+    \ 'sexp_inner_top_list':            'iF',
+    \ 'sexp_outer_string':              'as',
+    \ 'sexp_inner_string':              'is',
+    \ 'sexp_outer_element':             'ae',
+    \ 'sexp_inner_element':             'ie',
     \ 'sexp_move_to_prev_bracket':      '(',
     \ 'sexp_move_to_next_bracket':      ')',
     \ 'sexp_move_to_prev_element_head': '<M-b>',
@@ -146,10 +146,10 @@ endfunction
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 function! s:sexp_create_mappings()
-    for plug in ['sexp_select_outer_list',     'sexp_select_inner_list',
-               \ 'sexp_select_outer_top_list', 'sexp_select_inner_top_list',
-               \ 'sexp_select_outer_string',   'sexp_select_inner_string',
-               \ 'sexp_select_outer_element',  'sexp_select_inner_element']
+    for plug in ['sexp_outer_list',     'sexp_inner_list',
+               \ 'sexp_outer_top_list', 'sexp_inner_top_list',
+               \ 'sexp_outer_string',   'sexp_inner_string',
+               \ 'sexp_outer_element',  'sexp_inner_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
@@ -204,28 +204,28 @@ endfunction
 """ Text objects {{{1
 
 " Current list (compound FORM)
-Defplug  xnoremap sexp_select_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
-Defplug! onoremap sexp_select_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'o', 0, 1)
-Defplug  xnoremap sexp_select_inner_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
-Defplug! onoremap sexp_select_inner_list sexp#docount(v:count, 'sexp#select_current_list', 'o', 1, 1)
+Defplug  xnoremap sexp_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
+Defplug! onoremap sexp_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'o', 0, 1)
+Defplug  xnoremap sexp_inner_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
+Defplug! onoremap sexp_inner_list sexp#docount(v:count, 'sexp#select_current_list', 'o', 1, 1)
 
 " Current top-level list (compound FORM)
-Defplug  xnoremap sexp_select_outer_top_list sexp#select_current_top_list('v', 0)
-Defplug! onoremap sexp_select_outer_top_list sexp#select_current_top_list('o', 0)
-Defplug  xnoremap sexp_select_inner_top_list sexp#select_current_top_list('v', 1)
-Defplug! onoremap sexp_select_inner_top_list sexp#select_current_top_list('o', 1)
+Defplug  xnoremap sexp_outer_top_list sexp#select_current_top_list('v', 0)
+Defplug! onoremap sexp_outer_top_list sexp#select_current_top_list('o', 0)
+Defplug  xnoremap sexp_inner_top_list sexp#select_current_top_list('v', 1)
+Defplug! onoremap sexp_inner_top_list sexp#select_current_top_list('o', 1)
 
 " Current string
-Defplug  xnoremap sexp_select_outer_string sexp#select_current_string('v', 0)
-Defplug! onoremap sexp_select_outer_string sexp#select_current_string('o', 0)
-Defplug  xnoremap sexp_select_inner_string sexp#select_current_string('v', 1)
-Defplug! onoremap sexp_select_inner_string sexp#select_current_string('o', 1)
+Defplug  xnoremap sexp_outer_string sexp#select_current_string('v', 0)
+Defplug! onoremap sexp_outer_string sexp#select_current_string('o', 0)
+Defplug  xnoremap sexp_inner_string sexp#select_current_string('v', 1)
+Defplug! onoremap sexp_inner_string sexp#select_current_string('o', 1)
 
 " Current element
-Defplug  xnoremap sexp_select_outer_element sexp#select_current_element('v', 0)
-Defplug! onoremap sexp_select_outer_element sexp#select_current_element('o', 0)
-Defplug  xnoremap sexp_select_inner_element sexp#select_current_element('v', 1)
-Defplug! onoremap sexp_select_inner_element sexp#select_current_element('o', 1)
+Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0)
+Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0)
+Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1)
+Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1)
 
 """ Directional motions {{{1
 

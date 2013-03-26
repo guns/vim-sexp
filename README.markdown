@@ -10,3 +10,8 @@
                                                                        o888o
 
 Work in progress.
+
+`<Plug>` names are currently unstable. After release, all `<Plug>` names will
+be supported, even through renames.
+
+Thank you, early adopters.

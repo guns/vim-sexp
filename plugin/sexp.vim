@@ -54,18 +54,18 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_top_element':  ']]',
     \ 'sexp_select_prev_element':       '[e',
     \ 'sexp_select_next_element':       ']e',
-    \ 'sexp_list_wrap_round_head':      '<LocalLeader>i',
-    \ 'sexp_list_wrap_round_tail':      '<LocalLeader>I',
-    \ 'sexp_list_wrap_square_head':     '<LocalLeader>[',
-    \ 'sexp_list_wrap_square_tail':     '<LocalLeader>]',
-    \ 'sexp_list_wrap_curly_head':      '<LocalLeader>{',
-    \ 'sexp_list_wrap_curly_tail':      '<LocalLeader>}',
-    \ 'sexp_element_wrap_round_head':   '<LocalLeader>W',
-    \ 'sexp_element_wrap_round_tail':   '<LocalLeader>w',
-    \ 'sexp_element_wrap_square_head':  '<LocalLeader>e[',
-    \ 'sexp_element_wrap_square_tail':  '<LocalLeader>e]',
-    \ 'sexp_element_wrap_curly_head':   '<LocalLeader>e{',
-    \ 'sexp_element_wrap_curly_tail':   '<LocalLeader>e}',
+    \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
+    \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
+    \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
+    \ 'sexp_square_tail_wrap_list':     '<LocalLeader>]',
+    \ 'sexp_curly_head_wrap_list':      '<LocalLeader>{',
+    \ 'sexp_curly_tail_wrap_list':      '<LocalLeader>}',
+    \ 'sexp_round_head_wrap_element':   '<LocalLeader>W',
+    \ 'sexp_round_tail_wrap_element':   '<LocalLeader>w',
+    \ 'sexp_square_head_wrap_element':  '<LocalLeader>e[',
+    \ 'sexp_square_tail_wrap_element':  '<LocalLeader>e]',
+    \ 'sexp_curly_head_wrap_element':   '<LocalLeader>e{',
+    \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
     \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
     \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
     \ 'sexp_lift_list':                 '<LocalLeader>o',
@@ -170,12 +170,12 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_list_wrap_round_head',     'sexp_list_wrap_round_tail',
-               \ 'sexp_list_wrap_square_head',    'sexp_list_wrap_square_tail',
-               \ 'sexp_list_wrap_curly_head',     'sexp_list_wrap_curly_tail',
-               \ 'sexp_element_wrap_round_head',  'sexp_element_wrap_round_tail',
-               \ 'sexp_element_wrap_square_head', 'sexp_element_wrap_square_tail',
-               \ 'sexp_element_wrap_curly_head',  'sexp_element_wrap_curly_tail',
+    for plug in ['sexp_round_head_wrap_list',     'sexp_round_tail_wrap_list',
+               \ 'sexp_square_head_wrap_list',    'sexp_square_tail_wrap_list',
+               \ 'sexp_curly_head_wrap_list',     'sexp_curly_tail_wrap_list',
+               \ 'sexp_round_head_wrap_element',  'sexp_round_tail_wrap_element',
+               \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
+               \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
                \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
                \ 'sexp_lift_list',                'sexp_splice_list',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
@@ -283,32 +283,32 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 """ Commands {{{1
 
 " Wrap list
-Defplug! nnoremap sexp_list_wrap_round_head  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_list_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_list_wrap_round_tail  sexp#wrap('f', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_list_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_list_wrap_square_head sexp#wrap('f', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_list_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_list_wrap_square_tail sexp#wrap('f', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_list_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_list_wrap_curly_head  sexp#wrap('f', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_list_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_list_wrap_curly_tail  sexp#wrap('f', '{', '}', 1, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_list_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_round_head_wrap_list  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_round_tail_wrap_list  sexp#wrap('f', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_round_tail_wrap_list  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_square_head_wrap_list sexp#wrap('f', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_square_head_wrap_list sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_square_tail_wrap_list sexp#wrap('f', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_square_tail_wrap_list sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_curly_head_wrap_list  sexp#wrap('f', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_curly_head_wrap_list  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_curly_tail_wrap_list  sexp#wrap('f', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_curly_tail_wrap_list  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
 " Wrap element
-Defplug! nnoremap sexp_element_wrap_round_head  sexp#wrap('e', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_element_wrap_round_head  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_element_wrap_round_tail  sexp#wrap('e', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_element_wrap_round_tail  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_element_wrap_square_head sexp#wrap('e', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_element_wrap_square_head sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_element_wrap_square_tail sexp#wrap('e', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_element_wrap_square_tail sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_element_wrap_curly_head  sexp#wrap('e', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_element_wrap_curly_head  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
-Defplug! nnoremap sexp_element_wrap_curly_tail  sexp#wrap('e', '{', '}', 1, g:sexp_insert_after_wrap)
-Defplug  xnoremap sexp_element_wrap_curly_tail  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_round_head_wrap_element  sexp#wrap('e', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_round_head_wrap_element  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_round_tail_wrap_element  sexp#wrap('e', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_round_tail_wrap_element  sexp#wrap('v', '(', ')', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_square_head_wrap_element sexp#wrap('e', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_square_head_wrap_element sexp#wrap('v', '[', ']', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_square_tail_wrap_element sexp#wrap('e', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_square_tail_wrap_element sexp#wrap('v', '[', ']', 1, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_curly_head_wrap_element  sexp#wrap('e', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_curly_head_wrap_element  sexp#wrap('v', '{', '}', 0, g:sexp_insert_after_wrap)
+Defplug! nnoremap sexp_curly_tail_wrap_element  sexp#wrap('e', '{', '}', 1, g:sexp_insert_after_wrap)
+Defplug  xnoremap sexp_curly_tail_wrap_element  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
 " Insert at list terminal
 Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)

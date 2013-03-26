@@ -175,12 +175,12 @@ g<M-e>                                        *sexp_move_to_prev_element_tail*
 
 WRAP COMMANDS (normal, visual)~
 
-<LocalLeader>i                                     *sexp_list_wrap_round_head*
-<LocalLeader>I                                     *sexp_list_wrap_round_tail*
-<LocalLeader>[                                    *sexp_list_wrap_square_head*
-<LocalLeader>]                                    *sexp_list_wrap_square_tail*
-<LocalLeader>{                                     *sexp_list_wrap_curly_head*
-<LocalLeader>}                                     *sexp_list_wrap_curly_tail*
+<LocalLeader>i                                     *sexp_round_head_wrap_list*
+<LocalLeader>I                                     *sexp_round_tail_wrap_list*
+<LocalLeader>[                                    *sexp_square_head_wrap_list*
+<LocalLeader>]                                    *sexp_square_tail_wrap_list*
+<LocalLeader>{                                     *sexp_curly_head_wrap_list*
+<LocalLeader>}                                     *sexp_curly_tail_wrap_list*
         Wrap the current list (compound FORM) or visual selection with '(' and
         ')', '[' and ']', or '{' and '}' and place the cursor at the head or
         tail of the newly created list.
@@ -190,12 +190,12 @@ WRAP COMMANDS (normal, visual)~
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
-<LocalLeader>W                                  *sexp_element_wrap_round_head*
-<LocalLeader>w                                  *sexp_element_wrap_round_tail*
-<LocalLeader>e[                                *sexp_element_wrap_square_head*
-<LocalLeader>e]                                *sexp_element_wrap_square_tail*
-<LocalLeader>e{                                 *sexp_element_wrap_curly_head*
-<LocalLeader>e}                                 *sexp_element_wrap_curly_tail*
+<LocalLeader>W                                  *sexp_round_head_wrap_element*
+<LocalLeader>w                                  *sexp_round_tail_wrap_element*
+<LocalLeader>e[                                *sexp_square_head_wrap_element*
+<LocalLeader>e]                                *sexp_square_tail_wrap_element*
+<LocalLeader>e{                                 *sexp_curly_head_wrap_element*
+<LocalLeader>e}                                 *sexp_curly_tail_wrap_element*
         Wrap the current element or visual selection with '(' and ')', '[' and
         ']', or '{' and '}' and place the cursor at the head or tail of the
         newly created list.
@@ -320,7 +320,7 @@ Toggle insert mode mappings in |g:sexp_filetypes|.
 <
                                                     *g:sexp_insert_after_wrap*
 Enter insert mode (and append a space after the opening bracket when inserting
-at head) after using a wrap command like |sexp_list_wrap_round_head|.
+at head) after using a wrap command like |sexp_round_head_wrap_list|.
 >
         " Default
         let g:sexp_insert_after_wrap = 1
@@ -355,18 +355,18 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_move_to_next_top_element':  ']]',
             \ 'sexp_select_prev_element':       '[e',
             \ 'sexp_select_next_element':       ']e',
-            \ 'sexp_list_wrap_round_head':      '<LocalLeader>i',
-            \ 'sexp_list_wrap_round_tail':      '<LocalLeader>I',
-            \ 'sexp_list_wrap_square_head':     '<LocalLeader>[',
-            \ 'sexp_list_wrap_square_tail':     '<LocalLeader>]',
-            \ 'sexp_list_wrap_curly_head':      '<LocalLeader>{',
-            \ 'sexp_list_wrap_curly_tail':      '<LocalLeader>}',
-            \ 'sexp_element_wrap_round_head':   '<LocalLeader>W',
-            \ 'sexp_element_wrap_round_tail':   '<LocalLeader>w',
-            \ 'sexp_element_wrap_square_head':  '<LocalLeader>e[',
-            \ 'sexp_element_wrap_square_tail':  '<LocalLeader>e]',
-            \ 'sexp_element_wrap_curly_head':   '<LocalLeader>e{',
-            \ 'sexp_element_wrap_curly_tail':   '<LocalLeader>e}',
+            \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
+            \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
+            \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
+            \ 'sexp_square_tail_wrap_list':     '<LocalLeader>]',
+            \ 'sexp_curly_head_wrap_list':      '<LocalLeader>{',
+            \ 'sexp_curly_tail_wrap_list':      '<LocalLeader>}',
+            \ 'sexp_round_head_wrap_element':   '<LocalLeader>W',
+            \ 'sexp_round_tail_wrap_element':   '<LocalLeader>w',
+            \ 'sexp_square_head_wrap_element':  '<LocalLeader>e[',
+            \ 'sexp_square_tail_wrap_element':  '<LocalLeader>e]',
+            \ 'sexp_curly_head_wrap_element':   '<LocalLeader>e{',
+            \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
             \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
             \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ 'sexp_lift_list':                 '<LocalLeader>o',

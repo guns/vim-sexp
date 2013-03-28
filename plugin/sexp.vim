@@ -108,7 +108,10 @@ function! s:defplug(mode, mapmode, name, ...)
     if a:mode ==# '*'
         execute lhs . ' ' . rhs
     elseif empty(a:mode) || (should_repeat && !exists('*repeat#set'))
-        execute lhs . ' :<C-u>call ' . rhs . '<CR>'
+        " TODO: Only first visual motion should set '`
+        execute lhs . ' '
+                \ . ':<C-u>call setpos("' . "'`" . '", getpos(".")) \| '
+                \ . 'call ' . rhs . '<CR>'
     elseif should_repeat && a:mapmode[0] ==# 'o'
         " Due to a bug in vim, we need to set curwin->w_curswant to the
         " current cursor position by entering and exiting character-wise
@@ -117,6 +120,7 @@ function! s:defplug(mode, mapmode, name, ...)
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
                 \ . 'execute "normal! vv" \| '
+                \ . 'call setpos("' . "'`" . '", getpos(".")) \| '
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'if v:operator ==? "c" \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
@@ -126,6 +130,7 @@ function! s:defplug(mode, mapmode, name, ...)
     elseif should_repeat
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
+                \ . 'call setpos("' . "'`" . '", getpos(".")) \| '
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif

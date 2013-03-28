@@ -19,7 +19,6 @@ let g:sexp_autoloaded = 1
 
 " TODO:
 "
-" * Deliberately set jump marks so users can `` back after undo.
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
 " * Ignore non-changing operators when repeating?

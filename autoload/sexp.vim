@@ -36,7 +36,7 @@ let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
-let s:ignored_region = s:string_region . '|comment|char'
+let s:ignored_region = s:string_region . '|comment|character'
 let s:macro_filetype_characters = {
     \ 'clojure': ['#', "\\v[#'`~@^_=]"],
     \ 'scheme':  ['#', "\\v[#'`,@]"],
@@ -333,7 +333,7 @@ function! s:current_element_terminal(end)
         let pos = s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
         let pos = s:current_comment_terminal(a:end)
-    elseif char =~# s:bracket
+    elseif char =~# s:bracket && !s:syntax_match(s:ignored_region, line, col)
         if (a:end && char =~# s:closing_bracket) || (!a:end && char =~# s:opening_bracket)
             let pos = [0, line, col, 0]
         else
@@ -678,9 +678,13 @@ endfunction
 function! s:is_atom(line, col)
     let char = getline(a:line)[a:col - 1]
 
-    return (empty(char) || char =~# s:delimiter)
-           \ ? 0
-           \ : !s:syntax_match(s:string_region . '|comment', a:line, a:col)
+    if empty(char)
+        return 0
+    elseif char =~# s:delimiter && !s:syntax_match(s:ignored_region, a:line, a:col)
+        return 0
+    else
+        return !s:syntax_match(s:string_region . '|comment', a:line, a:col)
+    endif
 endfunction
 
 " Returns -1 if position a is before position b, 1 if position a is after

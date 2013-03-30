@@ -408,14 +408,14 @@ function! s:nearest_element_terminal(next, tail)
 
         " We are at the beginning or end of file
         if adjacent[1] < 1 || s:compare_pos(pos, adjacent) == 0
-            throw 'sexp-error
+            throw 'sexp-error'
         else
             let pos = adjacent
         endif
 
         " We are at a head if moving forward or at a tail if moving backward
         if (a:next && !a:tail) || (!a:next && a:tail)
-            throw 'sexp-error
+            throw 'sexp-error'
         else
             call setpos('.', pos)
             let final = s:current_element_terminal(a:tail)

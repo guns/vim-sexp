@@ -768,7 +768,7 @@ endfunction
 function! s:move_cursor_extending_selection(func, ...)
     " Break out of visual mode, preserving cursor position
     if s:countindex > 0
-        execute "normal! \<C-Bslash>\<C-n>"
+        execute "normal! \<Esc>"
     endif
 
     let [start, end] = s:get_visual_marks()
@@ -982,7 +982,7 @@ function! s:set_marks_around_adjacent_element(mode, next)
     let cursor = getpos('.')
 
     if a:mode ==? 'v'
-        execute "normal! \<C-Bslash>\<C-n>"
+        execute "normal! \<Esc>"
     endif
 
     " If moving backward, first position ourselves at the head of the current
@@ -1420,7 +1420,7 @@ function! sexp#stackop(mode, last, capture)
     let char = getline(cursorline)[cursorcol - 1]
 
     if a:mode ==? 'v'
-        execute "normal! \<C-Bslash>\<C-n>"
+        execute "normal! \<Esc>"
         let marks = s:get_visual_marks()
     endif
 
@@ -1489,7 +1489,7 @@ function! sexp#swap_element(mode, next, list)
 
         " Ensure visual marks are set character-wise
         call s:select_current_marks('v')
-        execute "normal! \<C-Bslash>\<C-n>"
+        execute "normal! \<Esc>"
 
         call s:set_visual_marks(s:positions_with_element_terminals(marks))
         let pairwise = (call('s:count_elements', s:get_visual_marks()) % 2) == 0

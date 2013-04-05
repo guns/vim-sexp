@@ -498,8 +498,9 @@ endfunction
 "
 "   * If trailing whitespace after end, end' is set to include the trailing
 "     whitespace up to the next element, unless start is preceded on its line
-"     by something other than whitespace, in which case end' is set to include
-"     only the trailing whitespace to the end of line.
+"     by something other than whitespace (but not an opening bracket), in
+"     which case end' is set to include only the trailing whitespace to the
+"     end of line.
 "   * If no trailing whitespace after end, start' is set to include leading
 "     whitespace up to the previous element on the same line if any exist.
 "   * Otherwise start and end are returned verbatim.
@@ -515,10 +516,11 @@ function! s:terminals_with_whitespace(start, end)
         " ws_end is on the same line as end, so accept it
         if end[1] == ws_end[1]
             let end = ws_end
-        " start begins its line, so include all of ws_end, which is on a
-        " subsequent line. Note that the double substring slicing here is
-        " intentional in order to avoid calculating the substring index.
-        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*$'
+        " start begins its line or is immediately preceded by an opening
+        " bracket, so include all of ws_end, which is on a subsequent line.
+        " Note that the double substring slicing here is intentional in order
+        " to avoid calculating the substring index.
+        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*[([{]?$'
             let end = ws_end
         " start does not begin its line, so just include any trailing
         " whitespace to eol, not to ws_end

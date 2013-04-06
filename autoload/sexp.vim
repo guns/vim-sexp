@@ -520,7 +520,7 @@ function! s:terminals_with_whitespace(start, end)
         " bracket, so include all of ws_end, which is on a subsequent line.
         " Note that the double substring slicing here is intentional in order
         " to avoid calculating the substring index.
-        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*[([{]?$'
+        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*$|[([{]$'
             let end = ws_end
         " start does not begin its line, so just include any trailing
         " whitespace to eol, not to ws_end

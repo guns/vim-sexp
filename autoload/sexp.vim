@@ -775,7 +775,7 @@ function! s:move_cursor_extending_selection(func, ...)
     let omode = s:compare_pos(start, getpos('.')) == 0
 
     let pos = call(a:func, a:000)
-    let valid = pos[1] > 1
+    let valid = pos[1] > 0
 
     if omode
         call s:set_visual_marks([valid ? pos : start, end])

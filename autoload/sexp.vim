@@ -1372,12 +1372,13 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     endif
 endfunction
 
-" Replace parent list with current list or visual selection.
-function! sexp#lift_list(mode)
+" Replace parent list with selection resulting from executing func with given
+" varargs.
+function! sexp#lift(mode, func, ...)
     if a:mode ==# 'v'
         call s:select_current_marks('v')
     else
-        call sexp#select_current_list('n', 0, 0)
+        call call(a:func, a:000)
     endif
     normal! d
     call sexp#select_current_list('n', 0, 0)

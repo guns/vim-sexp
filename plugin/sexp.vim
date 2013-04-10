@@ -68,8 +68,9 @@ let s:sexp_mappings = {
     \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
     \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
     \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
+    \ 'sexp_splice_list':               '<LocalLeader>@',
     \ 'sexp_lift_list':                 '<LocalLeader>o',
-    \ 'sexp_splice_list':               '<LocalLeader>O',
+    \ 'sexp_lift_element':              '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
     \ 'sexp_swap_list_forward':         '<M-j>',
     \ 'sexp_swap_element_backward':     '<M-h>',
@@ -182,7 +183,8 @@ function! s:sexp_create_mappings()
                \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
                \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
                \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
-               \ 'sexp_lift_list',                'sexp_splice_list',
+               \ 'sexp_splice_list',
+               \ 'sexp_lift_list',                'sexp_lift_element',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
@@ -322,8 +324,10 @@ Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
 " Lift list
-Defplug! nnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'n')
-Defplug  xnoremap sexp_lift_list sexp#docount(v:count, 'sexp#lift_list', 'v')
+Defplug! nnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_list', 'n', 0, 0)
+Defplug  xnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'v', '')
+Defplug! nnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_element', 'n', 1)
+Defplug  xnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'v', 'elem')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')

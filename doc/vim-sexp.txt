@@ -218,13 +218,17 @@ CURSOR INSERTION (normal, visual)~
 
 LIST MANIPULATION (normal, visual)~
 
-<LocalLeader>o                                                *sexp_lift_list*
-        Select the current list (compound FORM) or visual selection and
-        replace [count] enclosing lists with the selection.
-
-<LocalLeader>O                                              *sexp_splice_list*
+<LocalLeader>@                                              *sexp_splice_list*
         Splice the current list (compound FORM) into its parent scope [count]
         times by deleting each list's brackets.
+
+<LocalLeader>o                                                *sexp_lift_list*
+        Replace [count] enclosing lists (compound FORMs) with the current list
+        or visual selection.
+
+<LocalLeader>O                                             *sexp_lift_element*
+        Replace [count] enclosing lists (compound FORMs) with the current
+        element or visual selection.
 
 <M-k>                                                *sexp_swap_list_backward*
 <M-j>                                                 *sexp_swap_list_forward*
@@ -369,8 +373,9 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
             \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
             \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
+            \ 'sexp_splice_list':               '<LocalLeader>@',
             \ 'sexp_lift_list':                 '<LocalLeader>o',
-            \ 'sexp_splice_list':               '<LocalLeader>O',
+            \ 'sexp_lift_element':              '<LocalLeader>O',
             \ 'sexp_swap_list_backward':        '<M-k>',
             \ 'sexp_swap_list_forward':         '<M-j>',
             \ 'sexp_swap_element_backward':     '<M-h>',

@@ -327,7 +327,7 @@ Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 Defplug! nnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_list', 'n', 0, 0)
 Defplug  xnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'v', '')
 Defplug! nnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_element', 'n', 1)
-Defplug  xnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'v', 'elem')
+Defplug  xnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'v', '')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')

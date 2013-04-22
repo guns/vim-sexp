@@ -37,9 +37,9 @@ let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
 let s:macro_filetype_characters = {
-    \ 'clojure': ['#', "\\v[#'`~@^_=]"],
-    \ 'scheme':  ['#', "\\v[#'`,@]"],
-    \ 'lisp':    ['#', "\\v[#'`,@]"],
+    \ 'clojure': "\\v[#'`~@^_=]",
+    \ 'scheme':  "\\v[#'`,@]",
+    \ 'lisp':    "\\v[#'`,@]",
     \ }
 let s:pairs = {
     \ '(': ')',
@@ -59,7 +59,7 @@ function! s:macro_chars()
     elseif &lisp
         return s:macro_filetype_characters['scheme']
     else
-        return [nr2char(0x01), nr2char(0x01)]
+        return nr2char(0x01)
     endif
 endfunction
 
@@ -278,7 +278,7 @@ endfunction
 " 1 for end. Returns [0, 0, 0, 0] if not currently in a macro character
 " sequence or no macro characters are defined for the current filetype.
 function! s:current_macro_character_terminal(end)
-    let macro = s:macro_chars()[1]
+    let macro = s:macro_chars()
 
     if empty(macro)
         return [0, 0, 0, 0]
@@ -338,7 +338,7 @@ function! s:current_element_terminal(end)
         else
             let pos = s:nearest_bracket(a:end)
         end
-    elseif char =~# s:macro_chars()[1]
+    elseif char =~# s:macro_chars()
         if !a:end
             " Let the rest of the function find the macro head
             let include_macro_characters = 1
@@ -1572,11 +1572,11 @@ function! sexp#opening_insertion(bra)
     let buf = ''
     let buftail = ''
     let ket = s:pairs[a:bra]
-    let [dispatch, macro] = s:macro_chars()
+    let macro = s:macro_chars()
 
     if prev =~# '\v\S'
         \ && prev !~# s:opening_bracket
-        \ && (pprev !=# dispatch && prev !~# macro)
+        \ && prev !~# macro
         let buf .= ' '
     endif
 
@@ -1672,11 +1672,11 @@ function! sexp#quote_insertion(quote)
 
         let buf = ''
         let buftail = ''
-        let [dispatch, macro] = s:macro_chars()
+        let macro = s:macro_chars()
 
         if prev =~# '\v\S'
             \ && prev !~# s:opening_bracket
-            \ && (pprev !=# dispatch && prev !~# macro)
+            \ && prev !~# macro
             let buf .= ' '
         endif
 

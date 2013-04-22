@@ -945,12 +945,12 @@ endfunction
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
 function! s:set_marks_around_current_element(mode, inner)
-    let start = [0, 0, 0, 0]
-    let end = s:current_element_terminal(1)
+    let cursor = getpos('.')
+    let start = s:current_element_terminal(0)
+    let end = [0, 0, 0, 0]
 
     " We are on whitespace; move to next element and recurse.
-    if end[1] < 1
-        let cursor = getpos('.')
+    if start[1] < 1
         let next = s:move_to_adjacent_element(1, 0, 0)
 
         " No next element! We are at the eof or in a blank buffer.
@@ -966,12 +966,16 @@ function! s:set_marks_around_current_element(mode, inner)
         return
     endif
 
-    let start = s:current_element_terminal(0)
+    " Search from element start to avoid errors with elements that end with
+    " macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
+    call setpos('.', start)
+    let end = s:current_element_terminal(1)
 
     if !a:inner
         let [start, end] = s:terminals_with_whitespace(start, end)
     endif
 
+    call setpos('.', cursor)
     call s:set_visual_marks([start, end])
 endfunction
 

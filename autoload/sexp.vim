@@ -887,12 +887,6 @@ function! s:set_visual_marks(marks)
     call setpos("'>", a:marks[1])
 endfunction
 
-" Set start and end visual marks to [0, 0, 0, 0]
-function! s:clear_visual_marks()
-    call setpos("'<", [0, 0, 0, 0])
-    call setpos("'>", [0, 0, 0, 0])
-endfunction
-
 " Set visual marks to the positions of the nearest paired brackets. Offset is
 " the number of columns inwards from the brackets to set the marks.
 "
@@ -967,7 +961,7 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
         call s:set_visual_marks([open, close])
     " Don't erase marks when in visual mode
     elseif !visual
-        call s:clear_visual_marks()
+        delmarks < >
     endif
 
     if cursor_moved
@@ -990,13 +984,13 @@ function! s:set_marks_around_current_top_list(mode, offset)
 
         " Don't delete adjacent brackets with an inner motion
         if a:offset > 0 && opening[1] == closing[1] && opening[2] == closing[2] - 1
-            call s:clear_visual_marks()
+            delmarks < >
         else
             call setpos("'<", s:pos_with_col_offset(opening, a:offset))
             call setpos("'>", s:pos_with_col_offset(closing, -a:offset))
         endif
     elseif a:mode !=? 'v'
-        call s:clear_visual_marks()
+        delmarks < >
     endif
 endfunction
 
@@ -1010,13 +1004,13 @@ function! s:set_marks_around_current_string(mode, offset)
 
         " Don't delete adjacent quotes with an inner motion
         if a:offset > 0 && start[1] == end[1] && start[2] == end[2] - 1
-            call s:clear_visual_marks()
+            delmarks < >
         else
             call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
             call setpos("'>", s:pos_with_col_offset(end, -a:offset))
         endif
     elseif a:mode !=? 'v'
-        call s:clear_visual_marks()
+        delmarks < >
     endif
 endfunction
 
@@ -1041,7 +1035,7 @@ function! s:set_marks_around_current_element(mode, inner)
         " No next element! We are at the eof or in a blank buffer.
         if s:compare_pos(next, cursor) == 0
             if a:mode !=? 'v'
-                call s:clear_visual_marks()
+                delmarks < >
             endif
         else
             call s:set_marks_around_current_element(a:mode, a:inner)
@@ -1516,7 +1510,7 @@ function! sexp#swap_element(mode, next, list)
                    \ ? pos
                    \ : s:nearest_bracket(1)
         if tail[1] < 1
-            call s:clear_visual_marks()
+            delmarks < >
         else
             call setpos('.', tail)
             call s:set_marks_around_current_element('o', 1)

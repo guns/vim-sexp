@@ -986,8 +986,8 @@ function! s:set_marks_around_current_top_list(mode, offset)
         if a:offset > 0 && opening[1] == closing[1] && opening[2] == closing[2] - 1
             delmarks < >
         else
-            call setpos("'<", s:pos_with_col_offset(opening, a:offset))
-            call setpos("'>", s:pos_with_col_offset(closing, -a:offset))
+            call s:set_visual_marks([s:pos_with_col_offset(opening, a:offset),
+                                   \ s:pos_with_col_offset(closing, -a:offset)])
         endif
     elseif a:mode !=? 'v'
         delmarks < >
@@ -1006,8 +1006,8 @@ function! s:set_marks_around_current_string(mode, offset)
         if a:offset > 0 && start[1] == end[1] && start[2] == end[2] - 1
             delmarks < >
         else
-            call setpos("'<", s:pos_with_col_offset(s:current_string_terminal(0), a:offset))
-            call setpos("'>", s:pos_with_col_offset(end, -a:offset))
+            call s:set_visual_marks([s:pos_with_col_offset(s:current_string_terminal(0), a:offset),
+                                   \ s:pos_with_col_offset(end, -a:offset)])
         endif
     elseif a:mode !=? 'v'
         delmarks < >
@@ -1343,12 +1343,14 @@ function! s:swap_current_selection(mode, next, pairwise)
         let [sl, sc] = s:findpos(nr2char(0x02), 1)
         call setpos('.', [0, sl, sc, 0])
         normal! x
-        call setpos("'<", [0, sl, sc, 0])
+        let s = [0, sl, sc, 0]
 
         let [el, ec] = s:findpos(nr2char(0x03), 1)
         call setpos('.', [0, el, ec, 0])
         normal! x
-        call setpos("'>", [0, el, ec - 1, 0])
+        let e = [0, el, ec - 1, 0]
+
+        call s:set_visual_marks([s, e])
     endif
 
     if visual

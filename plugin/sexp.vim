@@ -259,14 +259,14 @@ Defplug! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#mov
 "
 " Inclusive operator pending motions require a visual mode selection to
 " include the last character of a line.
+"
+" NOTE: abs(0) is a NOP in order to complete the argument to 'call' in defplug
 Defplug  nnoremap sexp_move_to_prev_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
 DEFPLUG  xnoremap sexp_move_to_prev_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
-Defplug! onoremap sexp_move_to_prev_element_tail setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
-                                                 \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
+Defplug! onoremap sexp_move_to_prev_element_tail abs(0) \| execute "normal! v\<lt>Esc>" \| call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
 Defplug  nnoremap sexp_move_to_next_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
 DEFPLUG  xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
-Defplug! onoremap sexp_move_to_next_element_tail setpos("'<", getpos('.')) \| call setpos("'>", getpos('.')) \|
-                                                 \ call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
+Defplug! onoremap sexp_move_to_next_element_tail abs(0) \| execute "normal! v\<lt>Esc>" \| call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 1)

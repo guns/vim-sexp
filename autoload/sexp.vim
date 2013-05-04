@@ -892,14 +892,21 @@ if s:can_set_visual_marks
     endfunction
 else
     " Before 7.3.590, the only way to set visual marks was to actually enter
-    " and exit visual mode.
+    " and exit visual mode. The method using setpos() above is preferred
+    " because there are no side effects apart from setting the marks.
     function! s:set_visual_marks(marks)
         let cursor = getpos('.')
+        let visual = mode() ==? 'v'
+
+        if visual | execute "normal! \<Esc>" | endif
         call setpos('.', a:marks[0])
         normal! v
         call setpos('.', a:marks[1])
-        execute "normal! \<Esc>"
-        call setpos('.', cursor)
+
+        if !visual
+            execute "normal! \<Esc>"
+            call setpos('.', cursor)
+        endif
     endfunction
 endif
 

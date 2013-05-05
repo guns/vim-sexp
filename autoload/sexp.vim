@@ -896,17 +896,14 @@ else
     " because there are no side effects apart from setting the marks.
     function! s:set_visual_marks(marks)
         let cursor = getpos('.')
-        let visual = mode() ==? 'v'
 
-        if visual | execute "normal! \<Esc>" | endif
+        if mode() ==? 'v' | execute "normal! \<Esc>" | endif
         call setpos('.', a:marks[0])
         normal! v
         call setpos('.', a:marks[1])
+        execute "normal! \<Esc>"
 
-        if !visual
-            execute "normal! \<Esc>"
-            call setpos('.', cursor)
-        endif
+        call setpos('.', cursor)
     endfunction
 endif
 

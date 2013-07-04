@@ -1039,7 +1039,8 @@ endfunction
 " s:terminals_with_whitespace().
 "
 " If cursor is on whitespace that is not in a string or between line comments,
-" the marks are set around the next element.
+" the marks are set around the next element if inner is 1, and around the
+" current position and end of the next element if inner is 0.
 "
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
@@ -1047,8 +1048,9 @@ function! s:set_marks_around_current_element(mode, inner)
     let cursor = getpos('.')
     let start = s:current_element_terminal(0)
     let end = [0, 0, 0, 0]
+    let include_ws = !a:inner
 
-    " We are on whitespace; move to next element and recurse.
+    " We are on whitespace; check for next element
     if start[1] < 1
         let next = s:move_to_adjacent_element(1, 0, 0)
 
@@ -1057,20 +1059,20 @@ function! s:set_marks_around_current_element(mode, inner)
             if a:mode !=? 'v'
                 delmarks < >
             endif
-        else
-            call s:set_marks_around_current_element(a:mode, a:inner)
-            call setpos('.', cursor)
+            return
         endif
 
-        return
+        let include_ws = 0
+        let start = a:inner ? next : cursor
+    else
+        " Search from element start to avoid errors with elements that end
+        " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
+        call setpos('.', start)
     endif
 
-    " Search from element start to avoid errors with elements that end with
-    " macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
-    call setpos('.', start)
     let end = s:current_element_terminal(1)
 
-    if !a:inner
+    if include_ws
         let [start, end] = s:terminals_with_whitespace(start, end)
     endif
 

@@ -116,7 +116,8 @@ ie                                                        *sexp_inner_element*
               exists
 
         If the cursor is on whitespace that is not in a string or between line
-        comments, the next element in the buffer is selected.
+        comments, the motion includes the current position up to and including
+        the end of the next element, if it exists.
 
 CURSOR MOTIONS (normal, visual, operator-pending)~
 

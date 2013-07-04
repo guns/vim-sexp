@@ -208,7 +208,7 @@ function! s:sexp_create_mappings()
     endif
 endfunction
 
-""" Text objects {{{1
+""" Text Object Selections {{{1
 
 " Current list (compound FORM)
 Defplug  xnoremap sexp_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)

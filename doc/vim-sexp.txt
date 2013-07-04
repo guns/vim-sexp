@@ -18,10 +18,10 @@ structures with text, and give Lisps their distinctive look and feel. Emacs
 users know that what appear to be a preponderance of brackets are really hooks
 the editor may use to effortlessly transform the text before them.
 
-Vim, possessing |text-objects|, |cursor-motions|, and an |operator-pending|
-mode, is well suited for editing structured text. This plugin extends these
-ideas to S-Expressions as embodied by both classical Lisps like Scheme and new
-Lisps like Clojure.
+Vim, possessing |cursor-motions| and an |operator-pending| mode, is well
+suited for editing structured text. This plugin extends these ideas to
+S-Expressions as embodied by both classical Lisps like Scheme and new Lisps
+like Clojure.
 
 A handful of features found in the popular S-Expression plugin for emacs,
 paredit.el, are also provided.
@@ -53,7 +53,7 @@ All mappings can be easily changed via |g:sexp_mappings|.
 
 [1]: http://www.vim.org/scripts/script.php?script_id=2136
 
-TEXT OBJECTS (visual, operator-pending)~
+TEXT OBJECT SELECTIONS (visual, operator-pending)~
 
 af                                                           *sexp_outer_list*
 if                                                           *sexp_inner_list*
@@ -84,9 +84,9 @@ is                                                         *sexp_inner_string*
         Does not include surrounding whitespace.
 
         The default mappings shadow the internal |as| and |is| mappings. These
-        sentence text-objects are of limited use in code buffers, but if this
-        conflict bothers you, see |g:sexp_mappings| for documentation on
-        changing the default mappings.
+        sentence object selections are of limited use in code buffers, but if
+        you disagree, see |g:sexp_mappings| for documentation on changing the
+        default mappings.
 
 ae                                                        *sexp_outer_element*
 ie                                                        *sexp_inner_element*
@@ -119,7 +119,7 @@ ie                                                        *sexp_inner_element*
         comments, the motion includes the current position up to and including
         the end of the next element, if it exists.
 
-CURSOR MOTIONS (normal, visual, operator-pending)~
+TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
 (                                                  *sexp_move_to_prev_bracket*
 )                                                  *sexp_move_to_next_bracket*
@@ -133,9 +133,9 @@ CURSOR MOTIONS (normal, visual, operator-pending)~
               in which case the motion includes both brackets
 
         The default mappings shadow the internal |(| and |)| mappings. These
-        sentence cursor motions are of limited use in code buffers, but if
-        this conflict bothers you, see |g:sexp_mappings| for documentation on
-        changing the default mappings.
+        sentence object motions are of limited use in code buffers, but if
+        you disagree, see |g:sexp_mappings| for documentation on changing the
+        default mappings.
 
 <M-b>                                         *sexp_move_to_prev_element_head*
 <M-w>                                         *sexp_move_to_next_element_head*
@@ -398,8 +398,8 @@ motions:
             \ 'sexp_move_to_next_bracket':      '',
             \ }
 <
-This would remap the string text object mappings and remove the adjacent
-bracket cursor motion mappings altogether.
+This would remap the string object selection mappings and remove the adjacent
+bracket object motion mappings altogether.
 
                                                              *g:sexp_maxlines*
 Searching for paired brackets is accomplished with the |searchpairpos()|

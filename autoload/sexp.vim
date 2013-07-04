@@ -508,8 +508,8 @@ endfunction
 "     whitespace up to the previous element on the same line if any exist.
 "   * Otherwise start and end are returned verbatim.
 "
-" This behavior diverges from the behavior of native text object aw in that it
-" allows multiline whitespace selections.
+" This behavior diverges from the behavior of the native text object aw in
+" that it allows multiline whitespace selections.
 function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
@@ -947,7 +947,7 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
         let cursor_moved = 1
     endif
 
-    " Native text objects expand when repeating inner motions too
+    " Native object selections expand when repeating inner motions as well
     if expanding
         \ && a:offset == 1
         \ && getline(cursor[1])[cursor[2] - 2] =~# s:opening_bracket

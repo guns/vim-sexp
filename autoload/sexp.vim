@@ -801,10 +801,14 @@ endfunction
 "
 "   * If moving backward, the cursor is positioned just after the opening
 "     bracket so that the selection is exclusive at the head.
-"   * If moving forward and the cursor is on a bracket, an exclusive visual
-"     selection is made that omits both the current and next bracket.
-"   * If this selection is empty and the brackets are paired, make the pair of
-"     brackets the selection, otherwise do nothing and return [0, 0, 0, 0]
+"   * If moving forward and the cursor is on an opening bracket, the current
+"     list is treated as an element and the selection is extended up to, but
+"     not including, the next outer closing bracket.
+"   * If moving forward and the cursor is on a closing bracket, and the next
+"     outer closing bracket is not immediately adjacent, the selection is made
+"     exclusive such that neither the current bracket nor next outer closing
+"     bracket are included.
+"   * Otherwise the cursor is not moved and [0, 0, 0, 0] is returned.
 "
 " If there is no enclosing list, the cursor is not moved and [0, 0, 0, 0] is
 " returned.
@@ -820,22 +824,22 @@ function! sexp#move_to_nearest_bracket(mode, next)
         return [0, l, c, 0]
     elseif a:mode ==? 'o' && getline('.')[col('.') - 1] =~# s:bracket
         let cursor = getpos('.')
+        let bracket = getline(cursor[1])[cursor[2] - 1]
+
+        call s:move_to_current_element_terminal(1)
         let pos = s:nearest_bracket(1)
 
-        if pos[1] < 1
+        if pos[1] < 1 || (bracket =~# s:closing_bracket
+                          \ && cursor[1] == pos[1]
+                          \ && cursor[2] == pos[2] - 1)
+            call setpos('.', cursor)
             return [0, 0, 0, 0]
-        elseif cursor[1] == pos[1] && cursor[2] == pos[2] - 1
-            if getline(cursor[1])[cursor[2] - 1] =~# s:opening_bracket
-                \ && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket
-                call s:set_visual_marks([cursor, pos])
-            else
-                return [0, 0, 0, 0]
-            endif
-        else
-            call s:set_visual_marks([s:pos_with_col_offset(cursor, 1),
-                                   \ s:pos_with_col_offset(pos, -1)])
         endif
 
+        let start = getline(cursor[1])[cursor[2] - 1] =~# s:opening_bracket
+                    \ ? cursor
+                    \ : s:pos_with_col_offset(cursor, 1)
+        call s:set_visual_marks([start, s:pos_with_col_offset(pos, -1)])
         call s:select_current_marks('o')
         return pos
     else

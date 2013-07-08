@@ -206,17 +206,6 @@ WRAP COMMANDS (normal, visual)~
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
-CURSOR INSERTION (normal, visual)~
-
-<LocalLeader>h                                      *sexp_insert_at_list_head*
-<LocalLeader>l                                      *sexp_insert_at_list_tail*
-        Move cursor to head or tail of current list (compound FORM) and enter
-        insert mode.
-
-        If inserting at the head, a space is conditionally appended after the
-        opening bracket so that any typed characters will be separated from
-        the next element.
-
 LIST MANIPULATION (normal, visual)~
 
 <LocalLeader>@                                              *sexp_splice_list*
@@ -256,6 +245,17 @@ LIST MANIPULATION (normal, visual)~
         element and will never capture its parent.
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
+
+CURSOR INSERTION (normal, visual)~
+
+<LocalLeader>h                                      *sexp_insert_at_list_head*
+<LocalLeader>l                                      *sexp_insert_at_list_tail*
+        Move cursor to head or tail of current list (compound FORM) and enter
+        insert mode.
+
+        If inserting at the head, a space is conditionally appended after the
+        opening bracket so that any typed characters will be separated from
+        the next element.
 
 INSERT MODE MAPPINGS (insert, optional)~
 
@@ -372,8 +372,6 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_square_tail_wrap_element':  '<LocalLeader>e]',
             \ 'sexp_curly_head_wrap_element':   '<LocalLeader>e{',
             \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
-            \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
-            \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ 'sexp_splice_list':               '<LocalLeader>@',
             \ 'sexp_lift_list':                 '<LocalLeader>o',
             \ 'sexp_lift_element':              '<LocalLeader>O',
@@ -385,6 +383,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_emit_tail_element':         '<M-S-k>',
             \ 'sexp_capture_prev_element':      '<M-S-h>',
             \ 'sexp_capture_next_element':      '<M-S-l>',
+            \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
+            \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ }
 <
 To unbind a mapping, keep the key in the dictionary with an empty string

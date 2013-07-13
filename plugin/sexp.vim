@@ -111,13 +111,17 @@ function! s:defplug(mode, mapmode, name, ...)
     elseif empty(a:mode) || (should_repeat && !exists('*repeat#set'))
         " TODO: Only first visual motion should set '`
         execute lhs . ' '
-                \ . ':<C-u>call setpos("' . "'`" . '", getpos(".")) \| '
+                \ . ':<C-u>execute "normal! m`" \| '
                 \ . 'call ' . rhs . '<CR>'
     elseif should_repeat && a:mapmode[0] ==# 'o'
         " Due to a bug in vim, we need to set curwin->w_curswant to the
         " current cursor position by entering and exiting character-wise
         " visual mode before completing the operator-pending command so that
         " the cursor returns to it's original position after an = command.
+        "
+        " Also, setpos("'`", getpos(".")) does not append the jumplist. There
+        " does not appear to be any way to add a jump entry other than via m`
+        " Refer: https://groups.google.com/forum/#!topic/vim_dev/4Rq2y_IAAJc
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
                 \ . 'execute "normal! vv" \| '
@@ -131,7 +135,7 @@ function! s:defplug(mode, mapmode, name, ...)
     elseif should_repeat
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . 'call setpos("' . "'`" . '", getpos(".")) \| '
+                \ . 'execute "normal! m`" \| '
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif

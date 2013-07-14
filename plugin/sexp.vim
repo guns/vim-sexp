@@ -109,9 +109,8 @@ function! s:defplug(mode, mapmode, name, ...)
     if a:mode ==# '*'
         execute lhs . ' ' . rhs
     elseif empty(a:mode) || (should_repeat && !exists('*repeat#set'))
-        " TODO: Only first visual motion should set '`
         execute lhs . ' '
-                \ . ':<C-u>execute "normal! m`" \| '
+                \ . ':<C-u>if !sexp#have_selection() \| execute "normal! m`" \| endif \| '
                 \ . 'call ' . rhs . '<CR>'
     elseif should_repeat && a:mapmode[0] ==# 'o'
         " Due to a bug in vim, we need to set curwin->w_curswant to the

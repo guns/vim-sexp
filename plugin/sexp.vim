@@ -93,7 +93,7 @@ silent! call repeat#set('') " Autoload repeat.vim
 """ Functions {{{1
 
 command! -nargs=+ -bang Defplug call <SID>defplug('<bang>', <f-args>)
-command! -nargs=+ -bang DEFPLUG call <SID>defplug('<bang>*', <f-args>)
+command! -nargs=+       DEFPLUG call <SID>defplug('*', <f-args>)
 
 " Create a <Plug> mapping. The 'mode' parameter dictates the behavior:
 "
@@ -375,4 +375,3 @@ inoremap <silent><expr> <Plug>sexp_insert_backspace sexp#backspace_insertion()
 
 delcommand Defplug
 delcommand DEFPLUG
-delfunction s:defplug

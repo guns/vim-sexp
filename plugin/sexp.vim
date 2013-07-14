@@ -117,14 +117,9 @@ function! s:defplug(mode, mapmode, name, ...)
         " current cursor position by entering and exiting character-wise
         " visual mode before completing the operator-pending command so that
         " the cursor returns to it's original position after an = command.
-        "
-        " Also, setpos("'`", getpos(".")) does not append the jumplist. There
-        " does not appear to be any way to add a jump entry other than via m`
-        " Refer: https://groups.google.com/forum/#!topic/vim_dev/4Rq2y_IAAJc
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . 'execute "normal! vv" \| '
-                \ . 'call setpos("' . "'`" . '", getpos(".")) \| '
+                \ . 'execute "normal! vvm`" \| '
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'if v:operator ==? "c" \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '

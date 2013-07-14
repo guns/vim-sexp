@@ -935,7 +935,8 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     let visual = a:mode ==? 'v'
     let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
-    let expanding = a:allow_expansion && (counting || (visual && sexp#have_selection()))
+    let have_selection = start_is_valid && s:compare_pos(start, getpos("'>")) != 0
+    let expanding = a:allow_expansion && (counting || (visual && have_selection))
 
     " When evaluating via sexp#docount the cursor position will not be updated
     " to '<, so do it now.
@@ -1127,13 +1128,6 @@ function! s:set_marks_characterwise()
         call s:select_current_marks('v')
         execute "normal! \<Esc>"
     endif
-endfunction
-
-" Returns 1 if visual marks are valid and define a region larger than one
-" byte, 0 otherwise.
-function! sexp#have_selection()
-    let [start, end] = s:get_visual_marks()
-    return start[1] > 0 && end[1] > 0 && s:compare_pos(start, end) != 0
 endfunction
 
 " Set visual marks at current list's brackets, then enter visual mode with

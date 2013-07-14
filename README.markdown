@@ -52,7 +52,7 @@ mapping is bound to a `<Plug>` mapping, which may be used for any purpose.
 Comprehensive documentation is available at `:help vim-sexp`. The following is
 a brief summary.
 
-### TEXT OBJECT SELECTIONS (visual, operator-pending)
+### Text Object Selections (visual, operator-pending)
 
 Text object selections refer to text _around_ the cursor.
 
@@ -61,7 +61,7 @@ Text object selections refer to text _around_ the cursor.
 * The `as` and `is` objects select STRINGS.
 * The `ae` and `ie` objects select ELEMENTS.
 
-### TEXT OBJECT MOTIONS (normal, visual, operator-pending)
+### Text Object Motions (normal, visual, operator-pending)
 
 Text object motions move the cursor in normal mode, extend selections in
 visual mode, and refer to text defined by the movement of the cursor in
@@ -73,7 +73,7 @@ operator-pending mode.
 * The `[[` and `]]` motions move the cursor to an adjacent top-level ELEMENT.
 * The `[e` and `]e` mappings select an adjacent ELEMENT.
 
-### WRAP COMMANDS (normal, visual)
+### Wrap Commands (normal, visual)
 
 Wrap commands wrap the current COMPOUND FORM, ELEMENT, or visual selection and
 place the cursor at the head or tail of the newly created COMPOUND FORM.
@@ -88,7 +88,7 @@ after wrapping.
 * `<LocalLeader>e[` and `<LocalLeader>e]` wrap the current ELEMENT with `[` and `]`.
 * `<LocalLeader>e{` and `<LocalLeader>e}` wrap the current ELEMENT with `{` and `}`.
 
-### LIST MANIPULATION (normal, visual)
+### List Manipulation (normal, visual)
 
 List manipulation commands change the structure of COMPOUND FORMS. If these
 commands are called from visual mode, the selection is used in place of the
@@ -104,7 +104,7 @@ current COMPOUND FORM or ELEMENT.
 
 The last two commands are also known as `barfage` and `slurpage` in [paredit.el][].
 
-### CURSOR INSERTION (normal, visual)
+### Cursor Insertion (normal, visual)
 
 * `<LocalLeader>h` and `<LocalLeader>l` insert the cursor at the head and tail
   of the current COMPOUND FORM, respectively.
@@ -112,7 +112,7 @@ The last two commands are also known as `barfage` and `slurpage` in [paredit.el]
 If inserting at the head, a space is conditionally appended after the opening
 bracket so that any typed characters will be separated from the next element.
 
-### INSERT MODE MAPPINGS (insert)
+### Insert Mode Mappings (insert)
 
 Vim-sexp does intelligent bracket and double quote insertion like
 [paredit.el][]. Unlike ParEdit, deletion of brackets that would cause an

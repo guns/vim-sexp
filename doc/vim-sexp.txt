@@ -51,7 +51,7 @@ set, which is true by default.
 
 All mappings can be easily changed via |g:sexp_mappings|.
 
-[1]: http://www.vim.org/scripts/script.php?script_id=2136
+[1]: https://github.com/tpope/vim-repeat
 
 TEXT OBJECT SELECTIONS (visual, operator-pending)~
 

@@ -18,6 +18,15 @@ Here is a short introductory video:
 
 **TODO**
 
+## Requirements
+
+* Vim 7.3+
+
+* [vim-repeat][] (optional)
+
+  Enables use of the `.` command for repeating change operations in vim-sexp,
+  as well as repeating builtin operations with vim-sexp's text objects.
+
 ## Definitions
 
 A COMPOUND FORM is a region of text delimited by a pair of `(` and `)`,
@@ -135,4 +144,5 @@ These insert mode mappings can be disabled with:
 let g:sexp_enable_insert_mode_mappings = 0
 ```
 
+[vim-repeat]: https://github.com/tpope/vim-repeat
 [paredit.el]: http://www.emacswiki.org/emacs/ParEdit

@@ -48,7 +48,7 @@ An ELEMENT is the
 * current STRING if the cursor is in a STRING
 * current COMMENT if the cursor is in a COMMENT
 * current COMPOUND FORM if the cursor is on a paired structural bracket
-* current sequence of MACRO CHARACTERS and the following ELEMENT if the cursor is on a macro character
+* current sequence of MACRO CHARACTERS and the following ELEMENT if the cursor is on a MACRO CHARACTER
 * current contiguous sequence of non-whitespace, non-bracket characters otherwise
 
 An ELEMENT always includes any leading MACRO CHARACTERS.

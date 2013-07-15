@@ -121,17 +121,21 @@ function! s:defplug(flags, mapmode, name, ...)
     " Key sequence
     if !asexpr
         execute lhs . ' ' . rhs
+        return 1
+    endif
+
+    " Common mapping prefix
+    let prefix = lhs . ' '
+                 \ . ':<C-u>let b:sexp_count = v:count \| '
+                 \ . (nojump ? '' : 'execute "normal! m`" \| ')
+                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g')
+
     " Expression, non-repeating
-    elseif !repeat || (repeat && !s:have_repeat_set)
-        execute lhs . ' '
-                \ . (nojump ? ':<C-u>' : ':<C-u>execute "normal! m`" \| ')
-                \ . 'call ' . rhs . '<CR>'
+    if !repeat || (repeat && !s:have_repeat_set)
+        execute prefix . '<CR>'
     " Expression, repeating, operator-pending mode
     elseif opmode
-        execute lhs . ' '
-                \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . (nojump ? '' : 'execute "normal! m`" \| ')
-                \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
+        execute prefix . ' \| '
                 \ . 'if v:operator ==? "c" \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
                 \ . 'else \| '
@@ -139,11 +143,7 @@ function! s:defplug(flags, mapmode, name, ...)
                 \ . 'endif<CR>'
     " Expression, repeating, non-operator-pending mode
     else
-        execute lhs . ' '
-                \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . (nojump ? '' : 'execute "normal! m`" \| ')
-                \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
-                \ . 'call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
+        execute prefix . ' \| call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif
 endfunction
 

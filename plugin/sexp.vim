@@ -95,8 +95,8 @@ let s:have_repeat_set = exists('*repeat#set')
 """ Functions {{{1
 
 command! -nargs=+       DEFPLUG  call <SID>defplug('000', <f-args>)
-command! -nargs=+ -bang Defplug  call <SID>defplug('1' . string(empty('<bang>')) . '0', <f-args>)
-command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(empty('<bang>')) . '1', <f-args>)
+command! -nargs=+ -bang Defplug  call <SID>defplug('1' . string(!empty('<bang>')) . '0', <f-args>)
+command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(!empty('<bang>')) . '1', <f-args>)
 
 " Create a <Plug> mapping. The 'flags' faux bitfield dictates behavior:
 "

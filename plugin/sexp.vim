@@ -88,49 +88,61 @@ augroup sexp_filetypes
     endif
 augroup END
 
-silent! call repeat#set('') " Autoload repeat.vim
+" Autoload and detect repeat.vim
+silent! call repeat#set('')
+let s:have_repeat_set = exists('*repeat#set')
 
 """ Functions {{{1
 
-command! -nargs=+ -bang Defplug call <SID>defplug('<bang>', <f-args>)
-command! -nargs=+       DEFPLUG call <SID>defplug('*', <f-args>)
+command! -nargs=+       DEFPLUG  call <SID>defplug(0, <f-args>)
+command! -nargs=+ -bang Defplug  call <SID>defplug(or(1, empty('<bang>') * 2), <f-args>)
+command! -nargs=+ -bang DefplugN call <SID>defplug(or(5, empty('<bang>') * 2), <f-args>)
 
-" Create a <Plug> mapping. The 'mode' parameter dictates the behavior:
+" Create a <Plug> mapping. The 'flags' bitfield dictates behavior:
 "
-"   * mode == '' : Map to calling rhs as expression
-"   * mode == '!': Map to calling rhs as expression, setting up repeat
-"   * mode == '*': Map to rhs as a key sequence
+"   * flags == **0: Map rhs as a key sequence
+"   * flags == 001: Map rhs as an expression
+"   * flags == 011: Map rhs as an expression, and setup repeat
+"   * flags == 101: Map rhs as an expression, but do not set '`
+"   * flags == 111: Map rhs as an expression, set up repeat, and do not set '`
 "
-function! s:defplug(mode, mapmode, name, ...)
+function! s:defplug(flags, mapmode, name, ...)
     let lhs = a:mapmode . ' <silent> <Plug>' . a:name
     let rhs = join(a:000)
-    let should_repeat = a:mode ==# '!'
 
-    if a:mode ==# '*'
+    let asexpr = and(a:flags, 1)
+    let repeat = and(a:flags, 2)
+    let nojump = and(a:flags, 4)
+    let opmode = a:mapmode[0] ==# 'o'
+
+    " Key sequence
+    if !asexpr
         execute lhs . ' ' . rhs
-    elseif empty(a:mode) || (should_repeat && !exists('*repeat#set'))
-        " TODO: Only first visual motion should set '`
+    " Expression, non-repeating
+    elseif !repeat || (repeat && !s:have_repeat_set)
         execute lhs . ' '
-                \ . ':<C-u>execute "normal! m`" \| '
+                \ . (nojump ? ':<C-u>' : ':<C-u>execute "normal! m`" \| ')
                 \ . 'call ' . rhs . '<CR>'
-    elseif should_repeat && a:mapmode[0] ==# 'o'
+    " Expression, repeating, operator-pending mode
+    elseif opmode
         " Due to a bug in vim, we need to set curwin->w_curswant to the
         " current cursor position by entering and exiting character-wise
         " visual mode before completing the operator-pending command so that
-        " the cursor returns to it's original position after an = command.
+        " the cursor returns to its original position after an = command.
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . 'execute "normal! vvm`" \| '
+                \ . 'execute "normal! vv' . (nojump ? '' : 'm`') . '" \| '
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'if v:operator ==? "c" \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
                 \ . 'else \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '", b:sexp_count) \| '
                 \ . 'endif<CR>'
-    elseif should_repeat
+    " Expression, repeating, non-operator-pending mode
+    else
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . 'execute "normal! m`" \| '
+                \ . (nojump ? '' : 'execute "normal! m`" \| ')
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
     endif
@@ -247,12 +259,12 @@ Defplug! onoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_
 "
 " Visual mappings must break out of visual mode in order to detect which end
 " the user is using to adjust the selection.
-Defplug  nnoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)
-DEFPLUG  xnoremap sexp_move_to_prev_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
-Defplug! onoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)
-Defplug  nnoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)
-DEFPLUG  xnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
-Defplug! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)
+DefplugN  nnoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 0)
+DEFPLUG   xnoremap sexp_move_to_prev_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 0, 0)<CR>
+DefplugN! onoremap sexp_move_to_prev_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 0, 0, 0)
+DefplugN  nnoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 0, 0)
+DEFPLUG   xnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 0, 0)<CR>
+DefplugN! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'o', 1, 0, 0)
 
 " Adjacent element tail
 "
@@ -260,12 +272,12 @@ Defplug! onoremap sexp_move_to_next_element_head sexp#docount(v:count, 'sexp#mov
 " include the last character of a line.
 "
 " NOTE: abs(0) is a NOP in order to complete the argument to 'call' in defplug
-Defplug  nnoremap sexp_move_to_prev_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
-DEFPLUG  xnoremap sexp_move_to_prev_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
-Defplug! onoremap sexp_move_to_prev_element_tail abs(0) \| execute "normal! v\<lt>Esc>" \| call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
-Defplug  nnoremap sexp_move_to_next_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
-DEFPLUG  xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
-Defplug! onoremap sexp_move_to_next_element_tail abs(0) \| execute "normal! v\<lt>Esc>" \| call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
+DefplugN  nnoremap sexp_move_to_prev_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 1, 0)
+DEFPLUG   xnoremap sexp_move_to_prev_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)<CR>
+DefplugN! onoremap sexp_move_to_prev_element_tail abs(0) \| execute "normal! v\<lt>Esc>" \| call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 0, 1, 0)
+DefplugN  nnoremap sexp_move_to_next_element_tail sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 1, 1, 0)
+DEFPLUG   xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)<CR>
+DefplugN! onoremap sexp_move_to_next_element_tail abs(0) \| execute "normal! v\<lt>Esc>" \| call sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'v', 1, 1, 0)
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#docount(v:count, 'sexp#move_to_adjacent_element', 'n', 0, 0, 1)

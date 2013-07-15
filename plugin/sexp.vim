@@ -125,9 +125,14 @@ function! s:defplug(flags, mapmode, name, ...)
     endif
 
     " Common mapping prefix
+    " RE: vv
+    "   Due to a bug in vim, we need to set curwin->w_curswant to the current
+    "   cursor position by entering and exiting character-wise visual mode
+    "   before completing an operator-pending command so that the cursor
+    "   returns to its original position after an = command.
     let prefix = lhs . ' '
                  \ . ':<C-u>let b:sexp_count = v:count \| '
-                 \ . (nojump ? '' : 'execute "normal! m`" \| ')
+                 \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
                  \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g')
 
     " Expression, non-repeating

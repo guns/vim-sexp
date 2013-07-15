@@ -94,25 +94,28 @@ let s:have_repeat_set = exists('*repeat#set')
 
 """ Functions {{{1
 
-command! -nargs=+       DEFPLUG  call <SID>defplug(0, <f-args>)
-command! -nargs=+ -bang Defplug  call <SID>defplug(or(1, empty('<bang>') * 2), <f-args>)
-command! -nargs=+ -bang DefplugN call <SID>defplug(or(5, empty('<bang>') * 2), <f-args>)
+command! -nargs=+       DEFPLUG  call <SID>defplug('000', <f-args>)
+command! -nargs=+ -bang Defplug  call <SID>defplug('1' . string(empty('<bang>')) . '0', <f-args>)
+command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(empty('<bang>')) . '1', <f-args>)
 
-" Create a <Plug> mapping. The 'flags' bitfield dictates behavior:
+" Create a <Plug> mapping. The 'flags' faux bitfield dictates behavior:
 "
-"   * flags == **0: Map rhs as a key sequence
-"   * flags == 001: Map rhs as an expression
-"   * flags == 011: Map rhs as an expression, and setup repeat
-"   * flags == 101: Map rhs as an expression, but do not set '`
+"   * flags == 0**: Map rhs as a key sequence
+"   * flags == 100: Map rhs as an expression
+"   * flags == 110: Map rhs as an expression, and setup repeat
+"   * flags == 101: Map rhs as an expression, and do not set '`
 "   * flags == 111: Map rhs as an expression, set up repeat, and do not set '`
+"
+" We don't use an actual bitfield because the bitwise functions and() and or()
+" were not introduced until patch 7.3.377.
 "
 function! s:defplug(flags, mapmode, name, ...)
     let lhs = a:mapmode . ' <silent> <Plug>' . a:name
     let rhs = join(a:000)
 
-    let asexpr = and(a:flags, 1)
-    let repeat = and(a:flags, 2)
-    let nojump = and(a:flags, 4)
+    let asexpr = a:flags[0] == '1'
+    let repeat = a:flags[1] == '1'
+    let nojump = a:flags[2] == '1'
     let opmode = a:mapmode[0] ==# 'o'
 
     " Key sequence

@@ -128,13 +128,9 @@ function! s:defplug(flags, mapmode, name, ...)
                 \ . 'call ' . rhs . '<CR>'
     " Expression, repeating, operator-pending mode
     elseif opmode
-        " Due to a bug in vim, we need to set curwin->w_curswant to the
-        " current cursor position by entering and exiting character-wise
-        " visual mode before completing the operator-pending command so that
-        " the cursor returns to its original position after an = command.
         execute lhs . ' '
                 \ . ':<C-u>let b:sexp_count = v:count \| '
-                \ . 'execute "normal! vv' . (nojump ? '' : 'm`') . '" \| '
+                \ . (nojump ? '' : 'execute "normal! m`" \| ')
                 \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g') . ' \| '
                 \ . 'if v:operator ==? "c" \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '

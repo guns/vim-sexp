@@ -66,6 +66,8 @@ let s:sexp_mappings = {
     \ 'sexp_square_tail_wrap_element':  '<LocalLeader>e]',
     \ 'sexp_curly_head_wrap_element':   '<LocalLeader>e{',
     \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
+    \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
+    \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
     \ 'sexp_splice_list':               '<LocalLeader>@',
     \ 'sexp_lift_list':                 '<LocalLeader>o',
     \ 'sexp_lift_element':              '<LocalLeader>O',
@@ -77,8 +79,6 @@ let s:sexp_mappings = {
     \ 'sexp_emit_tail_element':         '<M-S-k>',
     \ 'sexp_capture_prev_element':      '<M-S-h>',
     \ 'sexp_capture_next_element':      '<M-S-l>',
-    \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
-    \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
     \ }
 
 augroup sexp_filetypes
@@ -197,13 +197,13 @@ function! s:sexp_create_mappings()
                \ 'sexp_round_head_wrap_element',  'sexp_round_tail_wrap_element',
                \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
                \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
+               \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
                \ 'sexp_splice_list',
                \ 'sexp_lift_list',                'sexp_lift_element',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
-               \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
-               \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail']
+               \ 'sexp_capture_prev_element',     'sexp_capture_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
@@ -332,6 +332,12 @@ Defplug  xnoremap sexp_curly_head_wrap_element  sexp#wrap('v', '{', '}', 0, g:se
 Defplug! nnoremap sexp_curly_tail_wrap_element  sexp#wrap('e', '{', '}', 1, g:sexp_insert_after_wrap)
 Defplug  xnoremap sexp_curly_tail_wrap_element  sexp#wrap('v', '{', '}', 1, g:sexp_insert_after_wrap)
 
+" Insert at list terminal
+Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
+Defplug  xnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
+Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
+Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
+
 " Lift list
 Defplug! nnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_list', 'n', 0, 0)
 Defplug  xnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'v', '')
@@ -363,12 +369,6 @@ Defplug! nnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop'
 Defplug  xnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'v', 0, 1)
 Defplug! nnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'n', 1, 1)
 Defplug  xnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'v', 1, 1)
-
-" Insert at list terminal
-Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
-Defplug  xnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
-Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
-Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
 """ Insert mode mappings {{{1
 

@@ -345,8 +345,8 @@ Defplug! nnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'n', 'sex
 Defplug  xnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'v', '')
 
 " Splice list
-Defplug! nnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
-Defplug  xnoremap sexp_splice_list sexp#docount(v:count, 'sexp#splice_list')
+Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)
+Defplug  xnoremap sexp_splice_list sexp#splice_list(v:count)
 
 " Swap list
 Defplug! nnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)

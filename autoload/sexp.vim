@@ -1422,12 +1422,23 @@ function! sexp#lift(mode, func, ...)
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted
-" first bracket.
-function! sexp#splice_list()
+" first bracket. Takes optional count parameter, which specifies which pair of
+" ancestor brackets to remove.
+function! sexp#splice_list(...)
     call s:set_marks_characterwise()
 
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
+
+    " Climb the expression tree a:1 times
+    if a:0 && a:1 > 1
+        let idx = a:1
+        let dir = getline(cursor[1])[cursor[2] - 1] =~ s:opening_bracket
+        while idx > 0
+            call s:move_to_nearest_bracket(dir)
+            let idx -= 1
+        endwhile
+    endif
 
     call s:set_marks_around_current_list('n', 0, 0)
 

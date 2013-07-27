@@ -42,29 +42,42 @@ The key mappings are only available in |FileType|s that match the
 |g:sexp_filetypes| option, but the <Plug> mappings are available globally, so
 you can bind them manually in any filetype:
 >
-        " Select the current compound form and send the selection to
-        " a hypothetical Lisp REPL
-        nmap <Leader><Leader> v<Plug>sexp_outer_list:SendToREPL<CR>
+        " Clojure:
+        "   Use the FireplacePrint operator from fireplace.vim [2] to evaluate
+        "   the current top-level compound form, compound form, or element
+        "   without moving the cursor.
+        nmap <Leader>F <Plug>FireplacePrint<Plug>(sexp_outer_top_list)``
+        nmap <Leader>f <Plug>FireplacePrint<Plug>(sexp_outer_list)``
+        nmap <Leader>e <Plug>FireplacePrint<Plug>(sexp_inner_element)``
+
+        " Screen.vim [3]:
+        "   Select the current top-level compound form, compound form, or
+        "   element and send it to a GNU Screen window or Tmux pane.
+        nmap <Leader>F v<Plug>(sexp_outer_top_list):ScreenSend<CR>``
+        nmap <Leader>f v<Plug>(sexp_outer_list):ScreenSend<CR>``
+        nmap <Leader>e v<Plug>(sexp_inner_element):ScreenSend<CR>``
 <
-Insert mode mappings are enabled when |g:sexp_enable_insert_mode_mappings| is
-set, which is true by default.
+Insert mode mappings are enabled by default and can be disabled with
+|g:sexp_enable_insert_mode_mappings|.
 
 All mappings can be easily changed via |g:sexp_mappings|.
 
 [1]: https://github.com/tpope/vim-repeat
+[2]: https://github.com/tpope/vim-fireplace
+[3]: https://github.com/ervandew/screen
 
 TEXT OBJECT SELECTIONS (visual, operator-pending)~
 
-af                                                           *sexp_outer_list*
-if                                                           *sexp_inner_list*
+af                                                   *<Plug>(sexp_outer_list)*
+if                                                   *<Plug>(sexp_inner_list)*
         Select [count] lists (compound FORMS) delimited by any of '(' and ')',
         '[' and ']', or '{' and '}'. Outer motion includes the delimiting
         brackets and the inner motion excludes them.
 
         Does not include surrounding whitespace.
 
-aF                                                       *sexp_outer_top_list*
-iF                                                       *sexp_inner_top_list*
+aF                                               *<Plug>(sexp_outer_top_list)*
+iF                                               *<Plug>(sexp_inner_top_list)*
         Select the current top-level list (compound FORM) delimited by any of
         '(' and ')', '[' and ']', or '{' or '}'. Outer motion includes the
         delimiting brackets and the inner motion excludes them.
@@ -76,8 +89,8 @@ iF                                                       *sexp_inner_top_list*
         on the first column. This is typically much faster than calling
         |searchpairpos()| recursively.
 
-as                                                         *sexp_outer_string*
-is                                                         *sexp_inner_string*
+as                                                 *<Plug>(sexp_outer_string)*
+is                                                 *<Plug>(sexp_inner_string)*
         Select the current string or regular expression. Outer motion includes
         surrounding quotes, inner motion excludes them.
 
@@ -88,8 +101,8 @@ is                                                         *sexp_inner_string*
         you disagree, see |g:sexp_mappings| for documentation on changing the
         default mappings.
 
-ae                                                        *sexp_outer_element*
-ie                                                        *sexp_inner_element*
+ae                                                *<Plug>(sexp_outer_element)*
+ie                                                *<Plug>(sexp_inner_element)*
         Select the current element. An element is defined as:
 
             * Current string if cursor is in a string
@@ -121,8 +134,8 @@ ie                                                        *sexp_inner_element*
 
 TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
-(                                                  *sexp_move_to_prev_bracket*
-)                                                  *sexp_move_to_next_bracket*
+(                                          *<Plug>(sexp_move_to_prev_bracket)*
+)                                          *<Plug>(sexp_move_to_next_bracket)*
         [count] paired brackets backward or forward, |exclusive|.
 
         When used in |operator-pending| mode, the following exceptions apply:
@@ -137,24 +150,24 @@ TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
         you disagree, see |g:sexp_mappings| for documentation on changing the
         default mappings.
 
-<M-b>                                         *sexp_move_to_prev_element_head*
-<M-w>                                         *sexp_move_to_next_element_head*
+<M-b>                                 *<Plug>(sexp_move_to_prev_element_head)*
+<M-w>                                 *<Plug>(sexp_move_to_next_element_head)*
         [count] elements backward or forward, |exclusive|, placing the cursor
         on the head of an element. If an element is at the beginning or end of
         a compound form, the cursor is moved to that list's bracket.
 
         Analogous to |b| and |w| motions.
 
-g<M-e>                                        *sexp_move_to_prev_element_tail*
-<M-e>                                         *sexp_move_to_next_element_tail*
+g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
+<M-e>                                 *<Plug>(sexp_move_to_next_element_tail)*
         [count] elements backward or forward, |inclusive|, placing the cursor
         on the tail of an element. If an element is at the beginning or end of
         a compound form, the cursor is moved to that list's bracket.
 
         Analogous to |ge| and |e| motions.
 
-[[                                             *sexp_move_to_prev_top_element*
-]]                                             *sexp_move_to_next_top_element*
+[[                                     *<Plug>(sexp_move_to_prev_top_element)*
+]]                                     *<Plug>(sexp_move_to_next_top_element)*
         [count] top-level elements backward or forward, |exclusive|.
 
         If |g:sexp_maxlines| is -1 (the default) and the current element is
@@ -162,8 +175,8 @@ g<M-e>                                        *sexp_move_to_prev_element_tail*
         list with a opening bracket on the first column. This is typically
         much faster than calling |searchpairpos()| recursively.
 
-[e                                                  *sexp_select_prev_element*
-]e                                                  *sexp_select_next_element*
+[e                                          *<Plug>(sexp_select_prev_element)*
+]e                                          *<Plug>(sexp_select_next_element)*
         Select [count]th element from the current element. Unlike the others,
         these motions always result in a visual selection of a single element,
         even when called from visual mode (typically the current selection is
@@ -176,12 +189,12 @@ g<M-e>                                        *sexp_move_to_prev_element_tail*
 
 WRAP COMMANDS (normal, visual)~
 
-<LocalLeader>i                                     *sexp_round_head_wrap_list*
-<LocalLeader>I                                     *sexp_round_tail_wrap_list*
-<LocalLeader>[                                    *sexp_square_head_wrap_list*
-<LocalLeader>]                                    *sexp_square_tail_wrap_list*
-<LocalLeader>{                                     *sexp_curly_head_wrap_list*
-<LocalLeader>}                                     *sexp_curly_tail_wrap_list*
+<LocalLeader>i                             *<Plug>(sexp_round_head_wrap_list)*
+<LocalLeader>I                             *<Plug>(sexp_round_tail_wrap_list)*
+<LocalLeader>[                            *<Plug>(sexp_square_head_wrap_list)*
+<LocalLeader>]                            *<Plug>(sexp_square_tail_wrap_list)*
+<LocalLeader>{                             *<Plug>(sexp_curly_head_wrap_list)*
+<LocalLeader>}                             *<Plug>(sexp_curly_tail_wrap_list)*
         Wrap the current list (compound FORM) or visual selection with '(' and
         ')', '[' and ']', or '{' and '}' and place the cursor at the head or
         tail of the newly created list.
@@ -191,12 +204,12 @@ WRAP COMMANDS (normal, visual)~
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
-<LocalLeader>W                                  *sexp_round_head_wrap_element*
-<LocalLeader>w                                  *sexp_round_tail_wrap_element*
-<LocalLeader>e[                                *sexp_square_head_wrap_element*
-<LocalLeader>e]                                *sexp_square_tail_wrap_element*
-<LocalLeader>e{                                 *sexp_curly_head_wrap_element*
-<LocalLeader>e}                                 *sexp_curly_tail_wrap_element*
+<LocalLeader>W                          *<Plug>(sexp_round_head_wrap_element)*
+<LocalLeader>w                          *<Plug>(sexp_round_tail_wrap_element)*
+<LocalLeader>e[                        *<Plug>(sexp_square_head_wrap_element)*
+<LocalLeader>e]                        *<Plug>(sexp_square_tail_wrap_element)*
+<LocalLeader>e{                         *<Plug>(sexp_curly_head_wrap_element)*
+<LocalLeader>e}                         *<Plug>(sexp_curly_tail_wrap_element)*
         Wrap the current element or visual selection with '(' and ')', '[' and
         ']', or '{' and '}' and place the cursor at the head or tail of the
         newly created list.
@@ -208,8 +221,8 @@ WRAP COMMANDS (normal, visual)~
 
 CURSOR INSERTION (normal, visual)~
 
-<LocalLeader>h                                      *sexp_insert_at_list_head*
-<LocalLeader>l                                      *sexp_insert_at_list_tail*
+<LocalLeader>h                              *<Plug>(sexp_insert_at_list_head)*
+<LocalLeader>l                              *<Plug>(sexp_insert_at_list_tail)*
         Move cursor to head or tail of current list (compound FORM) and enter
         insert mode.
 
@@ -219,22 +232,19 @@ CURSOR INSERTION (normal, visual)~
 
 LIST MANIPULATION (normal, visual)~
 
-<LocalLeader>@                                              *sexp_splice_list*
+<LocalLeader>@                                      *<Plug>(sexp_splice_list)*
         Splice the current list (compound FORM) into its parent scope [count]
         times by deleting each list's brackets.
 
-<LocalLeader>o                                                *sexp_lift_list*
-        Replace [count] enclosing lists (compound FORMs) with the current list
-        or visual selection.
-
-<LocalLeader>O                                             *sexp_lift_element*
+<LocalLeader>o                                        *<Plug>(sexp_lift_list)*
+<LocalLeader>O                                     *<Plug>(sexp_lift_element)*
         Replace [count] enclosing lists (compound FORMs) with the current
-        element or visual selection.
+        list, element, or visual selection.
 
-<M-k>                                                *sexp_swap_list_backward*
-<M-j>                                                 *sexp_swap_list_forward*
-<M-h>                                             *sexp_swap_element_backward*
-<M-l>                                              *sexp_swap_element_forward*
+<M-k>                                        *<Plug>(sexp_swap_list_backward)*
+<M-j>                                         *<Plug>(sexp_swap_list_forward)*
+<M-h>                                     *<Plug>(sexp_swap_element_backward)*
+<M-l>                                      *<Plug>(sexp_swap_element_forward)*
         Swap the current list (compound FORM), element, or visual selection
         [count] times with the adjacent list or element. Does nothing if there
         is no adjacent element in the desired direction.
@@ -247,10 +257,10 @@ LIST MANIPULATION (normal, visual)~
         swap is done pairwise to preserve the associative structure of the
         containing compound form.
 
-<M-S-j>                                               *sexp_emit_head_element*
-<M-S-k>                                               *sexp_emit_tail_element*
-<M-S-h>                                            *sexp_capture_prev_element*
-<M-S-l>                                            *sexp_capture_next_element*
+<M-S-j>                                       *<Plug>(sexp_emit_head_element)*
+<M-S-k>                                       *<Plug>(sexp_emit_tail_element)*
+<M-S-h>                                    *<Plug>(sexp_capture_prev_element)*
+<M-S-l>                                    *<Plug>(sexp_capture_next_element)*
         Emit [count] terminal elements of the current list, or capture [count]
         elements adjacent to the current list. A list will never emit its last
         element and will never capture its parent.
@@ -259,9 +269,9 @@ LIST MANIPULATION (normal, visual)~
 
 INSERT MODE MAPPINGS (insert, optional)~
 
-(                                                  *sexp_insert_opening_round*
-[                                                 *sexp_insert_opening_square*
-{                                                  *sexp_insert_opening_curly*
+(                                          *<Plug>(sexp_insert_opening_round)*
+[                                         *<Plug>(sexp_insert_opening_square)*
+{                                          *<Plug>(sexp_insert_opening_curly)*
         Insert a pair of '(' and ')', '[' and ']', or '{' and '}', inserting
         spaces as necessary to separate the new list from adjacent
         non-compound elements.
@@ -271,9 +281,9 @@ INSERT MODE MAPPINGS (insert, optional)~
 
         To force insertion of the bracket, precede it with |i_Ctrl-V|.
 
-)                                                  *sexp_insert_closing_round*
-]                                                 *sexp_insert_closing_square*
-}                                                  *sexp_insert_closing_curly*
+)                                          *<Plug>(sexp_insert_closing_round)*
+]                                         *<Plug>(sexp_insert_closing_square)*
+}                                          *<Plug>(sexp_insert_closing_curly)*
         Insert a closing ')', ']', or '}' if the corresponding opening bracket
         is unpaired. If it is paired, jump to the next paired instance of
         the closing bracket. If the cursor is on the paired closing bracket,
@@ -284,7 +294,7 @@ INSERT MODE MAPPINGS (insert, optional)~
 
         To force insertion of the bracket, precede it with |i_Ctrl-V|.
 
-"                                                   *sexp_insert_double_quote*
+"                                           *<Plug>(sexp_insert_double_quote)*
         Insert a pair of double quotes, inserting spaces as necessary to
         separate the new string from adjacent non-compound elements.
 
@@ -298,7 +308,7 @@ INSERT MODE MAPPINGS (insert, optional)~
 
         To force insertion of the quote, precede it with |i_Ctrl-V|.
 
-<BS>                                                   *sexp_insert_backspace*
+<BS>                                           *<Plug>(sexp_insert_backspace)*
         Delete adjacent double quotes from within a string, unless the leading
         quote is preceded by another quote or a backslash.
 
@@ -325,14 +335,15 @@ Toggle insert mode mappings in |g:sexp_filetypes|.
 <
                                                     *g:sexp_insert_after_wrap*
 Enter insert mode (and append a space after the opening bracket when inserting
-at head) after using a wrap command like |sexp_round_head_wrap_list|.
+at head) after using a wrap command like |<Plug>(sexp_round_head_wrap_list)|.
 >
         " Default
         let g:sexp_insert_after_wrap = 1
 <
                                                              *g:sexp_mappings*
 Dictionary of user vim-sexp mappings. Keys are the <Plug> names without
-"<Plug>", and the values are the key sequences you wish to bind to.
+"<Plug>" or the surrounding parentheses, and the values are the key sequences
+you wish to bind to.
 
 This dictionary is merged over the dictionary of default mappings, so it is
 not necessary to copy all the entries to change a few.
@@ -410,8 +421,8 @@ its match, which can be slow if the nearest bracket is far from the cursor.
 If g:sexp_maxlines is positive, the scan is limited to this number of lines,
 trading accuracy for performance.
 
-If searching for a top-level compound form via |sexp_outer_top_list|
-or |sexp_move_to_prev_top_element| with g:sexp_maxlines equal to 0,
+If searching for a top-level compound form via |<Plug>(sexp_outer_top_list)|
+or |<Plug>(sexp_move_to_prev_top_element)| with g:sexp_maxlines equal to 0,
 |searchpairpos()| will be run recursively until the whole buffer is scanned
 for possible unpaired brackets. In moderately large buffers, this is an
 extremely slow operation. Setting g:sexp_maxlines to about 100 removes this

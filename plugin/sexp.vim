@@ -110,7 +110,7 @@ command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(!empty('<bang>')
 " were not introduced until patch 7.3.377.
 "
 function! s:defplug(flags, mapmode, name, ...)
-    let lhs = a:mapmode . ' <silent> <Plug>' . a:name
+    let lhs = a:mapmode . ' <silent> <Plug>(' . a:name . ')'
     let rhs = join(a:000)
 
     let asexpr = a:flags[0] == '1'
@@ -123,6 +123,11 @@ function! s:defplug(flags, mapmode, name, ...)
         execute lhs . ' ' . rhs
         return 1
     endif
+
+    " Deprecate unparenthesized <Plug> maps
+    execute a:mapmode . ' <silent> <Plug>' . a:name . ' '
+          \ . ':<C-u>echoerr "[vim-sexp] `<Plug>' . a:name . '` has been renamed to'
+          \ . '`<Plug>(' . a:name . ')`. Please update your mappings."<CR>'
 
     " Common mapping prefix
     " RE: vv
@@ -142,13 +147,13 @@ function! s:defplug(flags, mapmode, name, ...)
     elseif opmode
         execute prefix . ' \| '
                 \ . 'if v:operator ==? "c" \| '
-                \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
+                \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
                 \ . 'else \| '
-                \ . '  call <SID>repeat_set(v:operator . "\<Plug>' . a:name . '", b:sexp_count) \| '
+                \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')", b:sexp_count) \| '
                 \ . 'endif<CR>'
     " Expression, repeating, non-operator-pending mode
     else
-        execute prefix . ' \| call <SID>repeat_set("\<Plug>' . a:name . '", b:sexp_count)<CR>'
+        execute prefix . ' \| call <SID>repeat_set("\<Plug>(' . a:name . ')", b:sexp_count)<CR>'
     endif
 endfunction
 
@@ -173,8 +178,8 @@ function! s:sexp_create_mappings()
                \ 'sexp_outer_element',  'sexp_inner_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
-            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
-            execute 'omap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            execute 'omap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
         endif
     endfor
 
@@ -185,9 +190,9 @@ function! s:sexp_create_mappings()
                \ 'sexp_select_prev_element',       'sexp_select_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
-            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
-            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
-            execute 'omap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            execute 'omap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
         endif
     endfor
 
@@ -206,20 +211,20 @@ function! s:sexp_create_mappings()
                \ 'sexp_capture_prev_element',     'sexp_capture_next_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
-            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>' . plug
-            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>' . plug
+            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
         endif
     endfor
 
     if g:sexp_enable_insert_mode_mappings
-        imap <buffer> (    <Plug>sexp_insert_opening_round
-        imap <buffer> [    <Plug>sexp_insert_opening_square
-        imap <buffer> {    <Plug>sexp_insert_opening_curly
-        imap <buffer> )    <Plug>sexp_insert_closing_round
-        imap <buffer> ]    <Plug>sexp_insert_closing_square
-        imap <buffer> }    <Plug>sexp_insert_closing_curly
-        imap <buffer> "    <Plug>sexp_insert_double_quote
-        imap <buffer> <BS> <Plug>sexp_insert_backspace
+        imap <buffer> (    <Plug>(sexp_insert_opening_round)
+        imap <buffer> [    <Plug>(sexp_insert_opening_square)
+        imap <buffer> {    <Plug>(sexp_insert_opening_curly)
+        imap <buffer> )    <Plug>(sexp_insert_closing_round)
+        imap <buffer> ]    <Plug>(sexp_insert_closing_square)
+        imap <buffer> }    <Plug>(sexp_insert_closing_curly)
+        imap <buffer> "    <Plug>(sexp_insert_double_quote)
+        imap <buffer> <BS> <Plug>(sexp_insert_backspace)
     endif
 endfunction
 
@@ -373,20 +378,20 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop'
 """ Insert mode mappings {{{1
 
 " Insert opening delimiter
-inoremap <silent><expr> <Plug>sexp_insert_opening_round  sexp#opening_insertion('(')
-inoremap <silent><expr> <Plug>sexp_insert_opening_square sexp#opening_insertion('[')
-inoremap <silent><expr> <Plug>sexp_insert_opening_curly  sexp#opening_insertion('{')
+inoremap <silent><expr> <Plug>(sexp_insert_opening_round)  sexp#opening_insertion('(')
+inoremap <silent><expr> <Plug>(sexp_insert_opening_square) sexp#opening_insertion('[')
+inoremap <silent><expr> <Plug>(sexp_insert_opening_curly)  sexp#opening_insertion('{')
 
 " Insert closing delimiter
-inoremap <silent><expr> <Plug>sexp_insert_closing_round  sexp#closing_insertion(')')
-inoremap <silent><expr> <Plug>sexp_insert_closing_square sexp#closing_insertion(']')
-inoremap <silent><expr> <Plug>sexp_insert_closing_curly  sexp#closing_insertion('}')
+inoremap <silent><expr> <Plug>(sexp_insert_closing_round)  sexp#closing_insertion(')')
+inoremap <silent><expr> <Plug>(sexp_insert_closing_square) sexp#closing_insertion(']')
+inoremap <silent><expr> <Plug>(sexp_insert_closing_curly)  sexp#closing_insertion('}')
 
 " Insert double quote
-inoremap <silent><expr> <Plug>sexp_insert_double_quote sexp#quote_insertion('"')
+inoremap <silent><expr> <Plug>(sexp_insert_double_quote) sexp#quote_insertion('"')
 
 " Delete paired delimiters
-inoremap <silent><expr> <Plug>sexp_insert_backspace sexp#backspace_insertion()
+inoremap <silent><expr> <Plug>(sexp_insert_backspace) sexp#backspace_insertion()
 
 """ Cleanup {{{1
 

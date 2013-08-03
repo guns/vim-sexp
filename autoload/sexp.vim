@@ -385,10 +385,7 @@ function! s:current_element_terminal(end)
     endif
 endfunction
 
-" Returns position of previous/next element's head/tail. If the current
-" element is the first or last element in the current list, the enclosing
-" list's terminal bracket position is returned instead.
-"
+" Returns position of previous/next element's head/tail.
 " Returns current element's terminal if no adjacent element exists.
 function! s:nearest_element_terminal(next, tail)
     let cursor = getpos('.')
@@ -414,9 +411,12 @@ function! s:nearest_element_terminal(next, tail)
         " We are at the beginning or end of file
         if adjacent[1] < 1 || s:compare_pos(pos, adjacent) == 0
             throw 'sexp-error'
-        else
-            let pos = adjacent
+        " Or we are at the head or tail of a list
+        elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
+            throw 'sexp-error'
         endif
+
+        let pos = adjacent
 
         " We are at a head if moving forward or at a tail if moving backward
         if (a:next && !a:tail) || (!a:next && a:tail)
@@ -849,12 +849,37 @@ function! sexp#move_to_nearest_bracket(mode, next)
     endif
 endfunction
 
-" Calls s:move_to_adjacent_element, but extends the current visual selection
-" if mode is 'v'.
-function! sexp#move_to_adjacent_element(mode, next, tail, top)
-    return a:mode ==? 'v'
-           \ ? s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:tail, a:top)
-           \ : s:move_to_adjacent_element(a:next, a:tail, a:top)
+" Calls s:move_to_adjacent_element count times, with the following additional
+" behaviours:
+"
+" * If mode == 'v', the current visual selection is extended
+" * If mode == 'o'
+"   - The selection is exclusive if tail is 0
+"   - The selection is inclusive if tail is 1
+"   - The selection is inclusive if tail is 0, next is 1, and the final
+"     position of the cursor is not at an element head
+"
+"   The last case handles operations on head-wise forward movement that are
+"   bounded by the parent list.
+function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
+    if a:mode ==? 'n'
+        return sexp#docount(a:count, 's:move_to_adjacent_element', a:next, a:tail, a:top)
+    elseif a:mode ==? 'v'
+        return sexp#docount(a:count, 's:move_cursor_extending_selection', 's:move_to_adjacent_element', a:next, a:tail, a:top)
+    elseif a:mode ==? 'o'
+        let cursor = getpos('.')
+        call sexp#docount(a:count, 's:move_to_adjacent_element', a:next, a:tail, a:top)
+        let pos = getpos('.')
+
+        " Bail out if the cursor has not moved
+        if s:compare_pos(cursor, pos) == 0
+            return 0
+        " We make selections inclusive by entering visual mode
+        elseif a:tail || (a:next && s:compare_pos(pos, s:current_element_terminal(0)) != 0)
+            call s:set_visual_marks([cursor, pos])
+            return s:select_current_marks('o')
+        endif
+    endif
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts
@@ -1340,14 +1365,10 @@ function! s:swap_current_selection(mode, next, pairwise)
     silent! normal! "by
     let marks['b'] = s:get_visual_marks()
 
-    " Abort if we are already at the head or tail of the current list; we can
-    " determine this by seeing if the adjacent element contains the original
-    " element. Also abort if the selections are the same, which indicates that
-    " we are at the top or bottom of the file.
-    let b_cmp_a = s:compare_pos(marks['b'][0], marks['a'][0])
-    if b_cmp_a == 0
-        \ || (a:next && b_cmp_a < 0)
-        \ || (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
+    " Abort if we are already at the head or tail of the current list or at
+    " the top or bottom of the file. In these cases the start/end mark will be
+    " the same in the direction of movement.
+    if s:compare_pos(marks['a'][a:next], marks['b'][a:next]) == 0
         return 0
     endif
 

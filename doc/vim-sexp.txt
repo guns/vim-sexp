@@ -140,6 +140,7 @@ TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
         When used in |operator-pending| mode, the following exceptions apply:
 
+            * [count] is ignored
             * Backward motion excludes the foremost bracket
             * Forward motion from a bracket excludes both the current bracket
               and the last bracket, unless the resulting selection is empty,

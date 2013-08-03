@@ -22,6 +22,8 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
 " * Ignore non-changing operators when repeating?
+" * Optimize movement between top-level elements when cursor is already on
+"   first column and g:sexp_maxlines == -1
 
 """ PATTERNS AND STATE {{{1
 

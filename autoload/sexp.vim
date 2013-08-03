@@ -849,12 +849,37 @@ function! sexp#move_to_nearest_bracket(mode, next)
     endif
 endfunction
 
-" Calls s:move_to_adjacent_element, but extends the current visual selection
-" if mode is 'v'.
-function! sexp#move_to_adjacent_element(mode, next, tail, top)
-    return a:mode ==? 'v'
-           \ ? s:move_cursor_extending_selection('s:move_to_adjacent_element', a:next, a:tail, a:top)
-           \ : s:move_to_adjacent_element(a:next, a:tail, a:top)
+" Calls s:move_to_adjacent_element count times, with the following additional
+" behaviours:
+"
+" * If mode == 'v', the current visual selection is extended
+" * If mode == 'o'
+"   - The selection is exclusive if tail is 0
+"   - The selection is inclusive if tail is 1
+"   - The selection is inclusive if tail is 0, next is 1, and the final
+"     position of the cursor is not at an element head
+"
+"   The last case handles operations on head-wise forward movement that are
+"   bounded by the parent list.
+function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
+    if a:mode ==? 'n'
+        return sexp#docount(a:count, 's:move_to_adjacent_element', a:next, a:tail, a:top)
+    elseif a:mode ==? 'v'
+        return sexp#docount(a:count, 's:move_cursor_extending_selection', 's:move_to_adjacent_element', a:next, a:tail, a:top)
+    elseif a:mode ==? 'o'
+        let cursor = getpos('.')
+        call sexp#docount(a:count, 's:move_to_adjacent_element', a:next, a:tail, a:top)
+        let pos = getpos('.')
+
+        " Bail out if the cursor has not moved
+        if s:compare_pos(cursor, pos) == 0
+            return 0
+        " We make selections inclusive by entering visual mode
+        elseif a:tail || (a:next && s:compare_pos(pos, s:current_element_terminal(0)) != 0)
+            call s:set_visual_marks([cursor, pos])
+            return s:select_current_marks('o')
+        endif
+    endif
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts

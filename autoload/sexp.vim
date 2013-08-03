@@ -1483,7 +1483,7 @@ function! sexp#splice_list(...)
         call setpos('.', start)
         normal! dl
     else
-        call setpos('.' cursor)
+        call setpos('.', cursor)
     endif
 
     call s:set_visual_marks(marks)

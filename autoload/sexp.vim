@@ -385,10 +385,7 @@ function! s:current_element_terminal(end)
     endif
 endfunction
 
-" Returns position of previous/next element's head/tail. If the current
-" element is the first or last element in the current list, the enclosing
-" list's terminal bracket position is returned instead.
-"
+" Returns position of previous/next element's head/tail.
 " Returns current element's terminal if no adjacent element exists.
 function! s:nearest_element_terminal(next, tail)
     let cursor = getpos('.')
@@ -414,9 +411,12 @@ function! s:nearest_element_terminal(next, tail)
         " We are at the beginning or end of file
         if adjacent[1] < 1 || s:compare_pos(pos, adjacent) == 0
             throw 'sexp-error'
-        else
-            let pos = adjacent
+        " Or we are at the head or tail of a list
+        elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
+            throw 'sexp-error'
         endif
+
+        let pos = adjacent
 
         " We are at a head if moving forward or at a tail if moving backward
         if (a:next && !a:tail) || (!a:next && a:tail)

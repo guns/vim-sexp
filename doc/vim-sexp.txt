@@ -153,17 +153,17 @@ TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
 <M-b>                                 *<Plug>(sexp_move_to_prev_element_head)*
 <M-w>                                 *<Plug>(sexp_move_to_next_element_head)*
-        [count] elements backward or forward, |exclusive|, placing the cursor
-        on the head of an element. If an element is at the beginning or end of
-        a compound form, the cursor is moved to that list's bracket.
+        [count] sibling elements backward or forward, |exclusive|, placing the
+        cursor on the head of an element. Movement is bounded by the parent
+        list, if any.
 
         Analogous to |b| and |w| motions.
 
 g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
 <M-e>                                 *<Plug>(sexp_move_to_next_element_tail)*
-        [count] elements backward or forward, |inclusive|, placing the cursor
-        on the tail of an element. If an element is at the beginning or end of
-        a compound form, the cursor is moved to that list's bracket.
+        [count] sibling elements backward or forward, |inclusive|, placing the
+        cursor on the tail of an element. Movement is bounded by the parent
+        list, if any.
 
         Analogous to |ge| and |e| motions.
 
@@ -264,7 +264,7 @@ LIST MANIPULATION (normal, visual)~
 <M-S-l>                                    *<Plug>(sexp_capture_next_element)*
         Emit [count] terminal elements of the current list, or capture [count]
         elements adjacent to the current list. A list will never emit its last
-        element and will never capture its parent.
+        element and can not capture its parent.
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 

@@ -24,6 +24,8 @@ let g:sexp_autoloaded = 1
 " * Ignore non-changing operators when repeating?
 " * Optimize movement between top-level elements when cursor is already on
 "   first column and g:sexp_maxlines == -1
+" * Remove unnecessary out-of-bounds handling after element-wise movement now
+"   that such movement is always bounded
 
 """ PATTERNS AND STATE {{{1
 

@@ -1340,14 +1340,10 @@ function! s:swap_current_selection(mode, next, pairwise)
     silent! normal! "by
     let marks['b'] = s:get_visual_marks()
 
-    " Abort if we are already at the head or tail of the current list; we can
-    " determine this by seeing if the adjacent element contains the original
-    " element. Also abort if the selections are the same, which indicates that
-    " we are at the top or bottom of the file.
-    let b_cmp_a = s:compare_pos(marks['b'][0], marks['a'][0])
-    if b_cmp_a == 0
-        \ || (a:next && b_cmp_a < 0)
-        \ || (!a:next && s:compare_pos(marks['b'][1], marks['a'][1]) > 0)
+    " Abort if we are already at the head or tail of the current list or at
+    " the top or bottom of the file. In these cases the start/end mark will be
+    " the same in the direction of movement.
+    if s:compare_pos(marks['a'][a:next], marks['b'][a:next]) == 0
         return 0
     endif
 

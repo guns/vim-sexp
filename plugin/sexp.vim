@@ -35,6 +35,7 @@ if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
 
+" XXX: REMOVE sexp_lift_*
 let s:sexp_mappings = {
     \ 'sexp_outer_list':                'af',
     \ 'sexp_inner_list':                'if',
@@ -71,6 +72,8 @@ let s:sexp_mappings = {
     \ 'sexp_splice_list':               '<LocalLeader>@',
     \ 'sexp_lift_list':                 '<LocalLeader>o',
     \ 'sexp_lift_element':              '<LocalLeader>O',
+    \ 'sexp_raise_list':                '<LocalLeader>o',
+    \ 'sexp_raise_element':             '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
     \ 'sexp_swap_list_forward':         '<M-j>',
     \ 'sexp_swap_element_backward':     '<M-h>',
@@ -124,10 +127,10 @@ function! s:defplug(flags, mapmode, name, ...)
         return 1
     endif
 
-    " Deprecate unparenthesized <Plug> maps
+    " XXX: REMOVE unparenthesized <Plug> maps
     execute a:mapmode . ' <silent> <Plug>' . a:name . ' '
-          \ . ':<C-u>echoerr "[vim-sexp] `<Plug>' . a:name . '` has been renamed to'
-          \ . '`<Plug>(' . a:name . ')`. Please update your mappings."<CR>'
+          \ . ':<C-u>call sexp#alert("`<Plug>' . a:name . '` has been renamed to'
+          \ . '`<Plug>(' . a:name . ')`. Please update your mappings.")<CR>'
 
     " Common mapping prefix
     " RE: vv
@@ -196,6 +199,7 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
+    " XXX: REMOVE sexp_lift_*
     for plug in ['sexp_round_head_wrap_list',     'sexp_round_tail_wrap_list',
                \ 'sexp_square_head_wrap_list',    'sexp_square_tail_wrap_list',
                \ 'sexp_curly_head_wrap_list',     'sexp_curly_tail_wrap_list',
@@ -205,6 +209,7 @@ function! s:sexp_create_mappings()
                \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
                \ 'sexp_splice_list',
                \ 'sexp_lift_list',                'sexp_lift_element',
+               \ 'sexp_raise_list',               'sexp_raise_element',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
@@ -341,11 +346,16 @@ Defplug  xnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
 Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
-" Lift list
-Defplug! nnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_list', 'n', 0, 0)
-Defplug  xnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'v', '')
-Defplug! nnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_element', 'n', 1)
-Defplug  xnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'v', '')
+" Raise list
+Defplug! nnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_list', 'n', 0, 0)
+Defplug  xnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'v', '')
+Defplug! nnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
+Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', '')
+" XXX: REMOVED
+Defplug! nnoremap sexp_lift_list     sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
+Defplug  xnoremap sexp_lift_list     sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
+Defplug! nnoremap sexp_lift_element  sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
+Defplug  xnoremap sexp_lift_element  sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)

@@ -70,6 +70,11 @@ function! s:macro_chars()
     endif
 endfunction
 
+" Alert the user to any breaking changes
+function! sexp#alert(msg)
+    echoerr '[vim-sexp] ' . a:msg
+endfunction
+
 """ QUERIES AT CURSOR {{{1
 
 " Simple wrapper around searchpos() with flags 'nW', and optionally the
@@ -1442,7 +1447,7 @@ endfunction
 
 " Replace parent list with selection resulting from executing func with given
 " varargs.
-function! sexp#lift(mode, func, ...)
+function! sexp#raise(mode, func, ...)
     if a:mode ==# 'v'
         call s:select_current_marks('v')
     else
@@ -1451,6 +1456,10 @@ function! sexp#lift(mode, func, ...)
     normal! d
     call sexp#select_current_list('n', 0, 0)
     normal! p
+endfunction
+" XXX: REMOVED
+function! sexp#lift(...)
+    call sexp#alert("sexp#lift() has been renamed to sexp#raise()")
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted

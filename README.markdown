@@ -104,8 +104,8 @@ commands are called from visual mode, the selection is used in place of the
 current COMPOUND FORM or ELEMENT.
 
 * `<LocalLeader>@` splices the current COMPOUND FORM into its parent.
-* `<LocalLeader>o` lifts the current COMPOUND FORM to replace the enclosing COMPOUND FORM.
-* `<LocalLeader>O` lifts the current ELEMENT to replace the enclosing COMPOUND FORM.
+* `<LocalLeader>o` raises the current COMPOUND FORM to replace the enclosing COMPOUND FORM.
+* `<LocalLeader>O` raises the current ELEMENT to replace the enclosing COMPOUND FORM.
 * `<M-k>` and `<M-j>` swap the position of the current COMPOUND FORM with a sibling ELEMENT.
 * `<M-h>` and `<M-l>` swap the position of the current ELEMENT with a sibling ELEMENT.
 * `<M-S-j>` and `<M-S-k>` emit the terminal ELEMENTS of the current COMPOUND FORM.

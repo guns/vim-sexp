@@ -22,8 +22,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
 " * Ignore non-changing operators when repeating?
-" * Optimize movement between top-level elements when cursor is already on
-"   first column and g:sexp_maxlines == -1
 " * Remove unnecessary out-of-bounds handling after element-wise movement now
 "   that such movement is always bounded
 
@@ -153,15 +151,13 @@ function! s:current_top_list_bracket_by_first_column(closing)
         endif
     endwhile
 
-    let closing = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
-                  \ ? s:nearest_bracket(1)
-                  \ : [0, 0, 0, 0]
+    let pos = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
+              \ ? (a:closing ? s:nearest_bracket(1) : [0, line, col, 0])
+              \ : [0, 0, 0, 0]
 
     call setpos('.', cursor)
 
-    return closing[1] > 0
-           \ ? (a:closing ? closing : [0, line, col, 0])
-           \ : [0, 0, 0, 0]
+    return pos
 endfunction
 
 " Return current list's top-level bracket using searchpairpos() with

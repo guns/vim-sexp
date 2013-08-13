@@ -696,6 +696,12 @@ function! s:is_atom(line, col)
     endif
 endfunction
 
+" Returns 1 if vmode is blank or equals 'v', 0 otherwise. Vim defaults to 'v'
+" if the vmode member has not yet been set.
+function! s:is_characterwise(vmode)
+    return a:vmode ==# 'v' || a:vmode ==# ''
+endfunction
+
 " Returns -1 if position a is before position b, 1 if position a is after
 " position b, and 0 if they are the same position. Only compares the line and
 " column, ignoring buffer and offset.
@@ -1147,7 +1153,7 @@ endfunction
 function! s:select_current_marks(mode)
     if getpos("'<")[1] > 0
         normal! gv
-        if visualmode() !=# 'v'
+        if !s:is_characterwise(visualmode())
             normal! v
         endif
         return 1
@@ -1161,7 +1167,7 @@ endfunction
 
 " Convert visual marks to a characterwise selection if visualmode() is not 'v'
 function! s:set_marks_characterwise()
-    if visualmode() !=# 'v'
+    if !s:is_characterwise(visualmode())
         call s:select_current_marks('v')
         execute "normal! \<Esc>"
     endif

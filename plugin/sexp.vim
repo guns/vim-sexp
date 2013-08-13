@@ -134,9 +134,9 @@ function! s:defplug(flags, mapmode, name, ...)
 
     " Common mapping prefix
     " RE: vv
-    "   Due to a bug in vim, we need to set curwin->w_curswant to the current
-    "   cursor position by entering and exiting character-wise visual mode
-    "   before completing an operator-pending command so that the cursor
+    "   Due to a ?bug? in vim, we need to set curwin->w_curswant to the
+    "   current cursor position by entering and exiting character-wise visual
+    "   mode before completing an operator-pending command so that the cursor
     "   returns to its original position after an = command.
     let prefix = lhs . ' '
                  \ . ':<C-u>let b:sexp_count = v:count \| '
@@ -259,7 +259,7 @@ Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0)
 Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1)
 Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1)
 
-""" Directional motions {{{1
+""" Text Object Motions {{{1
 
 " Nearest bracket
 Defplug  nnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)

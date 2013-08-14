@@ -1430,6 +1430,29 @@ function! s:swap_current_selection(mode, next, pairwise)
     return 1
 endfunction
 
+" Indent S-Expression, maintaining cursor position. This is similar to mapping
+" to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
+" elements not contained in an compound form (e.g. top-level comments).
+function! sexp#indent(top, count)
+    let win = winsaveview()
+
+    " Move to current list tail since the expansion step of
+    " s:set_marks_around_current_list() happens at the tail.
+    let pos = s:move_to_nearest_bracket(1)
+
+    normal! v
+    if pos[1] < 1
+        keepjumps call sexp#select_current_element('v', 1)
+    elseif a:top
+        keepjumps call sexp#select_current_top_list('v', 0)
+    else
+        keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+    endif
+    normal! =
+
+    call winrestview(win)
+endfunction
+
 " Place brackets around scope, then place cursor at head or tail, finally
 " leaving off in insert mode if specified. Insert also sets the headspace
 " parameter when inserting brackets.

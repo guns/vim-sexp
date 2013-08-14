@@ -82,6 +82,11 @@ operator-pending mode.
 * The `[[` and `]]` motions move the cursor to an adjacent top-level ELEMENT.
 * The `[e` and `]e` mappings select an adjacent ELEMENT.
 
+### Indent Commands (normal)
+
+* `==` indents the current COMPOUND FORM without moving the cursor
+* `=-` indents the current top-level COMPOUND FORM without moving the cursor
+
 ### Wrap Commands (normal, visual)
 
 Wrap commands wrap the current COMPOUND FORM, ELEMENT, or visual selection and

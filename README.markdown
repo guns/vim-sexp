@@ -115,8 +115,8 @@ The last two commands are also known as `barfage` and `slurpage` in [paredit.el]
 
 ### Cursor Insertion (normal, visual)
 
-* `<LocalLeader>h` and `<LocalLeader>l` insert the cursor at the head and tail
-  of the current COMPOUND FORM, respectively.
+* `<LocalLeader>h` inserts the cursor at the head of the current COMPOUND FORM
+* `<LocalLeader>l` inserts the cursor at the tail of the current COMPOUND FORM
 
 If inserting at the head, a space is conditionally appended after the opening
 bracket so that any typed characters will be separated from the next element.

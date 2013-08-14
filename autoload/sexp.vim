@@ -22,8 +22,6 @@ let g:sexp_autoloaded = 1
 " * Don't ignore virtualedit mode?
 " * Comments should always be swapped to their own line
 " * Ignore non-changing operators when repeating?
-" * Optimize movement between top-level elements when cursor is already on
-"   first column and g:sexp_maxlines == -1
 " * Remove unnecessary out-of-bounds handling after element-wise movement now
 "   that such movement is always bounded
 
@@ -68,6 +66,11 @@ function! s:macro_chars()
     else
         return nr2char(0x01)
     endif
+endfunction
+
+" Alert the user to any breaking changes
+function! sexp#alert(msg)
+    echoerr '[vim-sexp] ' . a:msg
 endfunction
 
 """ QUERIES AT CURSOR {{{1
@@ -148,15 +151,13 @@ function! s:current_top_list_bracket_by_first_column(closing)
         endif
     endwhile
 
-    let closing = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
-                  \ ? s:nearest_bracket(1)
-                  \ : [0, 0, 0, 0]
+    let pos = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
+              \ ? (a:closing ? s:nearest_bracket(1) : [0, line, col, 0])
+              \ : [0, 0, 0, 0]
 
     call setpos('.', cursor)
 
-    return closing[1] > 0
-           \ ? (a:closing ? closing : [0, line, col, 0])
-           \ : [0, 0, 0, 0]
+    return pos
 endfunction
 
 " Return current list's top-level bracket using searchpairpos() with
@@ -695,6 +696,12 @@ function! s:is_atom(line, col)
     endif
 endfunction
 
+" Returns 1 if vmode is blank or equals 'v', 0 otherwise. Vim defaults to 'v'
+" if the vmode member has not yet been set.
+function! s:is_characterwise(vmode)
+    return a:vmode ==# 'v' || a:vmode ==# ''
+endfunction
+
 " Returns -1 if position a is before position b, 1 if position a is after
 " position b, and 0 if they are the same position. Only compares the line and
 " column, ignoring buffer and offset.
@@ -1146,7 +1153,7 @@ endfunction
 function! s:select_current_marks(mode)
     if getpos("'<")[1] > 0
         normal! gv
-        if visualmode() !=# 'v'
+        if !s:is_characterwise(visualmode())
             normal! v
         endif
         return 1
@@ -1160,7 +1167,7 @@ endfunction
 
 " Convert visual marks to a characterwise selection if visualmode() is not 'v'
 function! s:set_marks_characterwise()
-    if visualmode() !=# 'v'
+    if !s:is_characterwise(visualmode())
         call s:select_current_marks('v')
         execute "normal! \<Esc>"
     endif
@@ -1423,6 +1430,29 @@ function! s:swap_current_selection(mode, next, pairwise)
     return 1
 endfunction
 
+" Indent S-Expression, maintaining cursor position. This is similar to mapping
+" to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
+" elements not contained in an compound form (e.g. top-level comments).
+function! sexp#indent(top, count)
+    let win = winsaveview()
+
+    " Move to current list tail since the expansion step of
+    " s:set_marks_around_current_list() happens at the tail.
+    let pos = s:move_to_nearest_bracket(1)
+
+    normal! v
+    if pos[1] < 1
+        keepjumps call sexp#select_current_element('v', 1)
+    elseif a:top
+        keepjumps call sexp#select_current_top_list('v', 0)
+    else
+        keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+    endif
+    normal! =
+
+    call winrestview(win)
+endfunction
+
 " Place brackets around scope, then place cursor at head or tail, finally
 " leaving off in insert mode if specified. Insert also sets the headspace
 " parameter when inserting brackets.
@@ -1442,7 +1472,7 @@ endfunction
 
 " Replace parent list with selection resulting from executing func with given
 " varargs.
-function! sexp#lift(mode, func, ...)
+function! sexp#raise(mode, func, ...)
     if a:mode ==# 'v'
         call s:select_current_marks('v')
     else
@@ -1451,6 +1481,10 @@ function! sexp#lift(mode, func, ...)
     normal! d
     call sexp#select_current_list('n', 0, 0)
     normal! p
+endfunction
+" XXX: REMOVED
+function! sexp#lift(...)
+    call sexp#alert("sexp#lift() has been renamed to sexp#raise()")
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted

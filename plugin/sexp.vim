@@ -35,6 +35,7 @@ if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
 
+" XXX: REMOVE sexp_lift_*
 let s:sexp_mappings = {
     \ 'sexp_outer_list':                'af',
     \ 'sexp_inner_list':                'if',
@@ -54,6 +55,8 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_top_element':  ']]',
     \ 'sexp_select_prev_element':       '[e',
     \ 'sexp_select_next_element':       ']e',
+    \ 'sexp_indent':                    '==',
+    \ 'sexp_indent_top':                '=-',
     \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
     \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
     \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -71,6 +74,8 @@ let s:sexp_mappings = {
     \ 'sexp_splice_list':               '<LocalLeader>@',
     \ 'sexp_lift_list':                 '<LocalLeader>o',
     \ 'sexp_lift_element':              '<LocalLeader>O',
+    \ 'sexp_raise_list':                '<LocalLeader>o',
+    \ 'sexp_raise_element':             '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
     \ 'sexp_swap_list_forward':         '<M-j>',
     \ 'sexp_swap_element_backward':     '<M-h>',
@@ -124,16 +129,16 @@ function! s:defplug(flags, mapmode, name, ...)
         return 1
     endif
 
-    " Deprecate unparenthesized <Plug> maps
+    " XXX: REMOVE unparenthesized <Plug> maps
     execute a:mapmode . ' <silent> <Plug>' . a:name . ' '
-          \ . ':<C-u>echoerr "[vim-sexp] `<Plug>' . a:name . '` has been renamed to'
-          \ . '`<Plug>(' . a:name . ')`. Please update your mappings."<CR>'
+          \ . ':<C-u>call sexp#alert("`<Plug>' . a:name . '` has been renamed to'
+          \ . '`<Plug>(' . a:name . ')`. Please update your mappings.")<CR>'
 
     " Common mapping prefix
     " RE: vv
-    "   Due to a bug in vim, we need to set curwin->w_curswant to the current
-    "   cursor position by entering and exiting character-wise visual mode
-    "   before completing an operator-pending command so that the cursor
+    "   Due to a ?bug? in vim, we need to set curwin->w_curswant to the
+    "   current cursor position by entering and exiting character-wise visual
+    "   mode before completing an operator-pending command so that the cursor
     "   returns to its original position after an = command.
     let prefix = lhs . ' '
                  \ . ':<C-u>let b:sexp_count = v:count \| '
@@ -196,6 +201,14 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
+    for plug in ['sexp_indent', 'sexp_indent_top']
+        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
+        if !empty(lhs)
+            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+        endif
+    endfor
+
+    " XXX: REMOVE sexp_lift_*
     for plug in ['sexp_round_head_wrap_list',     'sexp_round_tail_wrap_list',
                \ 'sexp_square_head_wrap_list',    'sexp_square_tail_wrap_list',
                \ 'sexp_curly_head_wrap_list',     'sexp_curly_tail_wrap_list',
@@ -205,6 +218,7 @@ function! s:sexp_create_mappings()
                \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
                \ 'sexp_splice_list',
                \ 'sexp_lift_list',                'sexp_lift_element',
+               \ 'sexp_raise_list',               'sexp_raise_element',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
@@ -254,7 +268,7 @@ Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0)
 Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1)
 Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1)
 
-""" Directional motions {{{1
+""" Text Object Motions {{{1
 
 " Nearest bracket
 Defplug  nnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)
@@ -307,6 +321,10 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 
 """ Commands {{{1
 
+" Indent S-Expression
+Defplug! nnoremap sexp_indent     sexp#indent(0, v:count)
+Defplug! nnoremap sexp_indent_top sexp#indent(1, v:count)
+
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)
 Defplug  xnoremap sexp_round_head_wrap_list  sexp#wrap('v', '(', ')', 0, g:sexp_insert_after_wrap)
@@ -341,11 +359,16 @@ Defplug  xnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
 Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
-" Lift list
-Defplug! nnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_list', 'n', 0, 0)
-Defplug  xnoremap sexp_lift_list    sexp#docount(v:count, 'sexp#lift', 'v', '')
-Defplug! nnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'n', 'sexp#select_current_element', 'n', 1)
-Defplug  xnoremap sexp_lift_element sexp#docount(v:count, 'sexp#lift', 'v', '')
+" Raise list
+Defplug! nnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_list', 'n', 0, 0)
+Defplug  xnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'v', '')
+Defplug! nnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
+Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', '')
+" XXX: REMOVED
+Defplug! nnoremap sexp_lift_list     sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
+Defplug  xnoremap sexp_lift_list     sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
+Defplug! nnoremap sexp_lift_element  sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
+Defplug  xnoremap sexp_lift_element  sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)

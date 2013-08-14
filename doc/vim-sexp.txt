@@ -188,6 +188,17 @@ g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
+INDENT COMMANDS (normal)~
+
+==                                                       *<Plug>(sexp_indent)*
+=-                                                   *<Plug>(sexp_indent_top)*
+        Indent [count] surrounding lists (compound FORMs) or current top-level
+        list without moving the cursor. If the cursor is not in a compound
+        FORM, the current element is indented instead.
+
+        == shadows the builtin |==| mapping. If you wish to remap this
+        command, see |g:sexp_mappings| for more information.
+
 WRAP COMMANDS (normal, visual)~
 
 <LocalLeader>i                             *<Plug>(sexp_round_head_wrap_list)*
@@ -237,8 +248,8 @@ LIST MANIPULATION (normal, visual)~
         Splice the current list (compound FORM) into its parent scope [count]
         times by deleting each list's brackets.
 
-<LocalLeader>o                                        *<Plug>(sexp_lift_list)*
-<LocalLeader>O                                     *<Plug>(sexp_lift_element)*
+<LocalLeader>o                                       *<Plug>(sexp_raise_list)*
+<LocalLeader>O                                    *<Plug>(sexp_raise_element)*
         Replace [count] enclosing lists (compound FORMs) with the current
         list, element, or visual selection.
 
@@ -372,14 +383,16 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_move_to_next_top_element':  ']]',
             \ 'sexp_select_prev_element':       '[e',
             \ 'sexp_select_next_element':       ']e',
+            \ 'sexp_indent':                    '==',
+            \ 'sexp_indent_top':                '=-',
             \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
             \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
             \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
             \ 'sexp_square_tail_wrap_list':     '<LocalLeader>]',
             \ 'sexp_curly_head_wrap_list':      '<LocalLeader>{',
             \ 'sexp_curly_tail_wrap_list':      '<LocalLeader>}',
-            \ 'sexp_round_head_wrap_element':   '<LocalLeader>W',
-            \ 'sexp_round_tail_wrap_element':   '<LocalLeader>w',
+            \ 'sexp_round_head_wrap_element':   '<LocalLeader>w',
+            \ 'sexp_round_tail_wrap_element':   '<LocalLeader>W',
             \ 'sexp_square_head_wrap_element':  '<LocalLeader>e[',
             \ 'sexp_square_tail_wrap_element':  '<LocalLeader>e]',
             \ 'sexp_curly_head_wrap_element':   '<LocalLeader>e{',
@@ -387,8 +400,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
             \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ 'sexp_splice_list':               '<LocalLeader>@',
-            \ 'sexp_lift_list':                 '<LocalLeader>o',
-            \ 'sexp_lift_element':              '<LocalLeader>O',
+            \ 'sexp_raise_list':                '<LocalLeader>o',
+            \ 'sexp_raise_element':             '<LocalLeader>O',
             \ 'sexp_swap_list_backward':        '<M-k>',
             \ 'sexp_swap_list_forward':         '<M-j>',
             \ 'sexp_swap_element_backward':     '<M-h>',

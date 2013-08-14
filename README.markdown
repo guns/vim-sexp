@@ -82,6 +82,11 @@ operator-pending mode.
 * The `[[` and `]]` motions move the cursor to an adjacent top-level ELEMENT.
 * The `[e` and `]e` mappings select an adjacent ELEMENT.
 
+### Indent Commands (normal)
+
+* `==` indents the current COMPOUND FORM without moving the cursor
+* `=-` indents the current top-level COMPOUND FORM without moving the cursor
+
 ### Wrap Commands (normal, visual)
 
 Wrap commands wrap the current COMPOUND FORM, ELEMENT, or visual selection and
@@ -104,8 +109,8 @@ commands are called from visual mode, the selection is used in place of the
 current COMPOUND FORM or ELEMENT.
 
 * `<LocalLeader>@` splices the current COMPOUND FORM into its parent.
-* `<LocalLeader>o` lifts the current COMPOUND FORM to replace the enclosing COMPOUND FORM.
-* `<LocalLeader>O` lifts the current ELEMENT to replace the enclosing COMPOUND FORM.
+* `<LocalLeader>o` raises the current COMPOUND FORM to replace the enclosing COMPOUND FORM.
+* `<LocalLeader>O` raises the current ELEMENT to replace the enclosing COMPOUND FORM.
 * `<M-k>` and `<M-j>` swap the position of the current COMPOUND FORM with a sibling ELEMENT.
 * `<M-h>` and `<M-l>` swap the position of the current ELEMENT with a sibling ELEMENT.
 * `<M-S-j>` and `<M-S-k>` emit the terminal ELEMENTS of the current COMPOUND FORM.
@@ -115,8 +120,8 @@ The last two commands are also known as `barfage` and `slurpage` in [paredit.el]
 
 ### Cursor Insertion (normal, visual)
 
-* `<LocalLeader>h` and `<LocalLeader>l` insert the cursor at the head and tail
-  of the current COMPOUND FORM, respectively.
+* `<LocalLeader>h` inserts the cursor at the head of the current COMPOUND FORM
+* `<LocalLeader>l` inserts the cursor at the tail of the current COMPOUND FORM
 
 If inserting at the head, a space is conditionally appended after the opening
 bracket so that any typed characters will be separated from the next element.

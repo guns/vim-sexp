@@ -35,7 +35,6 @@ if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
 
-" XXX: REMOVE sexp_lift_*
 let s:sexp_mappings = {
     \ 'sexp_outer_list':                'af',
     \ 'sexp_inner_list':                'if',
@@ -72,8 +71,6 @@ let s:sexp_mappings = {
     \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
     \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
     \ 'sexp_splice_list':               '<LocalLeader>@',
-    \ 'sexp_lift_list':                 '<LocalLeader>o',
-    \ 'sexp_lift_element':              '<LocalLeader>O',
     \ 'sexp_raise_list':                '<LocalLeader>o',
     \ 'sexp_raise_element':             '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
@@ -85,6 +82,12 @@ let s:sexp_mappings = {
     \ 'sexp_capture_prev_element':      '<M-S-h>',
     \ 'sexp_capture_next_element':      '<M-S-l>',
     \ }
+
+" XXX: Removed mappings
+call extend(s:sexp_mappings, {
+    \ 'sexp_lift_list':                 '<LocalLeader>o',
+    \ 'sexp_lift_element':              '<LocalLeader>O',
+    \ })
 
 augroup sexp_filetypes
     autocmd!
@@ -364,11 +367,6 @@ Defplug! nnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'n', 's
 Defplug  xnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'v', '')
 Defplug! nnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
 Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', '')
-" XXX: REMOVED
-Defplug! nnoremap sexp_lift_list     sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
-Defplug  xnoremap sexp_lift_list     sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
-Defplug! nnoremap sexp_lift_element  sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
-Defplug  xnoremap sexp_lift_element  sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)
@@ -413,6 +411,13 @@ inoremap <silent><expr> <Plug>(sexp_insert_double_quote) sexp#quote_insertion('"
 
 " Delete paired delimiters
 inoremap <silent><expr> <Plug>(sexp_insert_backspace) sexp#backspace_insertion()
+
+""" XXX: Removed Mappings {{{1
+
+Defplug! nnoremap sexp_lift_list    sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
+Defplug  xnoremap sexp_lift_list    sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
+Defplug! nnoremap sexp_lift_element sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
+Defplug  xnoremap sexp_lift_element sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
 
 """ Cleanup {{{1
 

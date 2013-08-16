@@ -421,5 +421,6 @@ Defplug  xnoremap sexp_lift_element sexp#alert('<Plug>(sexp_lift_element) has be
 
 """ Cleanup {{{1
 
+delcommand DefplugN
 delcommand Defplug
 delcommand DEFPLUG

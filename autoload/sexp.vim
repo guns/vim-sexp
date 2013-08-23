@@ -1430,10 +1430,15 @@ endfunction
 " elements not contained in an compound form (e.g. top-level comments).
 function! sexp#indent(top, count)
     let win = winsaveview()
+    let [_b, line, col, _o] = getpos('.')
 
     " Move to current list tail since the expansion step of
     " s:set_marks_around_current_list() happens at the tail.
-    let pos = s:move_to_nearest_bracket(1)
+    if getline(line)[col - 1] =~ s:closing_bracket && !s:syntax_match(s:ignored_region, line, col)
+        let pos = [0, line, col, 0]
+    else
+        let pos = s:move_to_nearest_bracket(1)
+    endif
 
     normal! v
     if pos[1] < 1

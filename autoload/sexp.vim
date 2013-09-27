@@ -39,10 +39,11 @@ let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
 let s:macro_filetype_characters = {
-    \ 'clojure': "\\v[#'`~@^_=]",
-    \ 'scheme':  "\\v[#'`,@]",
-    \ 'lisp':    "\\v[#'`,@]",
+    \ 'clojure': "#'`~@^_=",
+    \ 'scheme':  "#'`,@",
+    \ 'lisp':    "#'`,@",
     \ }
+let s:default_macro_characters = s:macro_filetype_characters['scheme']
 let s:pairs = {
     \ '(': ')',
     \ '[': ']',
@@ -62,9 +63,9 @@ function! s:macro_chars()
     if has_key(s:macro_filetype_characters, &filetype)
         return s:macro_filetype_characters[&filetype]
     elseif &lisp
-        return s:macro_filetype_characters['scheme']
+        return s:default_macro_characters
     else
-        return nr2char(0x01)
+        return ''
     endif
 endfunction
 
@@ -289,7 +290,7 @@ function! s:current_macro_character_terminal(end)
 
     let [_b, cursorline, cursorcol, _o] = getpos('.')
 
-    if getline(cursorline)[cursorcol - 1] !~# macro
+    if stridx(macro, getline(cursorline)[cursorcol - 1]) < 0
         return [0, 0, 0, 0]
     endif
 
@@ -300,7 +301,7 @@ function! s:current_macro_character_terminal(end)
 
         if line < 1 | break | endif
 
-        if getline(line)[col - 1] =~# macro
+        if stridx(macro, getline(line)[col - 1]) >= 0
             let [termline, termcol] = [line, col]
             call cursor(line, col)
         else
@@ -341,7 +342,7 @@ function! s:current_element_terminal(end)
         else
             let pos = s:nearest_bracket(a:end)
         end
-    elseif char =~# s:macro_chars()
+    elseif s:is_macro_char(char)
         if !a:end
             " Let the rest of the function find the macro head
             let include_macro_characters = 1
@@ -644,6 +645,11 @@ function! s:count_elements(start, end)
 endfunction
 
 """ PREDICATES AND COMPARATORS {{{1
+
+" Returns 1 if char matches the current FileType's macro pattern
+function! s:is_macro_char(char)
+    return stridx(s:macro_chars(), a:char) >= 0
+endfunction
 
 " Returns 1 if character at position is in a comment, or is in the whitespace
 " between two line comments.
@@ -1679,11 +1685,10 @@ function! sexp#opening_insertion(bra)
     let buf = ''
     let buftail = ''
     let ket = s:pairs[a:bra]
-    let macro = s:macro_chars()
 
     if prev =~# '\v\S'
         \ && prev !~# s:opening_bracket
-        \ && prev !~# macro
+        \ && !s:is_macro_char(prev)
         let buf .= ' '
     endif
 
@@ -1779,11 +1784,10 @@ function! sexp#quote_insertion(quote)
 
         let buf = ''
         let buftail = ''
-        let macro = s:macro_chars()
 
         if prev =~# '\v\S'
             \ && prev !~# s:opening_bracket
-            \ && prev !~# macro
+            \ && !s:is_macro_char(prev)
             let buf .= ' '
         endif
 

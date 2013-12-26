@@ -975,6 +975,8 @@ endif
 "     called by sexp#docount()
 "
 " Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
+"
+" Returns 1 if marks were set successfully, and 0 if not.
 function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     " We may potentially move the cursor.
     let cursor = getpos('.')
@@ -1029,10 +1031,13 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
         let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
     endif
 
+    let success = 0
+
     " Inner selection on adjacent brackets results in open being one character
     " past close due to offset calculations
     if open[1] > 0 && close[1] > 0 && s:compare_pos(open, close) < 0
         call s:set_visual_marks([open, close])
+        let success = 1
     " Don't erase marks when in visual mode
     elseif !visual
         delmarks < >
@@ -1041,11 +1046,15 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     if cursor_moved
         call s:setcursor(cursor)
     endif
+
+    return success
 endfunction
 
 " Set visual marks to the positions of the outermost paired brackets from the
 " current location. Will set both to [0, 0, 0, 0] if none are found and mode
 " does not equal 'v'.
+"
+" Returns 1 if marks were set successfully, and 0 if not.
 function! s:set_marks_around_current_top_list(mode, offset)
     let closing = s:current_top_list_bracket(1)
 
@@ -1062,6 +1071,7 @@ function! s:set_marks_around_current_top_list(mode, offset)
         else
             call s:set_visual_marks([s:pos_with_col_offset(opening, a:offset),
                                    \ s:pos_with_col_offset(closing, -a:offset)])
+            return 1
         endif
     elseif a:mode !=? 'v'
         delmarks < >
@@ -1181,18 +1191,21 @@ function! s:set_marks_characterwise()
 endfunction
 
 " Set visual marks at current list's brackets, then enter visual mode with
-" that selection. If no brackets are found and mode equals 'o', nothing is
-" done.
+" that selection. Selects current element if cursor is not in a list.
 function! sexp#select_current_list(mode, offset, allow_expansion)
-    call s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
+    if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
+        call s:set_marks_around_current_element(a:mode, a:offset)
+    endif
     return s:select_current_marks(a:mode)
 endfunction
 
 " Set visual marks at current outermost list's brackets, then enter visual
-" mode with that selection. If no brackets are found and mode equals 'o',
-" nothing is done.
+" mode with that selection. Selects current element if cursor is not in a
+" list.
 function! sexp#select_current_top_list(mode, offset)
-    call s:set_marks_around_current_top_list(a:mode, a:offset)
+    if !s:set_marks_around_current_top_list(a:mode, a:offset)
+        call s:set_marks_around_current_element(a:mode, a:offset)
+    endif
     return s:select_current_marks(a:mode)
 endfunction
 

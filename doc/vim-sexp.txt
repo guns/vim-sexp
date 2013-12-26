@@ -76,6 +76,9 @@ if                                                   *<Plug>(sexp_inner_list)*
 
         Does not include surrounding whitespace.
 
+        If the cursor is not in a compound form, the current element is
+        selected instead. See |<Plug>(sexp_outer_element)|.
+
 aF                                               *<Plug>(sexp_outer_top_list)*
 iF                                               *<Plug>(sexp_inner_top_list)*
         Select the current top-level list (compound FORM) delimited by any of
@@ -88,6 +91,9 @@ iF                                               *<Plug>(sexp_inner_top_list)*
         determined to be the first parent list with a opening bracket
         on the first column. This is typically much faster than calling
         |searchpairpos()| recursively.
+
+        If the cursor is not in a compound form, the current element is
+        selected instead. See |<Plug>(sexp_outer_element)|.
 
 as                                                 *<Plug>(sexp_outer_string)*
 is                                                 *<Plug>(sexp_inner_string)*

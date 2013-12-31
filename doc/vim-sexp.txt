@@ -1,4 +1,4 @@
-Precision Editing for Symbolic Expressions                      *vim-sexp.txt*
+*vim-sexp.txt*	Precision Editing for Symbolic Expressions
 
             o8o
             '"'

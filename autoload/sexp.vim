@@ -39,9 +39,10 @@ let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
 let s:macro_filetype_characters = {
-    \ 'clojure': "#'`~@^_=",
+    \ 'clojure': "#'`~@^_="
     \ 'scheme':  "#'`,@",
     \ 'lisp':    "#'`,@",
+    \ 'timl':    "#'`~@^_*"
     \ }
 let s:default_macro_characters = s:macro_filetype_characters['scheme']
 let s:pairs = {

@@ -204,7 +204,9 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_indent', 'sexp_indent_top']
+    for plug in ['sexp_indent',              'sexp_indent_top',
+               \ 'sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
+               \ 'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -218,8 +220,6 @@ function! s:sexp_create_mappings()
                \ 'sexp_round_head_wrap_element',  'sexp_round_tail_wrap_element',
                \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
                \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
-               \ 'sexp_insert_at_list_head',      'sexp_insert_at_list_tail',
-               \ 'sexp_splice_list',
                \ 'sexp_lift_list',                'sexp_lift_element',
                \ 'sexp_raise_list',               'sexp_raise_element',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
@@ -358,9 +358,7 @@ Defplug  xnoremap sexp_curly_tail_wrap_element  sexp#wrap('v', '{', '}', 1, g:se
 
 " Insert at list terminal
 Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
-Defplug  xnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
 Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
-Defplug  xnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
 " Raise list
 Defplug! nnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_list', 'n', 0, 0)
@@ -370,7 +368,6 @@ Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', ''
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)
-Defplug  xnoremap sexp_splice_list sexp#splice_list(v:count)
 
 " Swap list
 Defplug! nnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)

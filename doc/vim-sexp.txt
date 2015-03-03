@@ -237,7 +237,7 @@ WRAP COMMANDS (normal, visual)~
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
-CURSOR INSERTION (normal, visual)~
+CURSOR INSERTION (normal)~
 
 <LocalLeader>h                              *<Plug>(sexp_insert_at_list_head)*
 <LocalLeader>l                              *<Plug>(sexp_insert_at_list_tail)*
@@ -252,7 +252,8 @@ LIST MANIPULATION (normal, visual)~
 
 <LocalLeader>@                                      *<Plug>(sexp_splice_list)*
         Splice the current list (compound FORM) into its parent scope [count]
-        times by deleting each list's brackets.
+        times by deleting each list's brackets. This mapping is not available
+        in visual mode.
 
 <LocalLeader>o                                       *<Plug>(sexp_raise_list)*
 <LocalLeader>O                                    *<Plug>(sexp_raise_element)*
@@ -455,5 +456,11 @@ accurate and relatively quick, so it is the default setting.
         " Default
         let g:sexp_maxlines = -1
 <
+==============================================================================
+IV. CHANGELOG                                                 *sexp-changelog*
+
+03 March 2015
+        - Remove visual mode mappings from sexp_insert_at_list_head,
+          sexp_insert_at_list_tail, and sexp_splice_list.
 
  vim:tw=78:et:sw=8:sts=8:ts=8:ft=help:norl:

@@ -118,7 +118,7 @@ current COMPOUND FORM or ELEMENT.
 
 The last two commands are also known as `barfage` and `slurpage` in [paredit.el][].
 
-### Cursor Insertion (normal, visual)
+### Cursor Insertion (normal)
 
 * `<LocalLeader>h` inserts the cursor at the head of the current COMPOUND FORM
 * `<LocalLeader>l` inserts the cursor at the tail of the current COMPOUND FORM

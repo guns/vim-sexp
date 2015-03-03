@@ -460,6 +460,10 @@ accurate and relatively quick, so it is the default setting.
 IV. CHANGELOG                                                 *sexp-changelog*
 
 03 March 2015
+        - Remove deprecated mappings sexp_lift_list and sexp_list_element,
+          which were previously renamed to sexp_raise_list and
+          sexp_raise_element respectively.
+        - Remove deprecated unparenthesized <Plug> mappings.
         - Remove visual mode mappings from sexp_insert_at_list_head,
           sexp_insert_at_list_tail, and sexp_splice_list.
 

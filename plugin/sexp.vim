@@ -83,12 +83,6 @@ let s:sexp_mappings = {
     \ 'sexp_capture_next_element':      '<M-S-l>',
     \ }
 
-" XXX: Removed mappings
-call extend(s:sexp_mappings, {
-    \ 'sexp_lift_list':                 '<LocalLeader>o',
-    \ 'sexp_lift_element':              '<LocalLeader>O',
-    \ })
-
 augroup sexp_filetypes
     autocmd!
     if !empty(g:sexp_filetypes)
@@ -131,11 +125,6 @@ function! s:defplug(flags, mapmode, name, ...)
         execute lhs . ' ' . rhs
         return 1
     endif
-
-    " XXX: REMOVE unparenthesized <Plug> maps
-    execute a:mapmode . ' <silent> <Plug>' . a:name . ' '
-          \ . ':<C-u>call sexp#alert("`<Plug>' . a:name . '` has been renamed to'
-          \ . '`<Plug>(' . a:name . ')`. Please update your mappings.")<CR>'
 
     " Common mapping prefix
     " RE: vv
@@ -213,14 +202,12 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    " XXX: REMOVE sexp_lift_*
     for plug in ['sexp_round_head_wrap_list',     'sexp_round_tail_wrap_list',
                \ 'sexp_square_head_wrap_list',    'sexp_square_tail_wrap_list',
                \ 'sexp_curly_head_wrap_list',     'sexp_curly_tail_wrap_list',
                \ 'sexp_round_head_wrap_element',  'sexp_round_tail_wrap_element',
                \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
                \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
-               \ 'sexp_lift_list',                'sexp_lift_element',
                \ 'sexp_raise_list',               'sexp_raise_element',
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
@@ -408,13 +395,6 @@ inoremap <silent><expr> <Plug>(sexp_insert_double_quote) sexp#quote_insertion('"
 
 " Delete paired delimiters
 inoremap <silent><expr> <Plug>(sexp_insert_backspace) sexp#backspace_insertion()
-
-""" XXX: Removed Mappings {{{1
-
-Defplug! nnoremap sexp_lift_list    sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
-Defplug  xnoremap sexp_lift_list    sexp#alert('<Plug>(sexp_lift_list) has been renamed to <Plug>(sexp_raise_list)')
-Defplug! nnoremap sexp_lift_element sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
-Defplug  xnoremap sexp_lift_element sexp#alert('<Plug>(sexp_lift_element) has been renamed to <Plug>(sexp_raise_element)')
 
 """ Cleanup {{{1
 

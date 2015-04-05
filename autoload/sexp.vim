@@ -559,19 +559,19 @@ function! s:positions_with_element_terminals(positions)
 
     if head[1] > 0 && tail[1] > 0
         " Find any unbalanced brackets in our selection
-        let bcount = s:count_brackets(head, tail, s:bracket, s:opening_bracket)
+        let [bra, ket] = s:count_brackets(head, tail, s:bracket, s:opening_bracket)
 
         " Extend head for every ket
-        if bcount['ket'] > 0
+        if ket > 0
             call s:setcursor(head)
-            call sexp#docount(bcount['ket'], 's:move_to_nearest_bracket', 0)
+            call sexp#docount(ket, 's:move_to_nearest_bracket', 0)
             let head = getpos('.')
         endif
 
         " And tail for every bra
-        if bcount['bra'] > 0
+        if bra > 0
             call s:setcursor(tail)
-            call sexp#docount(bcount['bra'], 's:move_to_nearest_bracket', 1)
+            call sexp#docount(bra, 's:move_to_nearest_bracket', 1)
             let tail = getpos('.')
         endif
     endif
@@ -580,12 +580,13 @@ function! s:positions_with_element_terminals(positions)
     return [head, tail]
 endfunction
 
-" Returns dict { 'bra': number, 'ket': number }, which indicates the number
-" of unpaired opening brackets ('bra') and the number of unpaired closing
-" brackets ('ket') in the selection from start to end.
+" Returns [bra, ket], which indicates the number of unpaired opening brackets
+" ('bra') and the number of unpaired closing brackets ('ket') in the selection
+" from start to end.
 function! s:count_brackets(start, end, all_brackets, opening_brackets)
     let cursor = getpos('.')
-    let bcount = { 'bra': 0, 'ket': 0 }
+    let bra = 0
+    let ket = 0
 
     call s:setcursor(a:start)
 
@@ -603,12 +604,12 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
         if cmp > 0 | break | endif
 
         if getline(line)[col - 1] =~# a:opening_brackets
-            let bcount['bra'] += 1
+            let bra += 1
         else
-            if bcount['bra'] > 0
-                let bcount['bra'] -= 1
+            if bra > 0
+                let bra -= 1
             else
-                let bcount['ket'] += 1
+                let ket += 1
             endif
         endif
 
@@ -622,7 +623,7 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
     endwhile
 
     call s:setcursor(cursor)
-    return bcount
+    return [bra, ket]
 endfunction
 
 " Returns the number of elements in the given range
@@ -1386,11 +1387,10 @@ function! s:swap_current_selection(mode, next, pairwise)
         let @a = nr2char(0x02) . @a . nr2char(0x03)
     endif
 
-    let marks = {}
-    let marks['a'] = s:get_visual_marks()
+    let amarks = s:get_visual_marks()
 
     " Record the sibling element
-    call s:setcursor(marks['a'][!!a:next])
+    call s:setcursor(amarks[!!a:next])
     call s:set_marks_around_adjacent_element('n', a:next)
     if a:pairwise
         let mark = a:next ? "'>" : "'<"
@@ -1400,31 +1400,40 @@ function! s:swap_current_selection(mode, next, pairwise)
     endif
     call s:select_current_marks(a:mode)
     silent! normal! "by
-    let marks['b'] = s:get_visual_marks()
+    let bmarks = s:get_visual_marks()
 
     " Abort if we are already at the head or tail of the current list or at
     " the top or bottom of the file. In these cases the start/end mark will be
     " the same in the direction of movement.
-    if s:compare_pos(marks['a'][a:next], marks['b'][a:next]) == 0
+    if s:compare_pos(amarks[a:next], bmarks[a:next]) == 0
         return 0
     endif
 
     " We change the buffer from the bottom up so that the marks remain
     " accurate.
-    let b = a:next ? 'b' : 'a'
-    let a = a:next ? 'a' : 'b'
+    if a:next
+        let areg = 'a'
+        let breg = 'b'
+        let aswapmarks = amarks
+        let bswapmarks = bmarks
+    else
+        let areg = 'b'
+        let breg = 'a'
+        let aswapmarks = bmarks
+        let bswapmarks = amarks
+    endif
 
-    call s:set_visual_marks(marks[b])
+    call s:set_visual_marks(bswapmarks)
     call s:select_current_marks('v')
-    execute 'silent! normal! "' . a . 'p'
+    execute 'silent! normal! "' . areg . 'p'
 
-    call s:set_visual_marks(marks[a])
+    call s:set_visual_marks(aswapmarks)
     call s:select_current_marks('v')
-    execute 'silent! normal! "' . b . 'p'
+    execute 'silent! normal! "' . breg . 'p'
 
     " Set marks around next element using the ^B and ^C markers
     if a:next
-        call s:setcursor(marks['a'][0])
+        call s:setcursor(amarks[0])
 
         let [sl, sc] = s:findpos(nr2char(0x02), 1)
         call cursor(sl, sc)
@@ -1444,7 +1453,7 @@ function! s:swap_current_selection(mode, next, pairwise)
     elseif a:next
         call s:setcursor(getpos("'<"))
     else
-        call s:setcursor(marks['b'][0])
+        call s:setcursor(bmarks[0])
     endif
 
     let [@a, @b] = reg_save

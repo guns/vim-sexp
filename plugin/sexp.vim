@@ -83,12 +83,12 @@ let s:sexp_mappings = {
     \ 'sexp_capture_next_element':      '<M-S-l>',
     \ }
 
-augroup sexp_filetypes
-    autocmd!
-    if !empty(g:sexp_filetypes)
+if !empty(g:sexp_filetypes)
+    augroup sexp_filetypes
+        autocmd!
         execute 'autocmd FileType ' . g:sexp_filetypes . ' call s:sexp_create_mappings()'
-    endif
-augroup END
+    augroup END
+endif
 
 " Autoload and detect repeat.vim
 silent! call repeat#set('')

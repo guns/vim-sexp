@@ -1416,6 +1416,7 @@ function! s:swap_current_selection(mode, next, pairwise)
     " the top or bottom of the file. In these cases the start/end mark will be
     " the same in the direction of movement.
     if s:compare_pos(amarks[a:next], bmarks[a:next]) == 0
+        let [@a, @b] = reg_save
         return 0
     endif
 

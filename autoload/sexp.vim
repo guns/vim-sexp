@@ -188,7 +188,8 @@ function! s:current_string_terminal(end)
         return [0, 0, 0, 0]
     endif
 
-    let [termline, termcol] = [cursorline, cursorcol]
+    let termline = cursorline
+    let termcol = cursorcol
 
     " We can't rely on va" or on searchpairpos() because they don't work well
     " on symmetric patterns.
@@ -202,7 +203,8 @@ function! s:current_string_terminal(end)
         if line < 1 | break | endif
 
         if s:syntax_match(s:string_region, line, col)
-            let [termline, termcol] = [line, col]
+            let termline = line
+            let termcol = col
             call cursor(line, col)
         else
             break
@@ -214,7 +216,8 @@ function! s:current_string_terminal(end)
     if !a:end
         let [_b, l, c, _o] = s:current_macro_character_terminal(1)
         if l > 0
-            let [termline, termcol] = [l, c + 1]
+            let termline = l
+            let termcol = c + 1
         endif
     endif
 
@@ -231,7 +234,8 @@ function! s:current_comment_terminal(end)
         return [0, 0, 0, 0]
     endif
 
-    let [termline, termcol] = [cursorline, cursorcol]
+    let termline = cursorline
+    let termcol = cursorcol
 
     while 1
         let [line, col] = s:findpos('\v\_.', a:end)
@@ -239,7 +243,8 @@ function! s:current_comment_terminal(end)
         if line < 1 | break | endif
 
         if s:is_comment(line, col)
-            let [termline, termcol] = [line, col]
+            let termline = line
+            let termcol = col
             call cursor(line, col)
         else
             break
@@ -260,7 +265,8 @@ function! s:current_atom_terminal(end)
         return [0, 0, 0, 0]
     endif
 
-    let [termline, termcol] = [cursorline, cursorcol]
+    let termline = cursorline
+    let termcol = cursorcol
 
     while 1
         let [line, col] = s:findpos('\v.', a:end, cursorline)
@@ -268,7 +274,8 @@ function! s:current_atom_terminal(end)
         if line < 1 | break | endif
 
         if s:is_atom(line, col)
-            let [termline, termcol] = [line, col]
+            let termline = line
+            let termcol = col
             call cursor(line, col)
         else
             break
@@ -295,7 +302,8 @@ function! s:current_macro_character_terminal(end)
         return [0, 0, 0, 0]
     endif
 
-    let [termline, termcol] = [cursorline, cursorcol]
+    let termline = cursorline
+    let termcol = cursorcol
 
     while 1
         let [line, col] = s:findpos('\v.', a:end, cursorline)
@@ -303,7 +311,8 @@ function! s:current_macro_character_terminal(end)
         if line < 1 | break | endif
 
         if stridx(macro, getline(line)[col - 1]) >= 0
-            let [termline, termcol] = [line, col]
+            let termline = line
+            let termcol = col
             call cursor(line, col)
         else
             break
@@ -488,7 +497,8 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
         let char = getline(line)[col - 1]
 
         if empty(char) || char =~# '\v\s'
-            let [termline, termcol] = [line, col]
+            let termline = line
+            let termcol = col
             call cursor(line, col)
         else
             break
@@ -513,7 +523,8 @@ endfunction
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
 function! s:terminals_with_whitespace(start, end)
-    let [start, end] = [a:start, a:end]
+    let start = a:start
+    let end = a:end
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
 
     " There is trailing whitespace

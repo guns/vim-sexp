@@ -38,6 +38,7 @@ let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
+let s:match_ignored_region_fn = 's:syntax_match(s:ignored_region, line("."), col("."))'
 let s:macro_filetype_characters = {
     \ 'clojure': "#'`~@^_=",
     \ 'scheme':  "#'`,@",
@@ -102,13 +103,12 @@ endfunction
 " Accepts alternate beginning and ending patterns as optional parameters.
 function! s:nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
-    let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
                    \ : 0
     let open = a:0 ? a:1 : s:opening_bracket
     let close = a:0 ? a:2 : s:closing_bracket
-    let [line, col] = searchpairpos(open, '', close, flags, skip, stopline)
+    let [line, col] = searchpairpos(open, '', close, flags, s:match_ignored_region_fn, stopline)
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
@@ -162,11 +162,10 @@ endfunction
 function! s:current_top_list_bracket_by_maxlines(closing)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     let flags = a:closing ? 'cnr' : 'bcnr'
-    let skip = 's:syntax_match(s:ignored_region, line("."), col("."))'
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, cursorline + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
                    \ : 0
-    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, skip, stopline)
+    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, s:match_ignored_region_fn, stopline)
 
     if topline > 0
         return [0, topline, topcol, 0]

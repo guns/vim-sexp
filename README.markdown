@@ -14,10 +14,6 @@
 
 Vim-sexp brings the Vim philosophy of _precision editing_ to S-expressions.
 
-Here is a short introductory video:
-
-**TODO**
-
 ## Requirements
 
 * Vim 7.3+

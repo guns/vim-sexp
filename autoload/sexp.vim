@@ -1402,7 +1402,7 @@ function! s:swap_current_selection(mode, next, pairwise)
     " Record the sibling element
     call s:setcursor(amarks[!!a:next])
     call s:set_marks_around_adjacent_element('n', a:next)
-    if a:pairwise
+    if a:pairwise && s:can_set_visual_marks
         let mark = a:next ? "'>" : "'<"
         call s:setcursor(getpos(mark))
         call setpos(mark, s:nearest_element_terminal(a:next, a:next))

@@ -1354,8 +1354,10 @@ function! s:stackop_emit(last, spos, bpos)
 
     let nextpos = s:current_element_terminal(a:last)
 
-    " Ensure the new ultimate element is actually contained
-    if s:compare_pos(nextpos, a:spos) != (a:last ? -1 : 1)
+    " Ensure that this new ultimate element is different than the last and
+    " that it is actually contained
+    if s:compare_pos(nextpos, [0, l, c, 0]) == 0
+        \ || s:compare_pos(nextpos, a:spos) != (a:last ? -1 : 1)
         \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
         return 0
     endif

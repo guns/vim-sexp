@@ -1293,8 +1293,8 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Capture element adjacent to current list, given the starting position of
-" the enclosing list's bracket plus leading macro characters (spos) and the
+" Capture element adjacent to current list, given the starting position of the
+" enclosing list's bracket minus leading macro characters (spos) and the
 " position of the bracket itself (bpos).
 function! s:stackop_capture(last, spos, bpos)
     call s:setcursor(a:spos)
@@ -1323,9 +1323,6 @@ function! s:stackop_capture(last, spos, bpos)
         execute 'silent! normal! "_d' . blen . 'l'
         call s:setcursor(nextpos)
         execute 'silent! normal! "bP'
-        if blen > 1
-            execute 'silent! normal! ' . (blen - 1) . 'h'
-        endif
     endif
 
     let @b = reg_save
@@ -1333,7 +1330,7 @@ function! s:stackop_capture(last, spos, bpos)
 endfunction
 
 " Emit terminal element in current list, given the starting position of the
-" enclosing list's bracket plus leading macro characters (spos) and the
+" enclosing list's bracket minus leading macro characters (spos) and the
 " position of the bracket itself (bpos).
 function! s:stackop_emit(last, spos, bpos)
     " Move inwards onto the terminal element, then find the penultimate
@@ -1378,7 +1375,7 @@ function! s:stackop_emit(last, spos, bpos)
         execute 'silent! normal! "bP'
         call s:setcursor(a:spos)
         execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(a:spos[1] == nextpos[1] ? s:pos_with_col_offset(nextpos, -blen) : nextpos)
+        call s:setcursor(a:spos[1] == nextpos[1] ? s:pos_with_col_offset(nextpos, -1) : nextpos)
     endif
 
     let @b = reg_save

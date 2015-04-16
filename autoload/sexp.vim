@@ -1558,6 +1558,9 @@ function! sexp#stackop(mode, last, capture)
     if a:mode ==? 'v'
         execute "normal! \<Esc>"
         let marks = s:get_visual_marks()
+    else
+        silent! normal! ix
+        silent! normal! x
     endif
 
     " Move to element tail first so we can skip leading macro chars
@@ -1586,6 +1589,17 @@ function! sexp#stackop(mode, last, capture)
 
         if a:mode ==? 'v'
             call sexp#select_current_element('n', 1)
+        else
+            let newchar = getline(cursorline)[cursorcol - 1]
+            if newchar != char
+              if a:last
+                let cursorcol += 1
+              else
+                let cursorcol -= 1
+              endif
+            endif
+
+            call cursor(cursorline, cursorcol)
         endif
     catch /sexp-error/
         " Cleanup after error
@@ -1593,6 +1607,7 @@ function! sexp#stackop(mode, last, capture)
             call s:set_visual_marks(marks)
             normal! gv
         else
+            silent! undo
             call cursor(cursorline, cursorcol)
         endif
     endtry

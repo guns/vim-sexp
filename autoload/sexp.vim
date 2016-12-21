@@ -1726,11 +1726,11 @@ function! sexp#opening_insertion(bra)
     endif
 
     let buf .= a:bra . ket
-    let buftail .= "\<Left>"
+    let buftail .= "\<C-G>U\<Left>"
 
     if cur =~# '\v\S' && cur !~# s:closing_bracket
         let buf .= ' '
-        let buftail .= "\<Left>"
+        let buftail .= "\<C-G>U\<Left>"
     endif
 
     return buf . buftail
@@ -1758,7 +1758,7 @@ function! sexp#closing_insertion(ket)
     elseif prev ==# '\' && pprev !=# '\'
         return a:ket
     elseif cur ==# a:ket
-        return "\<Right>"
+        return "\<C-G>U\<Right>"
     endif
 
     let bra = '\V' . s:pairs[a:ket]
@@ -1801,7 +1801,7 @@ function! sexp#quote_insertion(quote)
         if curline[col - 2] ==# '\'
             return a:quote
         else
-            return curline[col - 1] ==# a:quote ? "\<Right>" : a:quote
+            return curline[col - 1] ==# a:quote ? "\<C-G>U\<Right>" : a:quote
         endif
     elseif s:syntax_match(s:ignored_region, line, col)
         return a:quote
@@ -1825,11 +1825,11 @@ function! sexp#quote_insertion(quote)
         endif
 
         let buf .= a:quote . a:quote
-        let buftail .= "\<Left>"
+        let buftail .= "\<C-G>U\<Left>"
 
         if cur =~# '\v\S' && cur !~# s:closing_bracket
             let buf .= ' '
-            let buftail .= "\<Left>"
+            let buftail .= "\<C-G>U\<Left>"
         endif
 
         return buf . buftail

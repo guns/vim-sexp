@@ -1650,8 +1650,8 @@ fu! sexp#convolute(count, ...)
             let pos = s:nearest_element_terminal(1, 0)
         endif
     endif
-    " Do the inner/outer lists end on same line?
-    let colinear_ends = tpos_o[1] == pos[1]
+    " Will the closing bracket's distance from eol be changed by convolute?
+    let edist_changing = tpos_i[1] == pos[1] && tpos_o[1] != pos[1]
 
     " Record distance from dividing point to end of line to facilitate
     " subsequent cursor positioning
@@ -1686,7 +1686,7 @@ fu! sexp#convolute(count, ...)
     " Note: When outer list ends on a different line from inner list, the
     " convolution will decrease number of close brackets after pos by 1.
     " Assumption: Closing brackets always a single byte.
-    let pos[2] = col([pos[1], '$']) - pos_edist - !colinear_ends
+    let pos[2] = col([pos[1], '$']) - pos_edist + edist_changing
     call s:setcursor(pos)
 
     " Restore marks

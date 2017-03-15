@@ -1528,15 +1528,180 @@ function! sexp#raise(mode, func, ...)
     normal! p
 endfunction
 
+" Note on optional include arg: Allow caller to specify inc either as list or
+" bool, with a bool assumed to apply only to end (with start being included by
+" default). If inc arg is omitted, assume range that is open only at end.
+" Cursor Note: If we move cursor, we'll leave it at start of operated range.
+function! s:yankdel_range(from, to, del, ...)
+    let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
+    let [ret, spc] = ['', 0]
+    " Make sure there's a point in continuing.
+    let cmp = s:compare_pos(a:from, a:to)
+    if cmp > 1 || cmp == 1 && inc != [1, 1]
+        " Nothing to do!
+        return ''
+    endif
+    " TODO: Use getline/setline() if from/to co-linear.
+    call s:setcursor(a:from)
+    if !inc[0]
+        " Move off non-included start char pos.
+        " Note: This approach should work even with 'virtualedit', but decide
+        " whether to implement move_left/right functions to use instead.
+        " (TODO)
+        normal! l
+        if a:from == getpos('.')
+            " EOL prevented move. Append space and record doing so.
+            exe "normal! a "
+            let spc = 1
+        endif
+    endif
+    let reg_save = @a
+    " Yank/delete into @a
+    let op = (a:del ? 'd' : 'y') . (inc[1] ? 'v' : '')
+    silent! exe 'normal! "a' . op . ":call cursor(a:to[1], a:to[2])\<CR>"
+    if spc
+        " Remove the added space register.
+        let @a = @a[1:]
+        if !a:del
+            " Remove the added space from buffer.
+            " Note: Because we're at EOL already, the char delete will move us
+            " back to from pos automatically.
+            normal! "_x
+        endif
+    endif
+    let ret = @a
+    let @a = reg_save
+    return ret
+endfu
+
+" Put input text at position given by pos.
+" Args:
+" text           Text to put
+" pos            Location at which to put the text
+" before         Nonzero puts text before input pos (default after)
+" cursor_after   Nonzero leaves cursor just after put text (default at start)
+fu! s:put_at(text, pos, before, cursor_after)
+    let [reg_save, @a] = [@a, a:text]
+    call s:setcursor(a:pos)
+    let op = (a:cursor_after ? 'g' : '') . (a:before ? 'P' : 'p')
+    exe 'normal! "a' . op
+    let @a = reg_save
+endfu
+
+" BPS Addition
+" Logic:
+"Position at head of current element
+"Delete/save back to beginning of containing form.
+"Note: Strip trailing whitespace
+"Select and raise the form (which no longer contains the leading part.
+"Traverse upward <count> forms
+"Wrap the form.
+"Insert deleted/saved stuff at head
+"Note: Should probably append a newline
+"Re-indent the form.
+fu! sexp#convolute(count, ...)
+    let marks = s:get_visual_marks()
+    let cursor = getpos('.')
+
+    " Var Nomenclature:
+    " tpos=list tail
+    " bpos=list open bracket
+    " spos=list macro chars (or bracket if no macro chars)
+
+    " Climb the expression tree count+1 times, recording the heads of 2 lists
+    " involved in the convolute: the inner-most and the outer-most.
+    " Note: v:count1 would really be better-suited to stuff like this.
+    let [idx, n] = [0, a:count ? a:count + 1 : 2]
+    while idx < n
+        let p = s:move_to_nearest_bracket(0)
+        if !p[1]
+            " Error! Insufficient nesting for count given
+            echoerr "Convolute impossible with count given: insufficient nesting"
+        endif
+        if !idx
+            let bpos_i = p
+            let spos_i = s:current_element_terminal(0)
+            let tpos_i = s:nearest_bracket(1)
+        endif
+        let idx += 1
+    endwhile
+    let bpos_o = p
+    let spos_o = s:current_element_terminal(0)
+    let tpos_o = s:nearest_bracket(1)
+
+    " Determine dividing point for convolution: either...
+    " 1. start of current element
+    " 2. beginning of next element (on inter-element whitespace)
+    " 3. at cursor (in whitespace preceding closing bracket)
+    if tpos_i == cursor
+        " Special Case: Cursor on closing bracket
+        " Alternative: Could use test like this.
+        "if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
+        let pos = tpos_i
+    else
+        " Try to position on head of current element (including macro chars).
+        call s:setcursor(cursor)
+        let pos = s:current_element_terminal(0)
+        if !pos[1]
+            " Not on an element; move to next one's head.
+            " Note: Returns current pos if no adjacent el, which is probably
+            " as good a point as any.
+            " Rationale: Emacs is pretty literal about the dividing point.
+            let pos = s:nearest_element_terminal(1, 0)
+        endif
+    endif
+    " Do the inner/outer lists end on same line?
+    let colinear_ends = tpos_o[1] == pos[1]
+
+    " Record distance from dividing point to end of line to facilitate
+    " subsequent cursor positioning
+    " Rationale: Head of line may be changed by deletion and re-indent.
+    let pos_edist = col([pos[1], '$']) - pos[2]
+
+    " Splice what remains of the form into parent.
+    " CAVEAT! Can't use sexp#splice because it doesn't preserve macro
+    " chars/brackets.
+    " CAVEAT! Must work backwards since deletions invalidate positions.
+    let ket = s:yankdel_range(tpos_i, tpos_i, 1, 1)
+    " Delete everything between open bracket and pos.
+    let del = s:yankdel_range(bpos_i, pos, 1, [0, 0])
+    let bra = s:yankdel_range(spos_i, bpos_i, 1, 1)
+
+    " Note: Deletion above invalidated tpos_o; use bpos_o to find its new pos.
+    call s:setcursor(bpos_o)
+    let tpos_o = s:nearest_bracket(1)
+    call s:put_at(ket, tpos_o, 0, 0)
+    call s:put_at(del, spos_o, 1, 0)
+    call s:put_at(bra, spos_o, 1, 0)
+    " Position on bracket
+    " TODO: Cleanup and comment.
+    call cursor(line('.'), col('.') + len(bra) - 1)
+
+    " On start of bracket. Indent this list and the one that contains it.
+    " TODO: Need to indent at least the form *containing* the outer form
+    " FIXME! Why does 2 not work?
+    call sexp#indent(0, 2)
+
+    " Re-calculate pos for final cursor positioning.
+    " Note: When outer list ends on a different line from inner list, the
+    " convolution will decrease number of close brackets after pos by 1.
+    " Assumption: Closing brackets always a single byte.
+    let pos[2] = col([pos[1], '$']) - pos_edist - !colinear_ends
+    call s:setcursor(pos)
+
+    " Restore marks
+    call s:set_visual_marks(marks)
+endfu
+
 " Remove brackets from current list, placing cursor at position of deleted
 " first bracket. Takes optional count parameter, which specifies which pair of
 " ancestor brackets to remove.
 function! sexp#splice_list(...)
+    "echomsg "a:0=" . a:0 . " a:1=" . (a:0 ? a:1 : '')
     call s:set_marks_characterwise()
 
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
-
     " Climb the expression tree a:1 times
     if a:0 && a:1 > 1
         let idx = a:1

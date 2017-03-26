@@ -1541,36 +1541,69 @@ function! s:yankdel_range(from, to, del, ...)
         " Nothing to do!
         return ''
     endif
-    " TODO: Use getline/setline() if from/to co-linear.
-    call s:setcursor(a:from)
-    if !inc[0]
-        " Move off non-included start char pos.
-        " Note: This approach should work even with 'virtualedit', but decide
-        " whether to implement move_left/right functions to use instead.
-        " (TODO)
-        normal! l
-        if a:from == getpos('.')
-            " EOL prevented move. Append space and record doing so.
-            exe "normal! a "
-            let spc = 1
+    " !!!!! UNDER CONSTRUCTION !!!!!
+    if a:from[1] == a:to[1]
+        " From/to are co-linear: use getline/setline.
+        let ln = getline(a:from[1])
+        " Convert 1-based col indices to 0-based, shifting head or tail by one
+        " char position (allowing for multi-byte chars), as indicated by
+        " corresponding inc flag.
+        let i1 = inc[0] ? a:from[2] - 1 : matchend(ln, '.', a:from[2] - 1)
+        let i2 = inc[1] ? matchend(ln, '.', a:to[2] - 1) : a:to[2] - 1
+        let ret = ln[i1 : i2 - 1]
+        if a:del
+            call setline(a:from[1], ln[ : i1 - 1] . ln[i2 : ])
         endif
-    endif
-    let reg_save = @a
-    " Yank/delete into @a
-    let op = (a:del ? 'd' : 'y') . (inc[1] ? 'v' : '')
-    silent! exe 'normal! "a' . op . ":call cursor(a:to[1], a:to[2])\<CR>"
-    if spc
-        " Remove the added space register.
-        let @a = @a[1:]
-        if !a:del
-            " Remove the added space from buffer.
-            " Note: Because we're at EOL already, the char delete will move us
-            " back to from pos automatically.
-            normal! "_x
+    else
+        " TODO: Use lockmarks
+        let cursor = getpos('.')
+        " Use yank/delete operators for from/to on different lines.
+        call s:setcursor(a:from)
+        if !inc[0]
+            " Move off non-included start char pos if possible.
+            " Note: The following move will work in 'virtualedit' case, even
+            " at end of line.
+            normal! l
+            if line('.') != a:from[1] || col('.') == a:from[2]
+                " EOL prevented rightward move.
+                " Note: 1st condition handles case in which 'whichwrap'
+                " contains 'l'.
+                call s:setcursor(a:from)
+                " Append space and record doing so.
+                exe "normal! a "
+                let spc = 1
+            endif
         endif
+        let reg_save = @a
+        " Yank/delete into @a
+        let op = (a:del ? 'd' : 'y') . (inc[1] ? 'v' : '')
+        silent! exe 'normal! "a' . op . ":call cursor(a:to[1], a:to[2])\<CR>"
+        if spc
+            " Remove the added space from register.
+            let @a = @a[1:]
+            if !a:del
+                " Must also remove the added space from buffer.
+                normal! "_x
+            endif
+        endif
+        " Restore original cursor position.
+        call s:setcursor(cursor)
+        if a:del && !empty(&virtualedit)
+            " With 'virtualedit', 2 cases require special handling.
+            " 1. original line no longer exists
+            " 2. original col no longer exists
+            " In either case, the preceding cursor() put us on the correct
+            " line; we just need to move to real EOL, which could be either to
+            " the right or left of cursor, given that cursor() will always put
+            " us on the last line in case 1, effectively invalidating the
+            " original col position.
+            if line('.') < cursor[1] || col('.') != cursor[2]
+                call cursor(line('.'), col('$') - 1)
+            endif
+        endif
+        let ret = @a
+        let @a = reg_save
     endif
-    let ret = @a
-    let @a = reg_save
     return ret
 endfu
 
@@ -1588,18 +1621,18 @@ fu! s:put_at(text, pos, before, cursor_after)
     let @a = reg_save
 endfu
 
-" BPS Addition
 " Logic:
-"Position at head of current element
-"Delete/save back to beginning of containing form.
-"Note: Strip trailing whitespace
-"Select and raise the form (which no longer contains the leading part.
-"Traverse upward <count> forms
-"Wrap the form.
-"Insert deleted/saved stuff at head
-"Note: Should probably append a newline
-"Re-indent the form.
+" 1. Attempt to position at head of current element.
+" 2. Cut text back to beginning of containing form.
+" 3. Raise what remains of the form (saving open/close brackets).
+" 4. Wrap the form <count>+1 levels up with the saved open/close brackets,
+"    placing the text cut from step 2 just inside the open.
+" 5. Re-indent the form *containing* the newly-added form.
+" 6. Position cursor just *past* the text that was cut in step 2.
+"    Note: In the general case, this will leave cursor where it was before the
+"    convolute.
 fu! sexp#convolute(count, ...)
+    " Save marks/pos for subsequent restore.
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
 
@@ -1607,9 +1640,11 @@ fu! sexp#convolute(count, ...)
     " tpos=list tail
     " bpos=list open bracket
     " spos=list macro chars (or bracket if no macro chars)
+    "  *_i=inner-most list involved in convolute
+    "  *_o=outer-most list involved in convolute
 
-    " Climb the expression tree count+1 times, recording the heads of 2 lists
-    " involved in the convolute: the inner-most and the outer-most.
+    " Climb the expression tree count+1 times, recording the heads of the
+    " inner/outer-most lists involved in convolute.
     " Note: v:count1 would really be better-suited to stuff like this.
     let [idx, n] = [0, a:count ? a:count + 1 : 2]
     while idx < n
@@ -1620,6 +1655,7 @@ fu! sexp#convolute(count, ...)
         endif
         if !idx
             let bpos_i = p
+            " Caveat: Don't change cursor pos.
             let spos_i = s:current_element_terminal(0)
             let tpos_i = s:nearest_bracket(1)
         endif
@@ -1630,13 +1666,13 @@ fu! sexp#convolute(count, ...)
     let tpos_o = s:nearest_bracket(1)
 
     " Determine dividing point for convolution: either...
-    " 1. start of current element
-    " 2. beginning of next element (on inter-element whitespace)
-    " 3. at cursor (in whitespace preceding closing bracket)
-    if tpos_i == cursor
+    " 1. start of current element (when inside element)
+    " 2. beginning of next element (when on inter-element whitespace)
+    " 3. at cursor (when in whitespace preceding closing bracket)
+    if cursor == tpos_i
         " Special Case: Cursor on closing bracket
         " Alternative: Could use test like this.
-        "if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
+        " if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
         let pos = tpos_i
     else
         " Try to position on head of current element (including macro chars).
@@ -1646,40 +1682,38 @@ fu! sexp#convolute(count, ...)
             " Not on an element; move to next one's head.
             " Note: Returns current pos if no adjacent el, which is probably
             " as good a point as any.
-            " Rationale: Emacs is pretty literal about the dividing point.
+            " Rationale: Emacs is extremely literal about the dividing point,
+            " using cursor pos even in middle of an element!
             let pos = s:nearest_element_terminal(1, 0)
         endif
     endif
-    " Will the closing bracket's distance from eol be changed by convolute?
-    let edist_changing = tpos_i[1] == pos[1] && tpos_o[1] != pos[1]
-
     " Record distance from dividing point to end of line to facilitate
     " subsequent cursor positioning
     " Rationale: Head of line may be changed by deletion and re-indent.
     let pos_edist = col([pos[1], '$']) - pos[2]
+    " Will dividing point's distance from eol be changed by convolute?
+    let edist_changing = tpos_i[1] == pos[1] && tpos_o[1] != pos[1]
 
-    " Splice what remains of the form into parent.
-    " CAVEAT! Can't use sexp#splice because it doesn't preserve macro
+    " Perform a splice killing backwards from pos on the inner form.
+    " Note: Not using sexp#splice because it doesn't preserve macro
     " chars/brackets.
-    " CAVEAT! Must work backwards since deletions invalidate positions.
+    " Note: Work backwards since deletions invalidate positions.
     let ket = s:yankdel_range(tpos_i, tpos_i, 1, 1)
-    " Delete everything between open bracket and pos.
     let del = s:yankdel_range(bpos_i, pos, 1, [0, 0])
     let bra = s:yankdel_range(spos_i, bpos_i, 1, 1)
 
-    " Note: Deletion above invalidated tpos_o; use bpos_o to find its new pos.
+    " Note: Deletion above may have invalidated tpos_o; use bpos_o to find it.
     call s:setcursor(bpos_o)
     let tpos_o = s:nearest_bracket(1)
     call s:put_at(ket, tpos_o, 0, 0)
     call s:put_at(del, spos_o, 1, 0)
     call s:put_at(bra, spos_o, 1, 0)
     " Position on bracket
+    " TODO: Option to position *on* end?
     " TODO: Cleanup and comment.
     call cursor(line('.'), col('.') + len(bra) - 1)
 
-    " On start of bracket. Indent this list and the one that contains it.
-    " TODO: Need to indent at least the form *containing* the outer form
-    " FIXME! Why does 2 not work?
+    " Indent the outer list *and* the one that contains it.
     call sexp#indent(0, 2)
 
     " Re-calculate pos for final cursor positioning.

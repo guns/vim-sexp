@@ -1532,7 +1532,87 @@ endfunction
 " bool, with a bool assumed to apply only to end (with start being included by
 " default). If inc arg is omitted, assume range that is open only at end.
 " Cursor Note: If we move cursor, we'll leave it at start of operated range.
-function! s:yankdel_range(from, to, del, ...)
+function! s:yankdel_range(start, end, del, ...)
+    let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
+    " Make sure there's a point in continuing.
+    let cmp = s:compare_pos(a:start, a:end)
+    if cmp > 1 || cmp == 0 && inc != [1, 1]
+        " Nothing to do!
+        return ''
+    endif
+    let cursor = getpos('.')
+    " Nomenclature: 's'=start, 'e'=end, 'l'=line, 'c'=col, 't'=text
+    " Cache line/col positions in more convenient form, converting 1-based col
+    " positions to 0-based equivalents.
+    let [sl, el] = [a:start[1], a:end[1]]
+    let [sc, ec] = [a:start[2] - 1, a:end[2] - 1]
+
+    " Allow easy differentiation between collinear and non-collinear case.
+    let co = sl == el
+    " Cache the partial line(s).
+    let slt = getline(sl)
+    if !co | let elt = getline(el) | endif
+    " Shift start/end by one char position, as indicated by corresponding inc
+    " flag, taking care to allow for multi-byte chars.
+    if !inc[0]
+        let sc = matchend(slt, '.', sc)
+    endif
+    if inc[1]
+        let ec = matchend(co ? slt : elt, '.', ec)
+    endif
+
+    " Get text from 'start' to either 'end' (collinear) or EOL
+    let ret = slt[sc : (co ? ec - 1 : -1)]
+    if a:del
+        " Combine undeleted text (possibly empty) from initial and final lines
+        " (which could be the same line).
+        call setline(sl, strpart(slt, 0, sc) . strpart(co ? slt : elt, ec))
+    endif
+    if !co
+        if a:del
+            " Before its line number is invalidated, delete final line, part
+            " of which may already have been appended to what remains of first
+            " line in range.
+            exe el "d _"
+        endif
+        " Handle multi-line case, omitting the final line, which is handled
+        " specially.
+        if sl < el - 1
+            let reg_save = @a
+            exe sl + 1 "," el - 1 a:del ? "d" : "y" "a"
+            let ret .= "\n" . @a
+            let @a = reg_save
+        endif
+        " Accumulate in-range portion of final line.
+        let ret .= "\n" . strpart(elt, 0, ec)
+    endif
+    " Fix cursor position if it was invalidated by delete.
+    if a:del
+        " Reposition cursor if necessary.
+        let p1 = [0, sl, sc + 1, 0]
+        if s:compare_pos(cursor,  p1) > 0
+            let p2 = [0, el, ec + 1, 0]
+            if s:compare_pos(cursor, p2) <= 0
+                " Move back to head of deletion.
+                let cursor = p1
+            else
+                " Adjust for lines deleted and, if cursor was on final
+                " line of range, account for col shift engendered by deletion.
+                let cursor[1] -= el - sl
+                if cursor[1] == el
+                    " Collinearity determines shift direction.
+                    let cursor[2] += co ? sc - ec : sc
+                endif
+            endif
+        endif
+    endif
+    " Restore cursor
+    call s:setcursor(cursor)
+    return ret
+endfu
+
+" TODO: Remove this...
+function! s:yankdel_range_obsolete(from, to, del, ...)
     let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
     let [ret, spc] = ['', 0]
     " Make sure there's a point in continuing.
@@ -1607,18 +1687,55 @@ function! s:yankdel_range(from, to, del, ...)
     return ret
 endfu
 
-" Put input text at position given by pos.
+" Put input text at specified position, with input flags determining whether
+" paste works like p, P, gp or gP.
+" Important Note: Takes special care to put text 'characterwise', even when
+" string to be put ends in newline.
 " Args:
 " text           Text to put
-" pos            Location at which to put the text
 " before         Nonzero puts text before input pos (default after)
 " cursor_after   Nonzero leaves cursor just after put text (default at start)
-fu! s:put_at(text, pos, before, cursor_after)
+" [pos]          Location at which to put the text. Defaults to cursor pos.
+fu! s:put_at(text, before, cursor_after, ...)
+    " Position defaults to cursor pos.
+    if a:0
+        call s:setcursor(a:1)
+    endif
     let [reg_save, @a] = [@a, a:text]
-    call s:setcursor(a:pos)
-    let op = (a:cursor_after ? 'g' : '') . (a:before ? 'P' : 'p')
-    exe 'normal! "a' . op
+    " Caveat: Vim's treatment of -1 string index doesn't obey POLS; use range.
+    let linewise = a:text[-1:] == "\n"
+    if linewise
+        " Make the register non-linewise.
+        let @a .= ' '
+    endif
+    " Note: Use g modifier unconditionally in linewise case to simplify
+    " post-put logic.
+    exe 'normal! "a'
+        \ . (linewise || a:cursor_after ? 'g' : '') . (a:before ? 'P' : 'p')
     let @a = reg_save
+    if linewise
+        " Remove the space added to inhibit linewise operation.
+        " Save '[ and '] before x or X modify them.
+        let [start, end] = [getpos("'["), getpos("']")]
+        " Space will always be at BOL; whether we're on or after the space
+        " depends upon line and 'virtualedit'.
+        if col('.') == 1
+            " Must be at EOL.
+            normal! "_x
+        else
+            " Backspace over the space
+            normal! "_X
+        endif
+        " Note: When pasting a register that ends in newline, Vim leaves
+        " cursor *after* newline, but sets '] mark *before*; do likewise...
+        call setpos("'[", start)
+        call setpos("']", end)
+        " Note: In cursor_after case, position is already correct.
+        if !a:cursor_after
+            " Position at start of operation.
+            call s:setcursor(start)
+        endif
+    endif
 endfu
 
 " Logic:
@@ -1650,8 +1767,12 @@ fu! sexp#convolute(count, ...)
     while idx < n
         let p = s:move_to_nearest_bracket(0)
         if !p[1]
-            " Error! Insufficient nesting for count given
-            echoerr "Convolute impossible with count given: insufficient nesting"
+            " Warn and return without changing anything.
+            echohl WarningMsg
+            echomsg "Convolute impossible with count given: insufficient nesting"
+            echohl None
+            call s:setcursor(cursor)
+            return
         endif
         if !idx
             let bpos_i = p
@@ -1705,13 +1826,14 @@ fu! sexp#convolute(count, ...)
     " Note: Deletion above may have invalidated tpos_o; use bpos_o to find it.
     call s:setcursor(bpos_o)
     let tpos_o = s:nearest_bracket(1)
-    call s:put_at(ket, tpos_o, 0, 0)
-    call s:put_at(del, spos_o, 1, 0)
-    call s:put_at(bra, spos_o, 1, 0)
-    " Position on bracket
-    " TODO: Option to position *on* end?
-    " TODO: Cleanup and comment.
-    call cursor(line('.'), col('.') + len(bra) - 1)
+    call s:put_at(ket, 0, 0, tpos_o)
+    call s:put_at(del, 1, 0, spos_o)
+    call s:put_at(bra, 1, 0, spos_o)
+    " If non-empty macro chars were pasted, move forward to bracket so we'll
+    " know exactly what we're indenting.
+    if len(bra) > 1
+        call cursor(line('.'), col('.') + len(bra) - 1)
+    endif
 
     " Indent the outer list *and* the one that contains it.
     call sexp#indent(0, 2)

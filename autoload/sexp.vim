@@ -1582,9 +1582,13 @@ function! s:yankdel_range(start, end, del, ...)
             exe sl + 1 "," el - 1 a:del ? "d" : "y" "a"
             let ret .= "\n" . @a
             let @a = reg_save
+        else
+            " No linewise :y/:d cmd means we have to add NL before final line
+            " manually.
+            let ret .= "\n"
         endif
         " Accumulate in-range portion of final line.
-        let ret .= "\n" . strpart(elt, 0, ec)
+        let ret .= strpart(elt, 0, ec)
     endif
     " Fix cursor position if it was invalidated by delete.
     if a:del

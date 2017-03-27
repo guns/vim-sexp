@@ -353,9 +353,9 @@ Defplug  xnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'v', ''
 Defplug! nnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
 Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', '')
 
-" Convolute - BPS
-" Note: convolute takes pains to maintain cursor position.
-DefplugN nnoremap sexp_convolute sexp#convolute(v:count, 'n')
+" Convolute
+" Note: convolute takes pains to preserve cursor position: hence, 'nojump'.
+DefplugN! nnoremap sexp_convolute sexp#convolute(v:count, 'n')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)

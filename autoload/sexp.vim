@@ -1827,6 +1827,15 @@ fu! sexp#convolute(count, ...)
     let del = s:yankdel_range(bpos_i, pos, 1, [0, 0])
     let bra = s:yankdel_range(spos_i, bpos_i, 1, 1)
 
+    " Since the deleted text is going to be prepended to a list, make sure
+    " that if it contains non-whitespace, it ends with whitespace. Normally,
+    " our positioning on the start of an element will ensure this happens
+    " naturally, but there are corner cases where it doesn't: e.g., when we're
+    " positioned on a list closing bracket.
+    if del =~ '\%(\S.*\)\@<=\S$'
+        let del .= ' '
+    endif
+
     " Note: Deletion above may have invalidated tpos_o; use bpos_o to find it.
     call s:setcursor(bpos_o)
     let tpos_o = s:nearest_bracket(1)

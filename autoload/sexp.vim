@@ -1615,82 +1615,6 @@ function! s:yankdel_range(start, end, del, ...)
     return ret
 endfu
 
-" TODO: Remove this...
-function! s:yankdel_range_obsolete(from, to, del, ...)
-    let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
-    let [ret, spc] = ['', 0]
-    " Make sure there's a point in continuing.
-    let cmp = s:compare_pos(a:from, a:to)
-    if cmp > 1 || cmp == 1 && inc != [1, 1]
-        " Nothing to do!
-        return ''
-    endif
-    " !!!!! UNDER CONSTRUCTION !!!!!
-    if a:from[1] == a:to[1]
-        " From/to are co-linear: use getline/setline.
-        let ln = getline(a:from[1])
-        " Convert 1-based col indices to 0-based, shifting head or tail by one
-        " char position (allowing for multi-byte chars), as indicated by
-        " corresponding inc flag.
-        let i1 = inc[0] ? a:from[2] - 1 : matchend(ln, '.', a:from[2] - 1)
-        let i2 = inc[1] ? matchend(ln, '.', a:to[2] - 1) : a:to[2] - 1
-        let ret = ln[i1 : i2 - 1]
-        if a:del
-            call setline(a:from[1], ln[ : i1 - 1] . ln[i2 : ])
-        endif
-    else
-        " TODO: Use lockmarks
-        let cursor = getpos('.')
-        " Use yank/delete operators for from/to on different lines.
-        call s:setcursor(a:from)
-        if !inc[0]
-            " Move off non-included start char pos if possible.
-            " Note: The following move will work in 'virtualedit' case, even
-            " at end of line.
-            normal! l
-            if line('.') != a:from[1] || col('.') == a:from[2]
-                " EOL prevented rightward move.
-                " Note: 1st condition handles case in which 'whichwrap'
-                " contains 'l'.
-                call s:setcursor(a:from)
-                " Append space and record doing so.
-                exe "normal! a "
-                let spc = 1
-            endif
-        endif
-        let reg_save = @a
-        " Yank/delete into @a
-        let op = (a:del ? 'd' : 'y') . (inc[1] ? 'v' : '')
-        silent! exe 'normal! "a' . op . ":call cursor(a:to[1], a:to[2])\<CR>"
-        if spc
-            " Remove the added space from register.
-            let @a = @a[1:]
-            if !a:del
-                " Must also remove the added space from buffer.
-                normal! "_x
-            endif
-        endif
-        " Restore original cursor position.
-        call s:setcursor(cursor)
-        if a:del && !empty(&virtualedit)
-            " With 'virtualedit', 2 cases require special handling.
-            " 1. original line no longer exists
-            " 2. original col no longer exists
-            " In either case, the preceding cursor() put us on the correct
-            " line; we just need to move to real EOL, which could be either to
-            " the right or left of cursor, given that cursor() will always put
-            " us on the last line in case 1, effectively invalidating the
-            " original col position.
-            if line('.') < cursor[1] || col('.') != cursor[2]
-                call cursor(line('.'), col('$') - 1)
-            endif
-        endif
-        let ret = @a
-        let @a = reg_save
-    endif
-    return ret
-endfu
-
 " Put input text at specified position, with input flags determining whether
 " paste works like p, P, gp or gP.
 " Important Note: Takes special care to put text 'characterwise', even when
@@ -1866,7 +1790,6 @@ endfu
 " first bracket. Takes optional count parameter, which specifies which pair of
 " ancestor brackets to remove.
 function! sexp#splice_list(...)
-    "echomsg "a:0=" . a:0 . " a:1=" . (a:0 ? a:1 : '')
     call s:set_marks_characterwise()
 
     let marks = s:get_visual_marks()

@@ -743,6 +743,81 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
+" As the name suggests.
+" Return: 0=stayed on same line, 1=moved to next line
+function! s:move_forward_one_char()
+    " TODO: Add call from original site...
+    if col([line, '$']) - 1 == col
+        call cursor(line + 1, 1)
+        return 1
+    else
+        call cursor(line, col + 1)
+        return 0
+    endif
+endfunction
+
+" BPS TODO
+function! s:move_to_nearest_in_buffer(next, form)
+    let cursor = getpos('.')
+    " Get to edge of current element, or remain between elements.
+    let pos = s:move_to_current_element_terminal(a:next)
+
+    " Move elementwise in desired direction till we find what we're looking
+    " for or reach end of list.
+    while 1
+        let end = s:current_element_terminal(a:next)
+        " Now that we've established where we'll land if there are no more
+        " elements in current list, attempt to move to the near side of
+        " adjacent element.
+        let pos = s:move_to_adjacent_element(a:next, !a:next, 0)
+        if end == pos
+            " Can't move any further in current list. Find its bracket and
+            " continue search.
+            let bpos = s:move_to_nearest_bracket(a:next)
+            " No point in checking this one: even if we're looking for a list,
+            " we're not looking for parent lists.
+            continue
+        endif
+        " Landed on an element, which could be element or list.
+        " !!!!!!UNDER CONSTRUCTION!!!!!!
+        let char = getline(pos[1])[pos[2] - 1]
+        " Loop until ready to search for adjacent element.
+        while 1
+            if char =~# s:bracket
+                if a:form
+                else
+                    " Descend: i.e., move to char after open bracket.
+                    if s:move_one_char(a:next)
+                        let pos = getpos('.')
+                        let char = getline(pos[1])[pos[2] - 1]
+                    endif
+                    " NO! Rework to use functions instead of individual char
+                    " tests... Keep in mind that current_element_terminal
+                    " returns [0, 0] when not on element.
+                    " TODO: Consider possibility of EOF...
+                    if char =~# '\s' || char =~# s:closing_bracket
+                        " Break out to resume search for adjacent
+                        break
+                    elseif char =~# s:closing_bracket
+                        " Completely empty list
+                    else
+                        " On element terminal: may or may not be list
+                        if on_list_start()
+                            " Need to descend again.
+                        else
+                            " Found next element
+                        endif
+                    endif
+                endif
+            elseif !a:form
+                " Found next element
+            endif
+        endwhile
+    endwhile
+
+        
+endfunction
+
 " Tries to move cursor to outermost list's opening or closing bracket,
 " returning its position; 0 for opening, 1 for closing. Does not move cursor
 " if not in a list.
@@ -877,6 +952,10 @@ function! sexp#move_to_nearest_bracket(mode, next)
     endif
 endfunction
 
+" BPS TODO
+function! sexp#move_to_nearest_BRACKET(mode, next)
+endfunction
+
 " Calls s:move_to_adjacent_element count times, with the following additional
 " behaviours:
 "
@@ -915,6 +994,11 @@ function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
             return s:select_current_marks('o')
         endif
     endif
+endfunction
+
+" BPS TODO: Consider whether sexp#move_to_adjacent_element can be used for
+" both this and that. Same thing for move_to_nearest_bracket.
+function! sexp#move_to_adjacent_ELEMENT(mode, count, next, tail, top)
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts
@@ -1867,3 +1951,18 @@ function! sexp#backspace_insertion()
         return "\<BS>"
     endif
 endfunction
+
+" BPS DEBUG
+let Fn_current_element_terminal = function('s:current_element_terminal') "(end)
+let Fn_nearest_element_terminal = function('s:nearest_element_terminal') "(next, tail)
+let Fn_nearest_bracket = function('s:nearest_bracket') "(closing, ...)
+let Fn_current_top_list_bracket = function('s:current_top_list_bracket') "(closing)
+let Fn_current_string_terminal = function('s:current_string_terminal') "(end)
+let Fn_current_comment_terminal = function('s:current_comment_terminal') "(end)
+let Fn_current_atom_terminal = function('s:current_atom_terminal') "(end)
+let Fn_current_macro_character_terminal = function('s:current_macro_character_terminal') "(end)
+let Fn_terminals_with_whitespace = function('s:terminals_with_whitespace') "(start, end)
+let Fn_select_current_marks = function('s:select_current_marks')
+let Fn_move_to_nearest_bracket = function('s:move_to_nearest_bracket')
+let Fn_move_to_adjacent_element = function('s:move_to_adjacent_element') "(next, tail, top)
+

@@ -268,6 +268,12 @@ Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_
 DEFPLUG  xnoremap sexp_move_to_next_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
 Defplug! onoremap sexp_move_to_next_bracket sexp#move_to_nearest_bracket('o', 1)
 
+" Nearest BRACKET
+Defplug  nnoremap sexp_move_to_prev_BRACKET sexp#docount(v:count, 'sexp#move_to_nearest_BRACKET', 'n', 0)
+DEFPLUG  xnoremap sexp_move_to_prev_BRACKET <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_BRACKET', 'v', 0)<CR>
+Defplug  nnoremap sexp_move_to_next_BRACKET sexp#docount(v:count, 'sexp#move_to_nearest_BRACKET', 'n', 1)
+DEFPLUG  xnoremap sexp_move_to_next_BRACKET <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_BRACKET', 'v', 1)<CR>
+
 " Adjacent element head
 "
 " Visual mappings must break out of visual mode in order to detect which end
@@ -279,6 +285,12 @@ DefplugN  nnoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element(
 DEFPLUG   xnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 1, 0, 0)<CR>
 DefplugN! onoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('o', v:count, 1, 0, 0)
 
+" Adjacent ELEMENT head
+DefplugN  nnoremap sexp_move_to_prev_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 0, 0)
+DEFPLUG   xnoremap sexp_move_to_prev_ELEMENT_head <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 0, 0, 0)<CR>
+DefplugN  nnoremap sexp_move_to_next_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 0, 0)
+DEFPLUG   xnoremap sexp_move_to_next_ELEMENT_head <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 1, 0, 0)<CR>
+
 " Adjacent element tail
 "
 " Inclusive operator pending motions require a visual mode selection to
@@ -289,6 +301,15 @@ DefplugN! onoremap sexp_move_to_prev_element_tail sexp#move_to_adjacent_element(
 DefplugN  nnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('n', v:count, 1, 1, 0)
 DEFPLUG   xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 1, 1, 0)<CR>
 DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('o', v:count, 1, 1, 0)
+
+" Adjacent ELEMENT tail
+"
+" Inclusive operator pending motions require a visual mode selection to
+" include the last character of a line.
+DefplugN  nnoremap sexp_move_to_prev_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 1, 0)
+DEFPLUG   xnoremap sexp_move_to_prev_ELEMENT_tail <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 0, 1, 0)<CR>
+DefplugN  nnoremap sexp_move_to_next_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 1, 0)
+DEFPLUG   xnoremap sexp_move_to_next_ELEMENT_tail <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 1, 1, 0)<CR>
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)

@@ -50,6 +50,10 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_element_head': '<M-w>',
     \ 'sexp_move_to_prev_element_tail': 'g<M-e>',
     \ 'sexp_move_to_next_element_tail': '<M-e>',
+    \ 'sexp_move_to_prev_ELEMENT_head': '<M-S-b>',
+    \ 'sexp_move_to_next_ELEMENT_head': '<M-S-w>',
+    \ 'sexp_move_to_prev_ELEMENT_tail': 'g<M-S-e>',
+    \ 'sexp_move_to_next_ELEMENT_tail': '<M-S-e>',
     \ 'sexp_move_to_prev_top_element':  '[[',
     \ 'sexp_move_to_next_top_element':  ']]',
     \ 'sexp_select_prev_element':       '[e',
@@ -193,8 +197,10 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_indent',              'sexp_indent_top',
-               \ 'sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
+    for plug in ['sexp_indent',                    'sexp_indent_top',
+               \ 'sexp_insert_at_list_head',       'sexp_insert_at_list_tail',
+               \ 'sexp_move_to_prev_ELEMENT_head', 'sexp_move_to_next_ELEMENT_head',
+               \ 'sexp_move_to_prev_ELEMENT_tail', 'sexp_move_to_next_ELEMENT_tail',
                \ 'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
@@ -286,10 +292,8 @@ DEFPLUG   xnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#move_to_a
 DefplugN! onoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('o', v:count, 1, 0, 0)
 
 " Adjacent ELEMENT head
-DefplugN  nnoremap sexp_move_to_prev_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 0, 0)
-DEFPLUG   xnoremap sexp_move_to_prev_ELEMENT_head <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 0, 0, 0)<CR>
-DefplugN  nnoremap sexp_move_to_next_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 0, 0)
-DEFPLUG   xnoremap sexp_move_to_next_ELEMENT_head <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 1, 0, 0)<CR>
+DefplugN  nnoremap sexp_move_to_prev_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 0)
+DefplugN  nnoremap sexp_move_to_next_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 0)
 
 " Adjacent element tail
 "
@@ -306,10 +310,8 @@ DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element(
 "
 " Inclusive operator pending motions require a visual mode selection to
 " include the last character of a line.
-DefplugN  nnoremap sexp_move_to_prev_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 1, 0)
-DEFPLUG   xnoremap sexp_move_to_prev_ELEMENT_tail <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 0, 1, 0)<CR>
-DefplugN  nnoremap sexp_move_to_next_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 1, 0)
-DEFPLUG   xnoremap sexp_move_to_next_ELEMENT_tail <Esc>:<C-u>call sexp#move_to_adjacent_ELEMENT('v', v:prevcount, 1, 1, 0)<CR>
+DefplugN  nnoremap sexp_move_to_prev_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 1)
+DefplugN  nnoremap sexp_move_to_next_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 1)
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)

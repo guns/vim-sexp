@@ -71,6 +71,13 @@ function! s:macro_chars()
     endif
 endfunction
 
+" Return a very magic character class matching macro char.
+" Note: It's likely that all macro chars would require escaping in very magic
+" pattern.
+function! s:macro_chars_vre()
+    return '[' . substitute(s:macro_chars(), '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
+endfunction
+
 """ QUERIES AT CURSOR {{{1
 
 " Simple wrapper around searchpos() with flags 'nW', and optionally the
@@ -690,6 +697,19 @@ function! s:is_comment(line, col)
     endif
 endfunction
 
+" Returns nonzero if on list opening/closing chars:
+" -1 => on list opening bracket or preceding macro chars
+"  1 => on list closing bracket
+function! s:is_list(line, col)
+    let chars = getline(a:line)[a:col - 1:]
+    let maybe = chars =~#
+        \ '\v^' . s:macro_chars_vre() . '*' . s:opening_bracket
+        \ ? 1
+        \ : chars =~# '^' . s:closing_bracket ? 2 : 0
+    return maybe && !s:syntax_match(s:ignored_region, a:line, a:col)
+        \ ? maybe : 0
+endfunction
+
 " Returns 1 if character at position is an atom.
 "
 " An atom is defined as:
@@ -745,7 +765,8 @@ endfunction
 
 " As the name suggests.
 " Return: 0=stayed on same line, 1=moved to next line
-function! s:move_forward_one_char()
+function! s:move_one_char(next)
+    " TODO: Handle next arg...
     " TODO: Add call from original site...
     if col([line, '$']) - 1 == col
         call cursor(line + 1, 1)
@@ -757,32 +778,135 @@ function! s:move_forward_one_char()
 endfunction
 
 " BPS TODO
-function! s:move_to_nearest_in_buffer(next, form)
+function! s:move_to_nearest_in_buffer(next, form, tail)
     let cursor = getpos('.')
-    " Get to edge of current element, or remain between elements.
+    let near = !!a:next != !!a:tail
+    " Get to far edge of current element, or remain between elements.
+    " Note: If near=1, the current element can't be target; it can serve only
+    " as a base for adjacent element search.
     let pos = s:move_to_current_element_terminal(a:next)
+    if pos[1] && (near || cursor == pos)
+        " Ignore the starting element: either we started on its candidate
+        " position, or we were already past it.
+        let pos = [0, 0, 0, 0]
+    endif
 
     " Move elementwise in desired direction till we find what we're looking
     " for or reach end of list.
     while 1
-        let end = s:current_element_terminal(a:next)
-        " Now that we've established where we'll land if there are no more
-        " elements in current list, attempt to move to the near side of
-        " adjacent element.
-        let pos = s:move_to_adjacent_element(a:next, !a:next, 0)
-        if end == pos
-            " Can't move any further in current list. Find its bracket and
-            " continue search.
-            let bpos = s:move_to_nearest_bracket(a:next)
-            " No point in checking this one: even if we're looking for a list,
-            " we're not looking for parent lists.
-            continue
+        " TODO: Perhaps add another flag?
+        if !pos[1]
+            " Find out where we'll land if adjacent doesn't exist.
+            let end = s:current_element_terminal(a:next)
+            " Now that we've established where we'll land if there are no more
+            " elements in current list, attempt to move to the adjacent element.
+            let pos = s:move_to_adjacent_element(a:next, a:tail, 0)
+            " Note: move_to_adjacent_element returns current pos if not in el.
+            if pos == end
+                " Can't move any further in current list. Find its bracket and
+                " continue search.
+                let bpos = s:move_to_nearest_bracket(a:next)
+                if !bpos[1]
+                    " No parent list and no adjacent element!
+                    throw 'sexp-error'
+                endif
+                " No point in checking this one: even if we're looking for a list,
+                " we're not looking for parent lists.
+                let pos = [0, 0, 0, 0]
+                continue
+            endif
         endif
+
+        " Landed on something, which could be element or list.
+        let lfc = getline('.')[pos[2] - 1:]
+        let char = getline(pos[1])[pos[2] - 1]
+        " Loop until ready to search for adjacent element.
+        while 1
+            " NO! Won't work because we could be on macro chars!!!
+            " TODO: Author did stridx in loop for macro chars, but can't we
+            " just use a char class with very nomagic?
+            let re_mc = escape('\V[' . s:macro_chars() . ']', '\')
+            if !a:tail && lfc =~# s:macro_chars s:bracket
+                if a:form
+                else
+                    " Descend: i.e., move to char after open bracket.
+                    if s:move_one_char(a:next)
+                        let pos = getpos('.')
+                        let char = getline(pos[1])[pos[2] - 1]
+                    endif
+                    " NO! Rework to use functions instead of individual char
+                    " tests... Keep in mind that current_element_terminal
+                    " returns [0, 0] when not on element.
+                    " TODO: Consider possibility of EOF...
+                    if char =~# '\s' || char =~# s:closing_bracket
+                        " Break out to resume search for adjacent
+                        break
+                    elseif char =~# s:closing_bracket
+                        " Completely empty list
+                    else
+                        " On element terminal: may or may not be list
+                        if on_list_start()
+                            " Need to descend again.
+                        else
+                            " Found next element
+                        endif
+                    endif
+                endif
+            elseif !a:form
+                " Found next element
+            endif
+        endwhile
+    endwhile
+
+        
+endfunction
+function! s:move_to_nearest_in_buffer_complex(next, form, tail)
+    let cursor = getpos('.')
+    let near = !!a:next != !!a:tail
+    " Get to far edge of current element, or remain between elements.
+    " Note: If near=1, the current element can't be target; it can serve only
+    " as a base for adjacent element search.
+    let pos = s:move_to_current_element_terminal(a:next)
+    let inhibit = 0
+    if pos[1] && (!near && cursor != pos)
+        " Ignore the starting element: either we started on its candidate
+        " position, or we were already past it.
+        let inhibit = 1
+    endif
+
+    " Move elementwise in desired direction till we find what we're looking
+    " for or reach end of list.
+    while 1
+        " TODO: Perhaps add another flag?
+        if !inhibit
+            if near && pos[1]
+                let end = s:current_element_terminal(a:next)
+            else
+                let opos = pos
+            endif
+            " Now that we've established where we'll land if there are no more
+            " elements in current list, attempt to move to the adjacent element.
+            let pos = s:move_to_adjacent_element(a:next, a:tail, 0)
+            if near && pos == end || pos == opos
+                " Can't move any further in current list. Find its bracket and
+                " continue search.
+                let bpos = s:move_to_nearest_bracket(a:next)
+                " No point in checking this one: even if we're looking for a list,
+                " we're not looking for parent lists.
+                continue
+            endif
+        endif
+        let inhibit = 0
+
         " Landed on an element, which could be element or list.
+        " Idea!!!: Rule: If at start of something... Find next close (fwd) or
+        " open (bck) and then its pair, and if the pair lies between starting
+        " pos and its opposite, we were on macro chars before list.
         " !!!!!!UNDER CONSTRUCTION!!!!!!
         let char = getline(pos[1])[pos[2] - 1]
         " Loop until ready to search for adjacent element.
         while 1
+            " NO! Won't work because we could be on macro chars!!!
             if char =~# s:bracket
                 if a:form
                 else
@@ -998,7 +1122,49 @@ endfunction
 
 " BPS TODO: Consider whether sexp#move_to_adjacent_element can be used for
 " both this and that. Same thing for move_to_nearest_bracket.
-function! sexp#move_to_adjacent_ELEMENT(mode, count, next, tail, top)
+function! sexp#move_to_adjacent_ELEMENT(mode, count, next, tail)
+    let near = !!a:next != !!a:tail
+    let cnt = a:count ? a:count : 1
+    let spos = getpos('.')
+    if !s:is_list(spos[1], spos[2])
+        " The current element is not a list, and hence *could* be target.
+        " Position on far side in preparation for subsequent search, which may
+        " or may not be necessary, given that in the non-near case, this
+        " initial positioning may actually count as a jump.
+        let pos = s:move_to_current_element_terminal(a:next)
+        if pos[1] && pos != spos && !near
+            " Terminal positioning constitutes a jump.
+            let cnt -= 1
+            if !cnt
+                return
+            endif
+        endif
+    endif
+    " We're either on list head/tail, or at the far side of an element from
+    " which subsequent search will occur. In either case, the following
+    " pattern, in conjunction with preceding logic, obviates need for further
+    " syntax checks.
+    let elem = '\v%(' . s:macro_chars_vre() . '*' . s:opening_bracket . '|'
+        \ . s:closing_bracket . ')@!\S'
+    while cnt > 0
+        let pos = s:findpos(elem, a:next)
+        if !pos[0]
+            " We've gone as far as we can.
+            " Note: Leave ourselves on far side of element (or at starting
+            " position if we never found an element) in manner analogous to
+            " how nearest_element_terminal behaves when already on terminal
+            " element of list.
+            return
+        endif
+        call cursor(pos)
+        " We've reached near side of the next element
+        " If either we're going to search again or we're done searching but
+        " target is far side, move to far side of element.
+        if cnt > 1 || !near
+            let pos = s:move_to_current_element_terminal(a:next)
+        endif
+        let cnt -= 1
+    endwhile
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts
@@ -1965,4 +2131,5 @@ let Fn_terminals_with_whitespace = function('s:terminals_with_whitespace') "(sta
 let Fn_select_current_marks = function('s:select_current_marks')
 let Fn_move_to_nearest_bracket = function('s:move_to_nearest_bracket')
 let Fn_move_to_adjacent_element = function('s:move_to_adjacent_element') "(next, tail, top)
+let Fn_is_atom = function('s:is_atom') "(line, col)
 

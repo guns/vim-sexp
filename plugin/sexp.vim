@@ -44,6 +44,8 @@ let s:sexp_mappings = {
     \ 'sexp_inner_string':              'is',
     \ 'sexp_outer_element':             'ae',
     \ 'sexp_inner_element':             'ie',
+    \ 'sexp_move_to_prev_BRACKET':      '<M-(>',
+    \ 'sexp_move_to_next_BRACKET':      '<M-)>',
     \ 'sexp_move_to_prev_bracket':      '(',
     \ 'sexp_move_to_next_bracket':      ')',
     \ 'sexp_move_to_prev_element_head': '<M-b>',
@@ -199,6 +201,7 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_indent',                    'sexp_indent_top',
                \ 'sexp_insert_at_list_head',       'sexp_insert_at_list_tail',
+               \ 'sexp_move_to_prev_BRACKET',      'sexp_move_to_next_BRACKET',
                \ 'sexp_move_to_prev_ELEMENT_head', 'sexp_move_to_next_ELEMENT_head',
                \ 'sexp_move_to_prev_ELEMENT_tail', 'sexp_move_to_next_ELEMENT_tail',
                \ 'sexp_splice_list']
@@ -275,10 +278,8 @@ DEFPLUG  xnoremap sexp_move_to_next_bracket <Esc>:<C-u>call sexp#docount(v:prevc
 Defplug! onoremap sexp_move_to_next_bracket sexp#move_to_nearest_bracket('o', 1)
 
 " Nearest BRACKET
-Defplug  nnoremap sexp_move_to_prev_BRACKET sexp#docount(v:count, 'sexp#move_to_nearest_BRACKET', 'n', 0)
-DEFPLUG  xnoremap sexp_move_to_prev_BRACKET <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_BRACKET', 'v', 0)<CR>
-Defplug  nnoremap sexp_move_to_next_BRACKET sexp#docount(v:count, 'sexp#move_to_nearest_BRACKET', 'n', 1)
-DEFPLUG  xnoremap sexp_move_to_next_BRACKET <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_BRACKET', 'v', 1)<CR>
+Defplug  nnoremap sexp_move_to_prev_BRACKET sexp#move_to_adjacent_BRACKET('n', v:count, 0)
+Defplug  nnoremap sexp_move_to_next_BRACKET sexp#move_to_adjacent_BRACKET('n', v:count, 1)
 
 " Adjacent element head
 "

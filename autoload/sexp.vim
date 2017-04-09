@@ -78,6 +78,13 @@ function! s:macro_chars_vre()
     return '[' . substitute(s:macro_chars(), '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
 endfunction
 
+" Make a 'very magic' character class from input characters.
+function! s:vm_cc(chars)
+    return '[' . substitute(a:chars, '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
+endfunction
+
+
+
 """ QUERIES AT CURSOR {{{1
 
 " Simple wrapper around searchpos() with flags 'nW', and optionally the
@@ -698,14 +705,16 @@ function! s:is_comment(line, col)
 endfunction
 
 " Returns nonzero if on list opening/closing chars:
-" -1 => on list opening bracket or preceding macro chars
-"  1 => on list closing bracket
+"  0 => not on list head or tail
+"  1 => on macro chars preceding opening bracket
+"  2 => on list opening bracket
+"  3 => on list closing bracket
 function! s:is_list(line, col)
     let chars = getline(a:line)[a:col - 1:]
     let maybe = chars =~#
-        \ '\v^' . s:macro_chars_vre() . '*' . s:opening_bracket
-        \ ? 1
-        \ : chars =~# '^' . s:closing_bracket ? 2 : 0
+        \ '\v^' . s:vm_cc(s:macro_chars()) . '*' . s:opening_bracket
+        \ ? chars[0] == '(' ? 2 : 1
+        \ : chars =~# '^' . s:closing_bracket ? 3 : 0
     return maybe && !s:syntax_match(s:ignored_region, a:line, a:col)
         \ ? maybe : 0
 endfunction
@@ -1118,6 +1127,55 @@ function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
             return s:select_current_marks('o')
         endif
     endif
+endfunction
+
+function! sexp#move_to_adjacent_BRACKET(mode, count, next)
+    let cnt = a:count ? a:count : 1
+    " Maintain a fallback or beach head position, in case we can't accomplish
+    " [count] full jumps. (Prevent partial jumps.)
+    let pos = getpos('.')
+    let list = s:is_list(pos[1], pos[2])
+    " Note: Could easily check for `list==1 && a:next' (i.e., in macro chars
+    " preceding opening bracket and moving forward), but unless we're planning
+    " to skip over the bracket in that case (i.e., treating cursor on macro
+    " chars the same as cursor on the subsequent bracket), there's no point.
+    " TODO: Decide which behavior is better.
+    if !list
+        " If in an element (may not be), get to its far side.
+        " Rationale: Ensure that subsequent search won't land inside an
+        " ignored region.
+        call s:move_to_current_element_terminal(a:next)
+    endif
+    " Get distinct very-magic character classes for forwards/backwards cases.
+    " Note: Use sub-pattern flag to differentiate between alternatives.
+    let macro_chars = s:macro_chars_vre()
+    let re = a:next
+        \ ? '\v' . macro_chars . '*\zs(' . s:opening_bracket . ')|'
+        \ . '%(' . s:closing_bracket . ')@!(\S)'
+        \ : '\v(' . s:closing_bracket . ')|'
+        \ . '(\S)%(' . macro_chars . s:opening_bracket . ')@<!'
+    " Loop until we've landed on [count]th bracket of desired type.
+    " Maintain 'pos' as beach head, which isn't updated by intermediate jumps
+    " that land on non-bracket chars.
+    while cnt > 0
+        let subp = search(re, 'pW' . (!a:next ? 'b' : ''))
+        " Oddity: subp will be 0 (no match) or one more than submatch number.
+        if !subp
+            " No further jumps possible. Fall back to beach head position.
+            call s:setcursor(pos)
+            return
+        elseif subp == 2
+            " Found desired bracket.
+            let cnt -= 1
+            " Make this the new fallback position.
+            if cnt > 0
+                let pos = getpos('.')
+            endif
+        else
+            " Found non-list element. Get to far side before continuing.
+            call s:move_to_current_element_terminal(a:next)
+        endif
+    endwhile
 endfunction
 
 " BPS TODO: Consider whether sexp#move_to_adjacent_element can be used for

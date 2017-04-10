@@ -44,18 +44,18 @@ let s:sexp_mappings = {
     \ 'sexp_inner_string':              'is',
     \ 'sexp_outer_element':             'ae',
     \ 'sexp_inner_element':             'ie',
-    \ 'sexp_move_to_prev_BRACKET':      '<M-(>',
-    \ 'sexp_move_to_next_BRACKET':      '<M-)>',
     \ 'sexp_move_to_prev_bracket':      '(',
     \ 'sexp_move_to_next_bracket':      ')',
     \ 'sexp_move_to_prev_element_head': '<M-b>',
     \ 'sexp_move_to_next_element_head': '<M-w>',
     \ 'sexp_move_to_prev_element_tail': 'g<M-e>',
     \ 'sexp_move_to_next_element_tail': '<M-e>',
-    \ 'sexp_move_to_prev_ELEMENT_head': '<M-S-b>',
-    \ 'sexp_move_to_next_ELEMENT_head': '<M-S-w>',
-    \ 'sexp_move_to_prev_ELEMENT_tail': 'g<M-S-e>',
-    \ 'sexp_move_to_next_ELEMENT_tail': '<M-S-e>',
+    \ 'sexp_flow_to_prev_list':         '<M-(>',
+    \ 'sexp_flow_to_next_list':         '<M-)>',
+    \ 'sexp_flow_to_prev_element_head': '<M-S-b>',
+    \ 'sexp_flow_to_next_element_head': '<M-S-w>',
+    \ 'sexp_flow_to_prev_element_tail': '<M-S-g>',
+    \ 'sexp_flow_to_next_element_tail': '<M-S-e>',
     \ 'sexp_move_to_prev_top_element':  '[[',
     \ 'sexp_move_to_next_top_element':  ']]',
     \ 'sexp_select_prev_element':       '[e',
@@ -201,9 +201,9 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_indent',                    'sexp_indent_top',
                \ 'sexp_insert_at_list_head',       'sexp_insert_at_list_tail',
-               \ 'sexp_move_to_prev_BRACKET',      'sexp_move_to_next_BRACKET',
-               \ 'sexp_move_to_prev_ELEMENT_head', 'sexp_move_to_next_ELEMENT_head',
-               \ 'sexp_move_to_prev_ELEMENT_tail', 'sexp_move_to_next_ELEMENT_tail',
+               \ 'sexp_flow_to_prev_list',         'sexp_flow_to_next_list',
+               \ 'sexp_flow_to_prev_element_head', 'sexp_flow_to_next_element_head',
+               \ 'sexp_flow_to_prev_element_tail', 'sexp_flow_to_next_element_tail',
                \ 'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
@@ -277,10 +277,6 @@ Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_
 DEFPLUG  xnoremap sexp_move_to_next_bracket <Esc>:<C-u>call sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)<CR>
 Defplug! onoremap sexp_move_to_next_bracket sexp#move_to_nearest_bracket('o', 1)
 
-" Nearest BRACKET
-Defplug  nnoremap sexp_move_to_prev_BRACKET sexp#move_to_adjacent_BRACKET('n', v:count, 0)
-Defplug  nnoremap sexp_move_to_next_BRACKET sexp#move_to_adjacent_BRACKET('n', v:count, 1)
-
 " Adjacent element head
 "
 " Visual mappings must break out of visual mode in order to detect which end
@@ -292,9 +288,6 @@ DefplugN  nnoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element(
 DEFPLUG   xnoremap sexp_move_to_next_element_head <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 1, 0, 0)<CR>
 DefplugN! onoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('o', v:count, 1, 0, 0)
 
-" Adjacent ELEMENT head
-DefplugN  nnoremap sexp_move_to_prev_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 0)
-DefplugN  nnoremap sexp_move_to_next_ELEMENT_head sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 0)
 
 " Adjacent element tail
 "
@@ -307,12 +300,16 @@ DefplugN  nnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element(
 DEFPLUG   xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 1, 1, 0)<CR>
 DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('o', v:count, 1, 1, 0)
 
-" Adjacent ELEMENT tail
-"
-" Inclusive operator pending motions require a visual mode selection to
-" include the last character of a line.
-DefplugN  nnoremap sexp_move_to_prev_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 0, 1)
-DefplugN  nnoremap sexp_move_to_next_ELEMENT_tail sexp#move_to_adjacent_ELEMENT('n', v:count, 1, 1)
+" Movements that 'flow' across lists.
+" Note: Because these movements are inherently inimical to preservation of
+" list structure, they are implemented as pure movement commands: i.e., no
+" operator pending or visual motions.
+Defplug   nnoremap sexp_flow_to_prev_list sexp#flow_to_adjacent_list(v:count1, 0)
+Defplug   nnoremap sexp_flow_to_next_list sexp#flow_to_adjacent_list(v:count1, 1)
+DefplugN  nnoremap sexp_flow_to_prev_element_head sexp#flow_to_adjacent_element(v:count1, 0, 0)
+DefplugN  nnoremap sexp_flow_to_next_element_head sexp#flow_to_adjacent_element(v:count1, 1, 0)
+DefplugN  nnoremap sexp_flow_to_prev_element_tail sexp#flow_to_adjacent_element(v:count1, 0, 1)
+DefplugN  nnoremap sexp_flow_to_next_element_tail sexp#flow_to_adjacent_element(v:count1, 1, 1)
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)

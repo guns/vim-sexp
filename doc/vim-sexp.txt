@@ -195,6 +195,43 @@ g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
+FLOW COMMANDS (normal)~
+
+Unlike the preceding movement commands, "flow" commands move freely in and out
+of lists, moving to the next/prev list or element in the buffer, even when
+doing so means crossing a list boundary.
+Note: The "flow" commands are intentionally provided only in normal mode.
+Because flow commands effectively ignore list structure, operator/visual
+variants would make it very easy (perhaps too easy?) to operate on text in an
+unbalanced way. While vim-sexp does not generally attempt to prevent this (as
+some other paredit-like plugins do), it may not make sense to provide commands
+whose primary use-case would be to facilitate it. If you feel strongly that
+operator pending and/or visual variants of the flow commands would be useful,
+feel free to present relevant use-cases to the author...
+
+TODO: Add documentation for visual flow operators (to be added)!
+
+<M-S-(>                                       *<Plug>(sexp_flow_to_prev_list)*
+<M-S-)>                                       *<Plug>(sexp_flow_to_next_list)*
+        Move forward/backward to [count]th opening/closing bracket. Movement
+        is NOT bounded by the parent list, if any.
+
+        Repeated applications visit every list in the direction specified.
+
+<M-S-b>                               *<Plug>(sexp_flow_to_prev_element_head)*
+<M-S-w>                               *<Plug>(sexp_flow_to_next_element_head)*
+        [count] elements backward or forward, placing the cursor on the head
+        of an element. Movement is NOT bounded by the parent list, if any.
+
+        Analogous to |b| and |w| motions.
+
+<M-S-g>                               *<Plug>(sexp_flow_to_prev_element_tail)*
+<M-S-e>                               *<Plug>(sexp_flow_to_next_element_tail)*
+        [count] elements backward or forward, placing the cursor on the tail
+        of an element. Movement is NOT bounded by the parent list, if any.
+
+        Analogous to |ge| and |e| motions.
+
 INDENT COMMANDS (normal)~
 
 ==                                                       *<Plug>(sexp_indent)*

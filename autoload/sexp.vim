@@ -960,12 +960,13 @@ function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
     endif
 endfunction
 
-function! sexp#flow_to_adjacent_list(count, next)
-    let cnt = a:count
+function! sexp#flow_to_adjacent_list(mode, count, next)
+    let cnt = a:count ? a:count : 1
     " Maintain a fallback or beach head position, in case we can't accomplish
     " [count] full jumps. (Prevent partial jumps.)
-    let pos = getpos('.')
-    let list = s:is_list(pos[1], pos[2])
+    let cursor = getpos('.')
+    let pos = cursor
+    let list = s:is_list(cursor[1], cursor[2])
     " Note: Could easily check for `list==1 && a:next' (i.e., in macro chars
     " preceding opening bracket and moving forward), but unless we're planning
     " to skip over the bracket in that case (i.e., treating cursor on macro
@@ -993,20 +994,29 @@ function! sexp#flow_to_adjacent_list(count, next)
         " Oddity: subp will be 0 (no match) or one more than submatch number.
         if !subp
             " No further jumps possible. Fall back to beach head position.
-            call s:setcursor(pos)
-            return
+            break
         elseif subp == 2
             " Found desired bracket.
             let cnt -= 1
             " Make this the new fallback position.
-            if cnt > 0
-                let pos = getpos('.')
-            endif
+            let pos = getpos('.')
         else
             " Found non-list element. Get to far side before continuing.
             call s:move_to_current_element_terminal(a:next)
         endif
     endwhile
+    if a:mode == 'v'
+        if pos != cursor
+            " We performed at least 1 jump, so change visual selection.
+            let bpos = s:nearest_bracket(a:next)
+            call s:set_visual_marks(a:next ? [pos, bpos] : [bpos, pos])
+        endif
+        " Re-enter visual mode with cursor on the desired end.
+        " Note: Optional pos arg is necessary only when jump occurred, (TODO)
+        call s:select_current_marks('v', pos)
+    else
+        call s:setcursor(pos)
+    endif
 endfunction
 
 function! sexp#flow_to_adjacent_element(count, next, tail)
@@ -1316,11 +1326,19 @@ endfunction
 
 " Enter characterwise visual mode with current visual marks, unless '< is
 " invalid and mode equals 'o'.
-function! s:select_current_marks(mode)
+function! s:select_current_marks(mode, ...)
+    let ret = 0
     if getpos("'<")[1] > 0
         normal! gv
         if !s:is_characterwise(visualmode())
             normal! v
+        endif
+        " Note: The test against '< and '> is superfluous if callers are
+        " responsible for ensuring the input position corresponds to one of
+        " the visual marks.
+        if a:0 && a:1 != getpos('.')
+            \ && (a:1 == getpos("'<") || a:1 == getpos("'>"))
+            normal! o
         endif
         return 1
     elseif a:mode !=? 'o'

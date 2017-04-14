@@ -1019,49 +1019,96 @@ function! sexp#flow_to_adjacent_list(mode, count, next)
     endif
 endfunction
 
-function! sexp#flow_to_adjacent_element(count, next, tail)
+function! sexp#flow_to_adjacent_element(mode, count, next, tail)
+    " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
-    let cnt = a:count
-    let spos = getpos('.')
-    if !s:is_list(spos[1], spos[2])
+    let cnt = a:count ? a:count : 1
+    let pos = getpos('.')
+    " npos=near pos, fpos=far pos
+    let [npos, fpos] = [[0, 0, 0, 0], [0, 0, 0, 0]]
+    " Are we starting on list (macro chars or brackets)?
+    " Note: Regex used for elem search contains assertions that prevent match
+    " of macro chars, thereby obviating need to differentiate between the
+    " various nonzero is_list() return values.
+    if !s:is_list(pos[1], pos[2])
         " The current element is not a list, and hence *could* be target.
-        " Position on far side in preparation for subsequent search, which may
+        " Position on far side in preparation for subsequent search (which may
         " or may not be necessary, given that in the non-near case, this
-        " initial positioning may actually count as a jump.
-        let pos = s:move_to_current_element_terminal(a:next)
-        if pos[1] && pos != spos && !near
-            " Terminal positioning constitutes a jump.
-            let cnt -= 1
-            if !cnt
-                return
+        " initial positioning may actually count as a jump).
+        let fpos = s:move_to_current_element_terminal(a:next)
+        if fpos[1]
+            if fpos != pos && !near
+                " Terminal positioning constitutes a jump.
+                let cnt -= 1
             endif
         endif
     endif
-    " We're either on list head/tail, or at the far side of an element from
-    " which subsequent search will occur. In either case, the following
-    " pattern, in conjunction with preceding logic, obviates need for further
-    " syntax checks.
-    let elem = '\v%(' . s:macro_chars_vre() . '*' . s:opening_bracket . '|'
-        \ . s:closing_bracket . ')@!\S'
-    while cnt > 0
-        let pos = s:findpos(elem, a:next)
-        if !pos[0]
-            " We've gone as far as we can.
-            " Note: Leave ourselves on far side of element (or at starting
-            " position if we never found an element) in manner analogous to
-            " how nearest_element_terminal behaves when already on terminal
-            " element of list.
-            return
+    " Terminal positioning above could be the only required jump.
+    if cnt
+        " We're either on list head/tail, or at the far side of an element. In
+        " either case, the following pattern, in conjunction with preceding
+        " logic, obviates need for further syntax checks.
+        let elem = '\v%(' . s:macro_chars_vre() . '*' . s:opening_bracket . '|'
+            \ . s:closing_bracket . ')@!\S'
+        while cnt > 0
+            " Note: findpos doesn't move cursor, and returns [l, c]
+            let pos = s:findpos(elem, a:next)
+            if !pos[0]
+                " We've gone as far as we can.
+                " Note: Leave ourselves on far side of element (or at starting
+                " position if no acceptable element) in manner analogous to
+                " how nearest_element_terminal behaves when already on
+                " terminal element of list.
+                break
+            endif
+            " Found near side of next element. Save and jump to it.
+            call cursor(pos)
+            let npos = [0, pos[0], pos[1], 0]
+            if cnt > 1 || !near
+                " Either we're going to search again or we're done searching but
+                " target is far side: in either case, position on far side.
+                let fpos = s:move_to_current_element_terminal(a:next)
+            else
+                " Invalidate far pos, now that we've moved to new el.
+                let fpos = [0, 0, 0, 0]
+            endif
+            let cnt -= 1
+        endwhile
+    endif
+    " Cursor is in final position (possibly unchanged from original).
+    if a:mode ==? 'v'
+        " Restore visual selection: if we've found an acceptable target,
+        " select it visually, preserving current cursor position; otherwise,
+        " restore original selection (noting that cursor will not have moved).
+        " Note that 'acceptable' does not imply 'optimal': if we're on an
+        " element (even the starting one), we have an acceptable target, even
+        " if we would have liked to move to another element.
+        " Possible cases:
+        " 1. !npos && !fpos: no acceptable target el found
+        " 2. !npos &&  fpos: accepted far side of start el (optimal if cnt==0)
+        " 3.  npos && !fpos: accepted near pos (optimal)
+        " 4.  npos &&  fpos: accepted far pos (optimal if cnt==0)
+        " Note: In case 1, we simply restore original selection; in all other
+        " cases, we select the 'accepted' target, leaving cursor where it
+        " currently is.
+        if fpos[1] || npos[1]
+            " Obtain missing terminal position (if applicable)
+            if !fpos[1]
+                let fpos = s:current_element_terminal(a:next)
+            elseif !npos[1]
+                let npos = s:current_element_terminal(!a:next)
+            endif
+            " Save current pos since set_visual_marks can move cursor in some
+            " versions of Vim.
+            let pos = getpos('.')
+            call s:set_visual_marks(a:next ? [npos, fpos] : [fpos, npos])
+            " Re-enter visual mode with cursor on the desired end.
+            call s:select_current_marks('v', pos)
+        else
+            " Simply restore original selection.
+            call s:select_current_marks('v')
         endif
-        call cursor(pos)
-        " We've reached near side of the next element
-        " If either we're going to search again or we're done searching but
-        " target is far side, move to far side of element.
-        if cnt > 1 || !near
-            let pos = s:move_to_current_element_terminal(a:next)
-        endif
-        let cnt -= 1
-    endwhile
+    endif
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts
@@ -1336,7 +1383,7 @@ function! s:select_current_marks(mode, ...)
         " Note: The test against '< and '> is superfluous if callers are
         " responsible for ensuring the input position corresponds to one of
         " the visual marks.
-        if a:0 && a:1 != getpos('.')
+        if a:0 && !empty(a:1) && a:1 != getpos('.')
             \ && (a:1 == getpos("'<") || a:1 == getpos("'>"))
             normal! o
         endif

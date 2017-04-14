@@ -201,8 +201,6 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_indent',                    'sexp_indent_top',
                \ 'sexp_insert_at_list_head',       'sexp_insert_at_list_tail',
-               \ 'sexp_flow_to_prev_element_head', 'sexp_flow_to_next_element_head',
-               \ 'sexp_flow_to_prev_element_tail', 'sexp_flow_to_next_element_tail',
                \ 'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
@@ -210,18 +208,20 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_round_head_wrap_list',     'sexp_round_tail_wrap_list',
-               \ 'sexp_square_head_wrap_list',    'sexp_square_tail_wrap_list',
-               \ 'sexp_curly_head_wrap_list',     'sexp_curly_tail_wrap_list',
-               \ 'sexp_round_head_wrap_element',  'sexp_round_tail_wrap_element',
-               \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
-               \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
-               \ 'sexp_raise_list',               'sexp_raise_element',
-               \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
-               \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
-               \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
-               \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
-               \ 'sexp_flow_to_prev_list',        'sexp_flow_to_next_list']
+    for plug in ['sexp_round_head_wrap_list',      'sexp_round_tail_wrap_list',
+               \ 'sexp_square_head_wrap_list',     'sexp_square_tail_wrap_list',
+               \ 'sexp_curly_head_wrap_list',      'sexp_curly_tail_wrap_list',
+               \ 'sexp_round_head_wrap_element',   'sexp_round_tail_wrap_element',
+               \ 'sexp_square_head_wrap_element',  'sexp_square_tail_wrap_element',
+               \ 'sexp_curly_head_wrap_element',   'sexp_curly_tail_wrap_element',
+               \ 'sexp_raise_list',                'sexp_raise_element',
+               \ 'sexp_swap_list_backward',        'sexp_swap_list_forward',
+               \ 'sexp_swap_element_backward',     'sexp_swap_element_forward',
+               \ 'sexp_emit_head_element',         'sexp_emit_tail_element',
+               \ 'sexp_capture_prev_element',      'sexp_capture_next_element',
+               \ 'sexp_flow_to_prev_list',         'sexp_flow_to_next_list',
+               \ 'sexp_flow_to_prev_element_head', 'sexp_flow_to_next_element_head',
+               \ 'sexp_flow_to_prev_element_tail', 'sexp_flow_to_next_element_tail']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -302,16 +302,19 @@ DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element(
 
 " Movements that 'flow' across lists.
 " Note: Because these movements are inherently inimical to preservation of
-" list structure, they are implemented as pure movement commands: i.e., no
-" operator pending or visual motions.
+" list structure, operator pending variants are omitted.
 Defplug   nnoremap sexp_flow_to_prev_list sexp#flow_to_adjacent_list('n', v:count, 0)
 DEFPLUG   xnoremap sexp_flow_to_prev_list <Esc>:<C-u>call sexp#flow_to_adjacent_list('v', v:count, 0)<CR>
 Defplug   nnoremap sexp_flow_to_next_list sexp#flow_to_adjacent_list('n', v:count, 1)
 DEFPLUG   xnoremap sexp_flow_to_next_list <Esc>:<C-u>call sexp#flow_to_adjacent_list('v', v:count, 1)<CR>
-DefplugN  nnoremap sexp_flow_to_prev_element_head sexp#flow_to_adjacent_element(v:count1, 0, 0)
-DefplugN  nnoremap sexp_flow_to_next_element_head sexp#flow_to_adjacent_element(v:count1, 1, 0)
-DefplugN  nnoremap sexp_flow_to_prev_element_tail sexp#flow_to_adjacent_element(v:count1, 0, 1)
-DefplugN  nnoremap sexp_flow_to_next_element_tail sexp#flow_to_adjacent_element(v:count1, 1, 1)
+DefplugN  nnoremap sexp_flow_to_prev_element_head sexp#flow_to_adjacent_element('n', v:count, 0, 0)
+DEFPLUG   xnoremap sexp_flow_to_prev_element_head <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 0, 0)<CR>
+DefplugN  nnoremap sexp_flow_to_next_element_head sexp#flow_to_adjacent_element('n', v:count, 1, 0)
+DEFPLUG   xnoremap sexp_flow_to_next_element_head <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 1, 0)<CR>
+DefplugN  nnoremap sexp_flow_to_prev_element_tail sexp#flow_to_adjacent_element('n', v:count, 0, 1)
+DEFPLUG   xnoremap sexp_flow_to_prev_element_tail <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 0, 1)<CR>
+DefplugN  nnoremap sexp_flow_to_next_element_tail sexp#flow_to_adjacent_element('n', v:count, 1, 1)
+DEFPLUG   xnoremap sexp_flow_to_next_element_tail <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 1, 1)<CR>
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)

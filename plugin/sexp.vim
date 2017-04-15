@@ -304,17 +304,17 @@ DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element(
 " Note: Because these movements are inherently inimical to preservation of
 " list structure, operator pending variants are omitted.
 Defplug   nnoremap sexp_flow_to_prev_list sexp#flow_to_adjacent_list('n', v:count, 0)
-DEFPLUG   xnoremap sexp_flow_to_prev_list <Esc>:<C-u>call sexp#flow_to_adjacent_list('v', v:count, 0)<CR>
+DEFPLUG   xnoremap sexp_flow_to_prev_list <Esc>:<C-u>call sexp#flow_to_adjacent_list('v', v:prevcount, 0)<CR>
 Defplug   nnoremap sexp_flow_to_next_list sexp#flow_to_adjacent_list('n', v:count, 1)
-DEFPLUG   xnoremap sexp_flow_to_next_list <Esc>:<C-u>call sexp#flow_to_adjacent_list('v', v:count, 1)<CR>
+DEFPLUG   xnoremap sexp_flow_to_next_list <Esc>:<C-u>call sexp#flow_to_adjacent_list('v', v:prevcount, 1)<CR>
 DefplugN  nnoremap sexp_flow_to_prev_element_head sexp#flow_to_adjacent_element('n', v:count, 0, 0)
-DEFPLUG   xnoremap sexp_flow_to_prev_element_head <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 0, 0)<CR>
+DEFPLUG   xnoremap sexp_flow_to_prev_element_head <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:prevcount, 0, 0)<CR>
 DefplugN  nnoremap sexp_flow_to_next_element_head sexp#flow_to_adjacent_element('n', v:count, 1, 0)
-DEFPLUG   xnoremap sexp_flow_to_next_element_head <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 1, 0)<CR>
+DEFPLUG   xnoremap sexp_flow_to_next_element_head <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:prevcount, 1, 0)<CR>
 DefplugN  nnoremap sexp_flow_to_prev_element_tail sexp#flow_to_adjacent_element('n', v:count, 0, 1)
-DEFPLUG   xnoremap sexp_flow_to_prev_element_tail <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 0, 1)<CR>
+DEFPLUG   xnoremap sexp_flow_to_prev_element_tail <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:prevcount, 0, 1)<CR>
 DefplugN  nnoremap sexp_flow_to_next_element_tail sexp#flow_to_adjacent_element('n', v:count, 1, 1)
-DEFPLUG   xnoremap sexp_flow_to_next_element_tail <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:count, 1, 1)<CR>
+DEFPLUG   xnoremap sexp_flow_to_next_element_tail <Esc>:<C-u>call sexp#flow_to_adjacent_element('v', v:prevcount, 1, 1)<CR>
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)

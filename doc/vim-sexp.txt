@@ -195,40 +195,56 @@ g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
-FLOW COMMANDS (normal)~
+FLOW COMMANDS (normal, visual)~
 
 Unlike the preceding movement commands, "flow" commands move freely in and out
-of lists, moving to the next/prev list or element in the buffer, even when
-doing so means crossing a list boundary.
-Note: The "flow" commands are intentionally provided only in normal mode.
-Because flow commands effectively ignore list structure, operator/visual
-variants would make it very easy (perhaps too easy?) to operate on text in an
-unbalanced way. While vim-sexp does not generally attempt to prevent this (as
-some other paredit-like plugins do), it may not make sense to provide commands
-whose primary use-case would be to facilitate it. If you feel strongly that
-operator pending and/or visual variants of the flow commands would be useful,
-feel free to present relevant use-cases to the author...
+of lists, moving to the [count]th next/previous list/element in the buffer,
+even when doing so requires crossing one or more list boundaries.
+Motivation: Although the preceding commands are useful for moving forward and
+backward within a list, sometimes you want to escape from the current list, or
+descend into a child list.
 
-TODO: Add documentation for visual flow operators (to be added)!
+Visual Mode Note: Because flow commands intentionally cross list boundaries,
+both operator commands and commands that extend the visual selection would
+make it too easy for the user to destroy paren balance. For this reason,
+operator flow commands are not provided at all, and the visual commands do not
+extend the current selection, but simply select the target element/list.
+
+Idiom: Use v[count]<M-S-w> in normal mode to select the [count]th element from
+cursor. (Once you get the hang of ignoring brackets, it's easy to jump
+directly to the desired element with a single command.)
+
+Heuristic: It may be helpful to visualize the "flow" commands as performing
+depth-first traversals of "trees" of lists. If you start at one end of the
+buffer, repeated flow commands will eventually take you to the other end, with
+the list commands visiting each list, and the element commands visiting each
+non-list element, in the order they appear in the file.
 
 <M-S-(>                                       *<Plug>(sexp_flow_to_prev_list)*
 <M-S-)>                                       *<Plug>(sexp_flow_to_next_list)*
-        Move forward/backward to [count]th opening/closing bracket. Movement
-        is NOT bounded by the parent list, if any.
+        [count] lists backward or forward, landing on the bracket at the near
+        end of a list. Movement is NOT bounded by the parent list.
 
-        Repeated applications visit every list in the direction specified.
+        Note: List flow commands always land on the near side of the adjacent
+        list (i.e., open bracket if moving forward, close bracket if moving
+        backward) since landing on the far side would prevent the sort of
+        descent for which the flow commands were designed. Of course, if you
+        wish to skip descent into a particular list in the middle of a flow
+        traversal, simply hit |%| (or |o| in visual mode) to skip to the other
+        side.
+
 
 <M-S-b>                               *<Plug>(sexp_flow_to_prev_element_head)*
 <M-S-w>                               *<Plug>(sexp_flow_to_next_element_head)*
-        [count] elements backward or forward, placing the cursor on the head
-        of an element. Movement is NOT bounded by the parent list, if any.
+        [count] non-list elements backward or forward, landing on the head of
+        an element. Movement is NOT bounded by the parent list.
 
         Analogous to |b| and |w| motions.
 
 <M-S-g>                               *<Plug>(sexp_flow_to_prev_element_tail)*
 <M-S-e>                               *<Plug>(sexp_flow_to_next_element_tail)*
-        [count] elements backward or forward, placing the cursor on the tail
-        of an element. Movement is NOT bounded by the parent list, if any.
+        [count] non-list elements backward or forward, landing on the tail of
+        an element. Movement is NOT bounded by the parent list.
 
         Analogous to |ge| and |e| motions.
 

@@ -960,6 +960,26 @@ function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
     endif
 endfunction
 
+" Move to [count]th (prev close)/(next open) bracket in the buffer, 'flowing'
+" freely in and out of lists.
+" Visual Mode: Visual command causes the destination list to be selected, with
+" cursor positioned on the near side. (Note that 'tail' argument is
+" intentionally omitted from this function, since positioning on far side
+" would effectively destroy the flow.)
+" Note: The only use case I can think of for landing on the far side of a list
+" would be for cases in which you knew in advance you didn't want to descend
+" into the next list: i.e., you wanted to skip over it before continuing the
+" flow. Seems unlikely such a command would be used much, and you can achieve
+" the same effect by hitting % in normal mode (or `o' in visual mode) between
+" flow commands.
+" Selection Non Extension: Because flow commands intentionally cross list
+" boundaries, both operator commands and commands that extend the current
+" visual selection would make it too easy for the user to destroy paren
+" balance. For this reason, operator variants of flow commands are not
+" provided at all, and the visual variants select the target rather than
+" extending the current selection.
+" Note: Complementary with sexp#flow_to_adjacent_element, which flows
+" similarly, but stops only on *non-list* elements.
 function! sexp#flow_to_adjacent_list(mode, count, next)
     let cnt = a:count ? a:count : 1
     " Maintain a fallback or beach head position, in case we can't accomplish
@@ -1006,19 +1026,32 @@ function! sexp#flow_to_adjacent_list(mode, count, next)
         endif
     endwhile
     if a:mode == 'v'
+        " Note: No need for explicit setcursor, since select_current_marks
+        " sets position to fallback pos implicitly.
         if pos != cursor
             " We performed at least 1 jump, so change visual selection.
             let bpos = s:nearest_bracket(a:next)
+            " Re-enter visual mode with cursor on the near side.
             call s:set_visual_marks(a:next ? [pos, bpos] : [bpos, pos])
+            call s:select_current_marks('v', !a:next)
+        else
+            " Let cursor restoration happen naturally.
+            call s:select_current_marks('v')
         endif
-        " Re-enter visual mode with cursor on the desired end.
-        " Note: Optional pos arg is necessary only when jump occurred, (TODO)
-        call s:select_current_marks('v', pos)
     else
         call s:setcursor(pos)
     endif
 endfunction
 
+" Move to [count]th next/prev non-list element in the buffer, 'flowing' freely
+" in and out of lists, landing on the element end indicated by 'tail'.
+" Note: If BOF or EOF preclude [count] jumps, go as far as possible, even to
+" the point of ignoring 'tail' to land on far end of the final element.
+" Selection Non Extension: See corresponding note in header of
+" sexp#flow_to_adjacent_list for reason visual commands do not extend
+" selection.
+" Note: Complementary with sexp#flow_to_adjacent_list, which flows similarly,
+" but stops only on list elements.
 function! sexp#flow_to_adjacent_element(mode, count, next, tail)
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
@@ -1092,18 +1125,18 @@ function! sexp#flow_to_adjacent_element(mode, count, next, tail)
         " cases, we select the 'accepted' target, leaving cursor where it
         " currently is.
         if fpos[1] || npos[1]
+            " Before setting missing fpos/npos, determine whether cursor
+            " should be on left (0) or right (1) side of visual selection.
+            let side = fpos[1] ? a:next : !a:next
             " Obtain missing terminal position (if applicable)
             if !fpos[1]
                 let fpos = s:current_element_terminal(a:next)
             elseif !npos[1]
                 let npos = s:current_element_terminal(!a:next)
             endif
-            " Save current pos since set_visual_marks can move cursor in some
-            " versions of Vim.
-            let pos = getpos('.')
             call s:set_visual_marks(a:next ? [npos, fpos] : [fpos, npos])
             " Re-enter visual mode with cursor on the desired end.
-            call s:select_current_marks('v', pos)
+            call s:select_current_marks('v', side)
         else
             " Simply restore original selection.
             call s:select_current_marks('v')
@@ -1373,6 +1406,9 @@ endfunction
 
 " Enter characterwise visual mode with current visual marks, unless '< is
 " invalid and mode equals 'o'.
+" Optional Args:
+"   a:1 - where cursor should be left after performing the visual selection:
+"         0=left side ('<), 1=right side ('>)
 function! s:select_current_marks(mode, ...)
     let ret = 0
     if getpos("'<")[1] > 0
@@ -1380,12 +1416,22 @@ function! s:select_current_marks(mode, ...)
         if !s:is_characterwise(visualmode())
             normal! v
         endif
-        " Note: The test against '< and '> is superfluous if callers are
-        " responsible for ensuring the input position corresponds to one of
-        " the visual marks.
-        if a:0 && !empty(a:1) && a:1 != getpos('.')
-            \ && (a:1 == getpos("'<") || a:1 == getpos("'>"))
+        if a:0
+            " Caller has requested that cursor be left on particular side.
+            " Caveat: We cannot rely on accurate '< and '> values from getpos
+            " at this point: if the setpos() calls occur while visual mode is
+            " linewise, getpos() will continue to return 1 and -1 for col
+            " positions until mapping has completed. Fortunately, we can
+            " discern the true bounds of the characterwise visual region by
+            " using normal! o in conjunction with getpos('.').
+            let pos = getpos('.')
+            " Jump to other side to see which side we're on.
             normal! o
+            let cmp = s:compare_pos(getpos('.'), pos)
+            if a:1 && cmp < 0 || !a:1 && cmp > 0
+                " We were already on the desired end.
+                normal! o
+            endif
         endif
         return 1
     elseif a:mode !=? 'o'

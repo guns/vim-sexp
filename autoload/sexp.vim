@@ -978,9 +978,9 @@ endfunction
 " balance. For this reason, operator variants of flow commands are not
 " provided at all, and the visual variants select the target rather than
 " extending the current selection.
-" Note: Complementary with sexp#flow_to_adjacent_element, which flows
+" Note: Complementary with sexp#flow_to_nearest_nonlist, which flows
 " similarly, but stops only on *non-list* elements.
-function! sexp#flow_to_adjacent_list(mode, count, next)
+function! sexp#flow_to_nearest_list(mode, count, next, out)
     let cnt = a:count ? a:count : 1
     " Maintain a fallback or beach head position, in case we can't accomplish
     " [count] full jumps. (Prevent partial jumps.)
@@ -1001,11 +1001,13 @@ function! sexp#flow_to_adjacent_list(mode, count, next)
     " Get distinct very-magic character classes for forwards/backwards cases.
     " Note: Use sub-pattern flag to differentiate between alternatives.
     let macro_chars = s:macro_chars_vre()
-    let re = a:next
+    echomsg "next/out=" . a:next . "/" . a:out
+    let re = a:next != a:out
         \ ? '\v' . macro_chars . '*\zs(' . s:opening_bracket . ')|'
         \ . '%(' . s:closing_bracket . ')@!(\S)'
         \ : '\v(' . s:closing_bracket . ')|'
-        \ . '(\S)%(' . macro_chars . s:opening_bracket . ')@<!'
+        \ . '%(' . macro_chars . '*' . s:opening_bracket . ')@!(\S)'
+        "\ . '(\S)%(' . macro_chars . '*' . s:opening_bracket . ')@<!'
     " Loop until we've landed on [count]th bracket of desired type.
     " Maintain 'pos' as beach head, which isn't updated by intermediate jumps
     " that land on non-bracket chars.
@@ -1048,11 +1050,12 @@ endfunction
 " Note: If BOF or EOF preclude [count] jumps, go as far as possible, even to
 " the point of ignoring 'tail' to land on far end of the final element.
 " Selection Non Extension: See corresponding note in header of
-" sexp#flow_to_adjacent_list for reason visual commands do not extend
+" sexp#flow_to_nearest_list for reason visual commands do not extend
 " selection.
-" Note: Complementary with sexp#flow_to_adjacent_list, which flows similarly,
+" Note: Complementary with sexp#flow_to_nearest_list, which flows similarly,
 " but stops only on list elements.
-function! sexp#flow_to_adjacent_element(mode, count, next, tail)
+" TODO: Consider changing "element" to "non_list"
+function! sexp#flow_to_nearest_nonlist(mode, count, next, tail)
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
     let cnt = a:count ? a:count : 1

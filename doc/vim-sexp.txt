@@ -201,8 +201,8 @@ Unlike the preceding movement commands, "flow" commands move freely in and out
 of lists, moving to the [count]th next/previous list/element in the buffer,
 even when doing so requires crossing one or more list boundaries.
 Motivation: Although the preceding commands are useful for moving forward and
-backward within a list, sometimes you want to escape from the current list, or
-descend into a child list.
+backward within a list, sometimes you want to "escape" from the current list,
+or descend into a child list.
 
 Visual Mode Note: Because flow commands intentionally cross list boundaries,
 both operator commands and commands that extend the visual selection would
@@ -214,14 +214,26 @@ Idiom: Use v[count]<M-S-w> in normal mode to select the [count]th element from
 cursor. (Once you get the hang of ignoring brackets, it's easy to jump
 directly to the desired element with a single command.)
 
-Heuristic: It may be helpful to visualize the "flow" commands as performing
-depth-first traversals of "trees" of lists. If you start at one end of the
-buffer, repeated flow commands will eventually take you to the other end, with
-the list commands visiting each list, and the element commands visiting each
+                                                            *visualizing-flow*
+It may be helpful to visualize the "flow" commands as performing depth-first
+traversals of "trees" of lists. If you start at one end of the buffer,
+repeated flow commands will eventually take you to the other end, with the
+list commands visiting each list, and the non-list commands visiting each
 non-list element, in the order they appear in the file.
 
-<M-S-(>                                       *<Plug>(sexp_flow_to_prev_list)*
-<M-S-)>                                       *<Plug>(sexp_flow_to_next_list)*
+                                                         *flow-in-vs-flow-out*
+Continuing the analogy to tree traversal, the "flow in" commands perform an
+ordinary traversal, with the "next" variant moving left to right through the
+tree, and the "prev" version moving right to left. The "flow-out" commands
+actually reverse the traversal
+
+The "flow-in" and "flow-out" variants of the list flow commands differ in the
+end of the list landed on. The names come from the fact that "flow-in"
+commands will generally recurse into 
+
+
+<M-[>                                      *<Plug>(sexp_flow_in_to_prev_list)*
+<M-]>                                      *<Plug>(sexp_flow_in_to_next_list)*
         [count] lists backward or forward, landing on the bracket at the near
         end of a list. Movement is NOT bounded by the parent list.
 
@@ -232,17 +244,19 @@ non-list element, in the order they appear in the file.
         wish to skip descent into a particular list in the middle of a flow
         traversal, simply hit |%| (or |o| in visual mode) to skip to the other
         side.
+<M-{>                                     *<Plug>(sexp_flow_out_to_prev_list)*
+<M-}>                                     *<Plug>(sexp_flow_out_to_next_list)*
 
 
-<M-S-b>                               *<Plug>(sexp_flow_to_prev_element_head)*
-<M-S-w>                               *<Plug>(sexp_flow_to_next_element_head)*
+<M-S-b>                               *<Plug>(sexp_flow_to_prev_nonlist_head)*
+<M-S-w>                               *<Plug>(sexp_flow_to_next_nonlist_head)*
         [count] non-list elements backward or forward, landing on the head of
         an element. Movement is NOT bounded by the parent list.
 
         Analogous to |b| and |w| motions.
 
-<M-S-g>                               *<Plug>(sexp_flow_to_prev_element_tail)*
-<M-S-e>                               *<Plug>(sexp_flow_to_next_element_tail)*
+<M-S-g>                               *<Plug>(sexp_flow_to_prev_nonlist_tail)*
+<M-S-e>                               *<Plug>(sexp_flow_to_next_nonlist_tail)*
         [count] non-list elements backward or forward, landing on the tail of
         an element. Movement is NOT bounded by the parent list.
 

@@ -195,72 +195,151 @@ g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
-FLOW COMMANDS (normal, visual)~
+UNBOUNDED TRAVERSALS (normal, visual)~
 
-Unlike the preceding movement commands, "flow" commands move freely in and out
-of lists, moving to the [count]th next/previous list/element in the buffer,
-even when doing so requires crossing one or more list boundaries.
-Motivation: Although the preceding commands are useful for moving forward and
-backward within a list, sometimes you want to "escape" from the current list,
-or descend into a child list.
+Although the preceding commands are useful for moving forward and backward
+within a list, sometimes you want to "escape" from the current list, or
+descend into a child list. The commands in this section permit list traversals
+that are not bound by the current list. In fact, it is possible to use an
+unbroken sequence of traversal commands to move all the way from one end of
+the buffer to the other. The traversal commands fall into 2 basic categories:
 
-Visual Mode Note: Because flow commands intentionally cross list boundaries,
-both operator commands and commands that extend the visual selection would
-make it too easy for the user to destroy paren balance. For this reason,
-operator flow commands are not provided at all, and the visual commands do not
-extend the current selection, but simply select the target element/list.
+1. List
+   Land only on brackets. There are 4 variants, differentiated by both the
+   direction moved in the buffer (forward or backward), and the type of
+   bracket landed on (open or close).
+   
+2. Leaf
+   Land only on non-list (leaf) elements (atoms, strings, comments)
 
-Idiom: Use v[count]<M-S-w> in normal mode to select the [count]th element from
-cursor. (Once you get the hang of ignoring brackets, it's easy to jump
-directly to the desired element with a single command.)
+Visualizing forms as trees~
+It may be helpful to visualize a top-level form as a "tree" whose nodes can be
+either branches (lists) or leaves (atoms, strings, comments). The list
+commands traverse trees in depth-first fashion, either left to right ("forward
+to open") or right to left ("backward to close"). There is even a pair of
+commands ("backward to open" and "forward to close"), specifically designed to
+permit "backing up" when one of the normal list traversal commands has gone
+too far.) The non-list (leaf) commands visit only the leaf nodes in the tree:
+i.e., they will never land on a bracket.
 
-                                                            *visualizing-flow*
-It may be helpful to visualize the "flow" commands as performing depth-first
-traversals of "trees" of lists. If you start at one end of the buffer,
-repeated flow commands will eventually take you to the other end, with the
-list commands visiting each list, and the non-list commands visiting each
-non-list element, in the order they appear in the file.
+Note: The list and leaf traversal commands are complementary and completely
+orthogonal: the target of a list traversal command can never be the target of
+a leaf traversal command; moreover, every element in the buffer can be reached
+using either list or leaf traversal commands (but not both).
 
-                                                         *flow-in-vs-flow-out*
-Continuing the analogy to tree traversal, the "flow in" commands perform an
-ordinary traversal, with the "next" variant moving left to right through the
-tree, and the "prev" version moving right to left. The "flow-out" commands
-actually reverse the traversal
+Visual and operator mode note~
+Because the traversal commands intentionally cross list boundaries, operator
+commands and commands that extend the visual selection would make it too easy
+for the user to destroy bracket balance. For this reason, the traversal
+commands are not defined in operator mode at all, and the visual mode variants
+do not extend the current selection, but simply select the target
+element/list.
 
-The "flow-in" and "flow-out" variants of the list flow commands differ in the
-end of the list landed on. The names come from the fact that "flow-in"
-commands will generally recurse into 
+List traversal commands~
+
+-- ALTERNATIVE PRESENTATION #1 --
+<M-]>                                           *<Plug>(sexp_forward_to_open)*
+        [count] open brackets forward. Movement is NOT bounded by the parent
+        list.
+        Performs a left-to-right (forward) depth-first traversal of each
+        top-level form encountered.
+
+<M-{>                                          *<Plug>(sexp_backward_to_open)*
+        [count] open brackets backward. Movement is NOT bounded by the parent
+        list.
+        Visits the same positions as the previous command, but in reverse
+        order: i.e, may be used to "rewind" a sequence of <M-]> commands.
+
+<M-[>                                         *<Plug>(sexp_backward_to_close)*
+        [count] close brackets backward. Movement is NOT bounded by the parent
+        list.
+        Performs a right-to-left (backward) depth-first traversal of each
+        top-level form encountered.
+
+<M-}>                                          *<Plug>(sexp_forward_to_close)*
+        [count] close brackets forward. Movement is NOT bounded by the parent
+        list.
+        Visits the same positions as the previous command, but in reverse
+        order: i.e, may be used to "rewind" a sequence of <M-[> commands.
+
+-- ALTERNATIVE PRESENTATION #2 --
 
 
-<M-[>                                      *<Plug>(sexp_flow_in_to_prev_list)*
-<M-]>                                      *<Plug>(sexp_flow_in_to_next_list)*
-        [count] lists backward or forward, landing on the bracket at the near
-        end of a list. Movement is NOT bounded by the parent list.
+<M-[>                                         *<Plug>(sexp_backward_to_close)*    
+<M-]>                                           *<Plug>(sexp_forward_to_open)*
+        [count] close brackets backward or open brackets forward. Movement is
+        NOT bounded by the parent list.
+        Note: These commands perform a left-to-right (forward) or
+        right-to-left (backward) depth-first traversal.
 
-        Note: List flow commands always land on the near side of the adjacent
-        list (i.e., open bracket if moving forward, close bracket if moving
-        backward) since landing on the far side would prevent the sort of
-        descent for which the flow commands were designed. Of course, if you
-        wish to skip descent into a particular list in the middle of a flow
-        traversal, simply hit |%| (or |o| in visual mode) to skip to the other
-        side.
-<M-{>                                     *<Plug>(sexp_flow_out_to_prev_list)*
-<M-}>                                     *<Plug>(sexp_flow_out_to_next_list)*
+<M-{>                                          *<Plug>(sexp_backward_to_open)*
+<M-}>                                          *<Plug>(sexp_forward_to_close)*
+        [count] open brackets backward or close brackets forward. Movement is
+        NOT bounded by the parent list.
+        Note: These two commands visit the same set of nodes as the preceding
+        two, but in reverse order: i.e.,
+            <M-{> "reverses" <M-]>
+            <M-}> "reverses" <M-[>
+
+-- END ALTERNATIVES --
+
+Note: Another way of looking at the list commands is that the square-bracket
+commands tend to move down into lists, whereas the curly-bracket commands tend
+to move up and out of them. Or, continuing the tree analogy... The
+square-bracket commands perform depth-first traversals, with the curly-bracket
+commands providing a way to "rewind" or "back up" at any point in the descent.
+The following examples should clarify...
+
+Examples:~
+        Note: | denotes starting cursor position.
+              ^ denotes positions reached by successive applications of the
+                indicated command.
+
+        sexp_forward_to_open              (forward / in)~
+                                 | (x1 (x2) (x3 (x4) (x5))) (x6)
+                                   ^   ^    ^   ^    ^      ^
+                                   1   2    3   4    5      6
+                                 --------------------------->
+
+        sexp_backward_to_open             (backward / out)~
+                                   (x1 (x2) (x3 (x4) (x5))) (x6) |
+                                   ^   ^    ^   ^    ^      ^
+                                   6   5    4   3    2      1
+                                   <------------------------------
+
+        sexp_backward_to_close            (backward / in)~
+                                   (x1) (((x2) (x3) x4) (x5) x6) |
+                                      ^      ^    ^   ^    ^   ^
+                                      6      5    4   3    2   1
+                                   <------------------------------
+
+        sexp_forward_to_close             (forward / out)~
+                                 | (x1) (((x2) (x3) x4) (x5) x6)
+                                      ^      ^    ^   ^    ^   ^
+                                      1      2    3   4    5   6
+                                 ------------------------------>
 
 
-<M-S-b>                               *<Plug>(sexp_flow_to_prev_nonlist_head)*
-<M-S-w>                               *<Plug>(sexp_flow_to_next_nonlist_head)*
-        [count] non-list elements backward or forward, landing on the head of
-        an element. Movement is NOT bounded by the parent list.
+Leaf traversal commands~
+
+<M-S-b>                                   *<Plug>(sexp_backward_to_leaf_head)*
+<M-S-w>                                    *<Plug>(sexp_forward_to_leaf_head)*
+        [count] leaf (non-list) elements backward or forward, landing on the
+        head of an element. Movement is NOT bounded by the parent list.
 
         Analogous to |b| and |w| motions.
 
-<M-S-g>                               *<Plug>(sexp_flow_to_prev_nonlist_tail)*
-<M-S-e>                               *<Plug>(sexp_flow_to_next_nonlist_tail)*
-        [count] non-list elements backward or forward, landing on the tail of
-        an element. Movement is NOT bounded by the parent list.
+<M-S-g>                                   *<Plug>(sexp_backward_to_leaf_tail)*
+<M-S-e>                                    *<Plug>(sexp_forward_to_leaf_tail)*
+        [count] leaf (non-list) elements backward or forward, landing on the
+        tail of an element. Movement is NOT bounded by the parent list.
 
         Analogous to |ge| and |e| motions.
+
+Idiom: Use v[count]<M-S-w> in normal mode to select the [count]th non-list
+element from cursor. (Once you get the hang of ignoring brackets, it's easy to
+jump directly to the desired element with a single command.)
+
 
 INDENT COMMANDS (normal)~
 

@@ -71,19 +71,10 @@ function! s:macro_chars()
     endif
 endfunction
 
-" Return a very magic character class matching macro char.
-" Note: It's likely that all macro chars would require escaping in very magic
-" pattern.
-function! s:macro_chars_vre()
-    return '[' . substitute(s:macro_chars(), '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
-endfunction
-
 " Make a 'very magic' character class from input characters.
 function! s:vm_cc(chars)
     return '[' . substitute(a:chars, '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
 endfunction
-
-
 
 """ QUERIES AT CURSOR {{{1
 
@@ -772,20 +763,6 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
-" As the name suggests.
-" Return: 0=stayed on same line, 1=moved to next line
-function! s:move_one_char(next)
-    " TODO: Handle next arg...
-    " TODO: Add call from original site...
-    if col([line, '$']) - 1 == col
-        call cursor(line + 1, 1)
-        return 1
-    else
-        call cursor(line, col + 1)
-        return 0
-    endif
-endfunction
-
 " Tries to move cursor to outermost list's opening or closing bracket,
 " returning its position; 0 for opening, 1 for closing. Does not move cursor
 " if not in a list.
@@ -964,13 +941,13 @@ endfunction
 " (skipping over) brackets of the non-specified type.
 " Visual Mode: Visual command causes the destination list to be selected.
 " Selection Non Extension: Because flow commands intentionally cross list
-" boundaries, both operator commands and commands that extend the current
-" visual selection would make it too easy for the user to destroy paren
-" balance. For this reason, operator variants of flow commands are not
+" boundaries, both operator-pending commands and commands that extend the
+" current visual selection would make it too easy for the user to destroy
+" paren balance. For this reason, operator-pending flow commands are not
 " provided at all, and the visual variants select the target rather than
 " extending the current selection.
-" Note: Complementary with sexp#leaf_flow, which flows similarly, but stops
-" only on *non-list* (leaf) elements.
+" Note: Complementary and orthogonal to sexp#leaf_flow, which flows similarly,
+" but stops only on *non-list* (leaf) elements.
 function! sexp#list_flow(mode, count, next, close)
     let cnt = a:count ? a:count : 1
     " Maintain a fallback or beach head position, in case we can't accomplish
@@ -982,16 +959,15 @@ function! sexp#list_flow(mode, count, next, close)
     " preceding opening bracket and moving forward), but unless we're planning
     " to skip over the bracket in that case (i.e., treating cursor on macro
     " chars the same as cursor on the subsequent bracket), there's no point.
-    " TODO: Decide which behavior is better.
     if !list
-        " If in an element (may not be), get to its far side.
-        " Rationale: Ensure that subsequent search won't land inside an
+        " If in an element, get to its far side.
+        " Rationale: Ensure that subsequent search can't land inside an
         " ignored region.
         call s:move_to_current_element_terminal(a:next)
     endif
-    " Get distinct very-magic character classes for forwards/backwards cases.
+    " Get distinct very-magic character classes for forward/backward cases.
     " Note: Use sub-pattern flag to differentiate between alternatives.
-    let macro_chars = s:macro_chars_vre()
+    let macro_chars = s:vm_cc(s:macro_chars())
     let re = !a:close
         \ ? '\v' . macro_chars . '*\zs(' . s:opening_bracket . ')|'
         \ . '%(' . s:closing_bracket . ')@!(\S)'
@@ -1007,14 +983,19 @@ function! sexp#list_flow(mode, count, next, close)
             " No further jumps possible. Fall back to beach head position.
             break
         elseif subp == 2
-            " Found desired bracket.
-            let cnt -= 1
-            " Make this the new fallback position.
-            let pos = getpos('.')
-        else
-            " Found non-list element. Get to far side before continuing.
-            call s:move_to_current_element_terminal(a:next)
+            " Note: Although we've probably found desired bracket, syntax
+            " test is needed to ensure we're not fooled by a bracket in a
+            " char literal or at the end of a comment.
+            if !s:syntax_match(s:ignored_region, line('.'), col('.'))
+                " Found desired bracket.
+                let cnt -= 1
+                " Make this the new fallback position.
+                let pos = getpos('.')
+                continue
+            endif
         endif
+        " Found non-list element. Get to far side before continuing.
+        call s:move_to_current_element_terminal(a:next)
     endwhile
     if a:mode == 'v'
         " Note: No need for explicit setcursor, since select_current_marks
@@ -1026,7 +1007,7 @@ function! sexp#list_flow(mode, count, next, close)
             call s:set_visual_marks(!a:close ? [pos, bpos] : [bpos, pos])
             call s:select_current_marks('v', a:close)
         else
-            " Let cursor restoration happen naturally.
+            " We didn't move cursor, so let restoration happen naturally.
             call s:select_current_marks('v')
         endif
     else
@@ -1039,7 +1020,7 @@ endfunction
 " Note: If BOF or EOF preclude [count] jumps, go as far as possible, even to
 " the point of ignoring 'tail' to land on far end of the final element.
 " Selection Non Extension: See corresponding note in header of sexp#list_flow
-" for reason visual commands do not extend selection.
+" for the reason visual commands do not extend selection.
 " Note: Complementary with sexp#list_flow, which flows similarly, but stops
 " only on list (non-leaf) elements.
 function! sexp#leaf_flow(mode, count, next, tail)
@@ -1060,6 +1041,8 @@ function! sexp#leaf_flow(mode, count, next, tail)
         " initial positioning may actually count as a jump).
         let fpos = s:move_to_current_element_terminal(a:next)
         if fpos[1]
+            " Were in non-list element. If far side is target, and we weren't
+            " already on it, we've just performed our first jump.
             if fpos != pos && !near
                 " Terminal positioning constitutes a jump.
                 let cnt -= 1
@@ -1071,8 +1054,13 @@ function! sexp#leaf_flow(mode, count, next, tail)
         " We're either on list head/tail, or at the far side of an element. In
         " either case, the following pattern, in conjunction with preceding
         " logic, obviates need for further syntax checks.
-        let elem = '\v%(' . s:macro_chars_vre() . '*' . s:opening_bracket . '|'
-            \ . s:closing_bracket . ')@!\S'
+        " TODO: Need more syntax checks: we don't want to skip over a #\) or
+        " ;)
+        " Approach: Use sub-pattern flag so we'll know whether we have
+        " something that *could* be list chars, looking for non-whitespace,
+        " and skip to other side...
+        let elem = '\v%(' . s:vm_cc(s:macro_chars())
+            \ . '*' . s:opening_bracket . '|' . s:closing_bracket . ')@!\S'
         while cnt > 0
             " Note: findpos doesn't move cursor, and returns [l, c]
             let pos = s:findpos(elem, a:next)
@@ -1396,11 +1384,10 @@ endfunction
 
 " Enter characterwise visual mode with current visual marks, unless '< is
 " invalid and mode equals 'o'.
-" Optional Args:
+" Optional Arg:
 "   a:1 - where cursor should be left after performing the visual selection:
 "         0=left side ('<), 1=right side ('>)
 function! s:select_current_marks(mode, ...)
-    let ret = 0
     if getpos("'<")[1] > 0
         normal! gv
         if !s:is_characterwise(visualmode())
@@ -2105,19 +2092,3 @@ function! sexp#backspace_insertion()
         return "\<BS>"
     endif
 endfunction
-
-" BPS DEBUG
-let Fn_current_element_terminal = function('s:current_element_terminal') "(end)
-let Fn_nearest_element_terminal = function('s:nearest_element_terminal') "(next, tail)
-let Fn_nearest_bracket = function('s:nearest_bracket') "(closing, ...)
-let Fn_current_top_list_bracket = function('s:current_top_list_bracket') "(closing)
-let Fn_current_string_terminal = function('s:current_string_terminal') "(end)
-let Fn_current_comment_terminal = function('s:current_comment_terminal') "(end)
-let Fn_current_atom_terminal = function('s:current_atom_terminal') "(end)
-let Fn_current_macro_character_terminal = function('s:current_macro_character_terminal') "(end)
-let Fn_terminals_with_whitespace = function('s:terminals_with_whitespace') "(start, end)
-let Fn_select_current_marks = function('s:select_current_marks')
-let Fn_move_to_nearest_bracket = function('s:move_to_nearest_bracket')
-let Fn_move_to_adjacent_element = function('s:move_to_adjacent_element') "(next, tail, top)
-let Fn_is_atom = function('s:is_atom') "(line, col)
-

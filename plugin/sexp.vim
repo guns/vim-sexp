@@ -50,14 +50,14 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_element_head': '<M-w>',
     \ 'sexp_move_to_prev_element_tail': 'g<M-e>',
     \ 'sexp_move_to_next_element_tail': '<M-e>',
-    \ 'sexp_flow_in_to_prev_list':      '<M-[>',
-    \ 'sexp_flow_in_to_next_list':      '<M-]>',
-    \ 'sexp_flow_out_to_prev_list':     '<M-{>',
-    \ 'sexp_flow_out_to_next_list':     '<M-}>',
-    \ 'sexp_flow_to_prev_nonlist_head': '<M-S-b>',
-    \ 'sexp_flow_to_next_nonlist_head': '<M-S-w>',
-    \ 'sexp_flow_to_prev_nonlist_tail': '<M-S-g>',
-    \ 'sexp_flow_to_next_nonlist_tail': '<M-S-e>',
+    \ 'sexp_flow_to_prev_close':        '<M-[>',
+    \ 'sexp_flow_to_next_open':         '<M-]>',
+    \ 'sexp_flow_to_prev_open':         '<M-{>',
+    \ 'sexp_flow_to_next_close':        '<M-}>',
+    \ 'sexp_flow_to_prev_leaf_head':    '<M-S-b>',
+    \ 'sexp_flow_to_next_leaf_head':    '<M-S-w>',
+    \ 'sexp_flow_to_prev_leaf_tail':    '<M-S-g>',
+    \ 'sexp_flow_to_next_leaf_tail':    '<M-S-e>',
     \ 'sexp_move_to_prev_top_element':  '[[',
     \ 'sexp_move_to_next_top_element':  ']]',
     \ 'sexp_select_prev_element':       '[e',
@@ -221,10 +221,10 @@ function! s:sexp_create_mappings()
                \ 'sexp_swap_element_backward',     'sexp_swap_element_forward',
                \ 'sexp_emit_head_element',         'sexp_emit_tail_element',
                \ 'sexp_capture_prev_element',      'sexp_capture_next_element',
-               \ 'sexp_flow_in_to_prev_list',      'sexp_flow_in_to_next_list',
-               \ 'sexp_flow_out_to_prev_list',     'sexp_flow_out_to_next_list',
-               \ 'sexp_flow_to_prev_nonlist_head', 'sexp_flow_to_next_nonlist_head',
-               \ 'sexp_flow_to_prev_nonlist_tail', 'sexp_flow_to_next_nonlist_tail']
+               \ 'sexp_flow_to_prev_close',        'sexp_flow_to_next_open',
+               \ 'sexp_flow_to_prev_open',         'sexp_flow_to_next_close',
+               \ 'sexp_flow_to_prev_leaf_head',    'sexp_flow_to_next_leaf_head',
+               \ 'sexp_flow_to_prev_leaf_tail',    'sexp_flow_to_next_leaf_tail']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -303,26 +303,26 @@ DefplugN  nnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element(
 DEFPLUG   xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 1, 1, 0)<CR>
 DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('o', v:count, 1, 1, 0)
 
-" Movements that 'flow' across lists.
+" Movements that 'flow' in and out of lists.
 " Note: Because these movements are inherently inimical to preservation of
 " list structure, operator pending variants are omitted.
-Defplug   nnoremap sexp_flow_in_to_prev_list sexp#flow_to_nearest_list('n', v:count, 0, 0)
-DEFPLUG   xnoremap sexp_flow_in_to_prev_list <Esc>:<C-u>call sexp#flow_to_nearest_list('v', v:prevcount, 0, 0)<CR>
-Defplug   nnoremap sexp_flow_out_to_prev_list sexp#flow_to_nearest_list('n', v:count, 0, 1)
-DEFPLUG   xnoremap sexp_flow_out_to_prev_list <Esc>:<C-u>call sexp#flow_to_nearest_list('v', v:prevcount, 0, 1)<CR>
-Defplug   nnoremap sexp_flow_in_to_next_list sexp#flow_to_nearest_list('n', v:count, 1, 0)
-DEFPLUG   xnoremap sexp_flow_in_to_next_list <Esc>:<C-u>call sexp#flow_to_nearest_list('v', v:prevcount, 1, 0)<CR>
-Defplug   nnoremap sexp_flow_out_to_next_list sexp#flow_to_nearest_list('n', v:count, 1, 1)
-DEFPLUG   xnoremap sexp_flow_out_to_next_list <Esc>:<C-u>call sexp#flow_to_nearest_list('v', v:prevcount, 1, 1)<CR>
+Defplug   nnoremap sexp_flow_to_prev_close sexp#list_flow('n', v:count, 0, 1)
+DEFPLUG   xnoremap sexp_flow_to_prev_close <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 0, 1)<CR>
+Defplug   nnoremap sexp_flow_to_prev_open sexp#list_flow('n', v:count, 0, 0)
+DEFPLUG   xnoremap sexp_flow_to_prev_open <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 0, 0)<CR>
+Defplug   nnoremap sexp_flow_to_next_open sexp#list_flow('n', v:count, 1, 0)
+DEFPLUG   xnoremap sexp_flow_to_next_open <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 1, 0)<CR>
+Defplug   nnoremap sexp_flow_to_next_close sexp#list_flow('n', v:count, 1, 1)
+DEFPLUG   xnoremap sexp_flow_to_next_close <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 1, 1)<CR>
 
-DefplugN  nnoremap sexp_flow_to_prev_nonlist_head sexp#flow_to_nearest_nonlist('n', v:count, 0, 0)
-DEFPLUG   xnoremap sexp_flow_to_prev_nonlist_head <Esc>:<C-u>call sexp#flow_to_nearest_nonlist('v', v:prevcount, 0, 0)<CR>
-DefplugN  nnoremap sexp_flow_to_next_nonlist_head sexp#flow_to_nearest_nonlist('n', v:count, 1, 0)
-DEFPLUG   xnoremap sexp_flow_to_next_nonlist_head <Esc>:<C-u>call sexp#flow_to_nearest_nonlist('v', v:prevcount, 1, 0)<CR>
-DefplugN  nnoremap sexp_flow_to_prev_nonlist_tail sexp#flow_to_nearest_nonlist('n', v:count, 0, 1)
-DEFPLUG   xnoremap sexp_flow_to_prev_nonlist_tail <Esc>:<C-u>call sexp#flow_to_nearest_nonlist('v', v:prevcount, 0, 1)<CR>
-DefplugN  nnoremap sexp_flow_to_next_nonlist_tail sexp#flow_to_nearest_nonlist('n', v:count, 1, 1)
-DEFPLUG   xnoremap sexp_flow_to_next_nonlist_tail <Esc>:<C-u>call sexp#flow_to_nearest_nonlist('v', v:prevcount, 1, 1)<CR>
+DefplugN  nnoremap sexp_flow_to_prev_leaf_head sexp#leaf_flow('n', v:count, 0, 0)
+DEFPLUG   xnoremap sexp_flow_to_prev_leaf_head <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 0, 0)<CR>
+DefplugN  nnoremap sexp_flow_to_next_leaf_head sexp#leaf_flow('n', v:count, 1, 0)
+DEFPLUG   xnoremap sexp_flow_to_next_leaf_head <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 1, 0)<CR>
+DefplugN  nnoremap sexp_flow_to_prev_leaf_tail sexp#leaf_flow('n', v:count, 0, 1)
+DEFPLUG   xnoremap sexp_flow_to_prev_leaf_tail <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 0, 1)<CR>
+DefplugN  nnoremap sexp_flow_to_next_leaf_tail sexp#leaf_flow('n', v:count, 1, 1)
+DEFPLUG   xnoremap sexp_flow_to_next_leaf_tail <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 1, 1)<CR>
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)

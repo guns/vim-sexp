@@ -960,27 +960,18 @@ function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
     endif
 endfunction
 
-" Move to [count]th (prev close)/(next open) bracket in the buffer, 'flowing'
-" freely in and out of lists.
-" Visual Mode: Visual command causes the destination list to be selected, with
-" cursor positioned on the near side. (Note that 'tail' argument is
-" intentionally omitted from this function, since positioning on far side
-" would effectively destroy the flow.)
-" Note: The only use case I can think of for landing on the far side of a list
-" would be for cases in which you knew in advance you didn't want to descend
-" into the next list: i.e., you wanted to skip over it before continuing the
-" flow. Seems unlikely such a command would be used much, and you can achieve
-" the same effect by hitting % in normal mode (or `o' in visual mode) between
-" flow commands.
+" Move to [count]th next/prev bracket of type indicated by 'close', ignoring
+" (skipping over) brackets of the non-specified type.
+" Visual Mode: Visual command causes the destination list to be selected.
 " Selection Non Extension: Because flow commands intentionally cross list
 " boundaries, both operator commands and commands that extend the current
 " visual selection would make it too easy for the user to destroy paren
 " balance. For this reason, operator variants of flow commands are not
 " provided at all, and the visual variants select the target rather than
 " extending the current selection.
-" Note: Complementary with sexp#flow_to_nearest_nonlist, which flows
-" similarly, but stops only on *non-list* elements.
-function! sexp#flow_to_nearest_list(mode, count, next, out)
+" Note: Complementary with sexp#leaf_flow, which flows similarly, but stops
+" only on *non-list* (leaf) elements.
+function! sexp#list_flow(mode, count, next, close)
     let cnt = a:count ? a:count : 1
     " Maintain a fallback or beach head position, in case we can't accomplish
     " [count] full jumps. (Prevent partial jumps.)
@@ -1001,13 +992,11 @@ function! sexp#flow_to_nearest_list(mode, count, next, out)
     " Get distinct very-magic character classes for forwards/backwards cases.
     " Note: Use sub-pattern flag to differentiate between alternatives.
     let macro_chars = s:macro_chars_vre()
-    echomsg "next/out=" . a:next . "/" . a:out
-    let re = a:next != a:out
+    let re = !a:close
         \ ? '\v' . macro_chars . '*\zs(' . s:opening_bracket . ')|'
         \ . '%(' . s:closing_bracket . ')@!(\S)'
         \ : '\v(' . s:closing_bracket . ')|'
         \ . '%(' . macro_chars . '*' . s:opening_bracket . ')@!(\S)'
-        "\ . '(\S)%(' . macro_chars . '*' . s:opening_bracket . ')@<!'
     " Loop until we've landed on [count]th bracket of desired type.
     " Maintain 'pos' as beach head, which isn't updated by intermediate jumps
     " that land on non-bracket chars.
@@ -1032,10 +1021,10 @@ function! sexp#flow_to_nearest_list(mode, count, next, out)
         " sets position to fallback pos implicitly.
         if pos != cursor
             " We performed at least 1 jump, so change visual selection.
-            let bpos = s:nearest_bracket(a:next)
+            let bpos = s:nearest_bracket(!a:close)
             " Re-enter visual mode with cursor on the near side.
-            call s:set_visual_marks(a:next ? [pos, bpos] : [bpos, pos])
-            call s:select_current_marks('v', !a:next)
+            call s:set_visual_marks(!a:close ? [pos, bpos] : [bpos, pos])
+            call s:select_current_marks('v', a:close)
         else
             " Let cursor restoration happen naturally.
             call s:select_current_marks('v')
@@ -1045,17 +1034,15 @@ function! sexp#flow_to_nearest_list(mode, count, next, out)
     endif
 endfunction
 
-" Move to [count]th next/prev non-list element in the buffer, 'flowing' freely
-" in and out of lists, landing on the element end indicated by 'tail'.
+" Move to [count]th next/prev non-list (leaf) element in the buffer, flowing
+" freely in and out of lists, landing on the element end indicated by 'tail'.
 " Note: If BOF or EOF preclude [count] jumps, go as far as possible, even to
 " the point of ignoring 'tail' to land on far end of the final element.
-" Selection Non Extension: See corresponding note in header of
-" sexp#flow_to_nearest_list for reason visual commands do not extend
-" selection.
-" Note: Complementary with sexp#flow_to_nearest_list, which flows similarly,
-" but stops only on list elements.
-" TODO: Consider changing "element" to "non_list"
-function! sexp#flow_to_nearest_nonlist(mode, count, next, tail)
+" Selection Non Extension: See corresponding note in header of sexp#list_flow
+" for reason visual commands do not extend selection.
+" Note: Complementary with sexp#list_flow, which flows similarly, but stops
+" only on list (non-leaf) elements.
+function! sexp#leaf_flow(mode, count, next, tail)
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
     let cnt = a:count ? a:count : 1

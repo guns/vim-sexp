@@ -986,6 +986,7 @@ function! sexp#list_flow(mode, count, next, close)
             " Note: Although we've probably found desired bracket, syntax
             " test is needed to ensure we're not fooled by a bracket in a
             " char literal or at the end of a comment.
+            " TODO: This is needed only when searching leftward.
             if !s:syntax_match(s:ignored_region, line('.'), col('.'))
                 " Found desired bracket.
                 let cnt -= 1
@@ -1061,7 +1062,12 @@ function! sexp#leaf_flow(mode, count, next, tail)
         " and skip to other side...
         let elem = '\v%(' . s:vm_cc(s:macro_chars())
             \ . '*' . s:opening_bracket . '|' . s:closing_bracket . ')@!\S'
+        if !a:next
+            " We don't want the \v inside the char class.
+            let bracket_vm_cc = s:vm_cc(substitute(s:bracket, '^\\v', '', ''))
+        endif
         while cnt > 0
+            if !a:next | let opos = getpos('.')[1:2] | endif
             " Note: findpos doesn't move cursor, and returns [l, c]
             let pos = s:findpos(elem, a:next)
             if !pos[0]
@@ -1072,9 +1078,25 @@ function! sexp#leaf_flow(mode, count, next, tail)
                 " terminal element of list.
                 break
             endif
-            " Found near side of next element. Save and jump to it.
+            " Found what is most likely the near side of next element (but may
+            " be past it if we've landed on an ignored element).
             call cursor(pos)
             let npos = [0, pos[0], pos[1], 0]
+            " Note: This test seems to work, but I'm wondering whether it
+            " might be safer, given the possibility of non-standard constructs
+            " (e.g., multi-line comments) in various dialects, to use a
+            " simpler (less exigent) element pattern and perform a
+            " syntax-based test for list, followed if necessary by
+            " move_to_current_element_terminal, unconditionally.
+            if !a:next && getline(pos[0])[pos[1] - 1 : ] =~# '\v^.\s*'
+                \ . (opos[0]==pos[0] ? '%<' . (opos[1]-pos[1]+1) . 'c' : '')
+                \ . bracket_vm_cc
+                " It's possible we've landed on an ignored element that ends
+                " with bracket(s); if so, adjust position to include the
+                " brackets; if not, this call is a nop.
+                " Assumption: Ignored elements can't *begin* with brackets.
+                let npos = s:move_to_current_element_terminal(1)
+            endif
             if cnt > 1 || !near
                 " Either we're going to search again or we're done searching but
                 " target is far side: in either case, position on far side.

@@ -706,6 +706,8 @@ function! s:is_list(line, col)
         \ '\v^' . s:vm_cc(s:macro_chars()) . '*' . s:opening_bracket
         \ ? chars[0] == '(' ? 2 : 1
         \ : chars =~# '^' . s:closing_bracket ? 3 : 0
+    " Extra test needed to ensure we're not fooled by spurious brackets within
+    " ignored region.
     return maybe && !s:syntax_match(s:ignored_region, a:line, a:col)
         \ ? maybe : 0
 endfunction
@@ -946,28 +948,42 @@ endfunction
 " paren balance. For this reason, operator-pending flow commands are not
 " provided at all, and the visual variants select the target rather than
 " extending the current selection.
-" Note: Complementary and orthogonal to sexp#leaf_flow, which flows similarly,
-" but stops only on *non-list* (leaf) elements.
+" Note: This function is complementary and orthogonal to sexp#leaf_flow, which
+" flows similarly, but stops only on *non-list* (leaf) elements.
+" Backward Search Special Logic: The pattern used to find brackets can be
+" fooled by brackets appearing in ignored regions: e.g., it will match
+" brackets in character constants like `#\)' or comments like `; blah blah )'
+" Since brackets can't *begin* a non-list element, there's no need to consider
+" these special cases when searching forward (since the pattern will never
+" skip over the near end of the element). The special logic assumes that the
+" brackets to be ignored will always be in an ignored region, as the plugin
+" currently treats all other brackets as list delimiters. In theory, however,
+" it is possible for a bracket to appear (escaped) in an atom. I don't think
+" it's a problem that the plugin doesn't support this (since brackets in atoms
+" probably falls into the category of things that could but shouldn't be
+" done), but if the plugin were eventually to support it, the special logic
+" would need to be tweaked slightly.
 function! sexp#list_flow(mode, count, next, close)
     let cnt = a:count ? a:count : 1
     " Maintain a fallback or beach head position, in case we can't accomplish
     " [count] full jumps. (Prevent partial jumps.)
     let cursor = getpos('.')
     let pos = cursor
-    let list = s:is_list(cursor[1], cursor[2])
-    " Note: Could easily check for `list==1 && a:next' (i.e., in macro chars
-    " preceding opening bracket and moving forward), but unless we're planning
-    " to skip over the bracket in that case (i.e., treating cursor on macro
-    " chars the same as cursor on the subsequent bracket), there's no point.
-    if !list
-        " If in an element, get to its far side.
-        " Rationale: Ensure that subsequent search can't land inside an
-        " ignored region.
+    " If we're in a non-list element, move to its far side.
+    " Rationale: Reduces chance that subsequent search will land on an
+    " ignored region. (Syntax test will handle the unusual cases.)
+    " If we're on any part of list (including macro chars), we're safe
+    " to begin the search from current position.
+    " Rationale: By design, forward jump to open from macro chars lands on the
+    " open bracket attached to the macro chars.
+    if !s:is_list(cursor[1], cursor[2])
         call s:move_to_current_element_terminal(a:next)
     endif
     " Get distinct very-magic character classes for forward/backward cases.
-    " Note: Use sub-pattern flag to differentiate between alternatives.
     let macro_chars = s:vm_cc(s:macro_chars())
+    " Build direction-specific regex that attempts to find the desired bracket
+    " type, but will settle for the first non-list element it encounters.
+    " Note: Use sub-pattern flag to differentiate between alternatives.
     let re = !a:close
         \ ? '\v' . macro_chars . '*\zs(' . s:opening_bracket . ')|'
         \ . '%(' . s:closing_bracket . ')@!(\S)'
@@ -983,11 +999,11 @@ function! sexp#list_flow(mode, count, next, close)
             " No further jumps possible. Fall back to beach head position.
             break
         elseif subp == 2
-            " Note: Although we've probably found desired bracket, syntax
-            " test is needed to ensure we're not fooled by a bracket in a
-            " char literal or at the end of a comment.
-            " TODO: This is needed only when searching leftward.
-            if !s:syntax_match(s:ignored_region, line('.'), col('.'))
+            " We've *probably* found desired bracket; however, if we're moving
+            " backward, an additional test is needed to ensure we're not
+            " fooled by a bracket in a char literal or at the end of a
+            " comment. (See comment in function header.)
+            if a:next || !s:syntax_match(s:ignored_region, line('.'), col('.'))
                 " Found desired bracket.
                 let cnt -= 1
                 " Make this the new fallback position.
@@ -1022,8 +1038,8 @@ endfunction
 " the point of ignoring 'tail' to land on far end of the final element.
 " Selection Non Extension: See corresponding note in header of sexp#list_flow
 " for the reason visual commands do not extend selection.
-" Note: Complementary with sexp#list_flow, which flows similarly, but stops
-" only on list (non-leaf) elements.
+" Note: This function is complementary with sexp#list_flow, which flows
+" similarly, but stops only on list (non-leaf) elements.
 function! sexp#leaf_flow(mode, count, next, tail)
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
@@ -1032,17 +1048,14 @@ function! sexp#leaf_flow(mode, count, next, tail)
     " npos=near pos, fpos=far pos
     let [npos, fpos] = [[0, 0, 0, 0], [0, 0, 0, 0]]
     " Are we starting on list (macro chars or brackets)?
-    " Note: Regex used for elem search contains assertions that prevent match
-    " of macro chars, thereby obviating need to differentiate between the
-    " various nonzero is_list() return values.
     if !s:is_list(pos[1], pos[2])
-        " The current element is not a list, and hence *could* be target.
-        " Position on far side in preparation for subsequent search (which may
-        " or may not be necessary, given that in the non-near case, this
-        " initial positioning may actually count as a jump).
+        " The current element is not a list (or macro chars), and hence
+        " *could* be target. Position on far side in preparation for
+        " subsequent search (which may or may not be needed, given that in the
+        " non-near case, this initial positioning may actually count as jump).
         let fpos = s:move_to_current_element_terminal(a:next)
         if fpos[1]
-            " Were in non-list element. If far side is target, and we weren't
+            " We're in non-list element. If far side is target, and we weren't
             " already on it, we've just performed our first jump.
             if fpos != pos && !near
                 " Terminal positioning constitutes a jump.
@@ -1054,20 +1067,14 @@ function! sexp#leaf_flow(mode, count, next, tail)
     if cnt
         " We're either on list head/tail, or at the far side of an element. In
         " either case, the following pattern, in conjunction with preceding
-        " logic, obviates need for further syntax checks.
-        " TODO: Need more syntax checks: we don't want to skip over a #\) or
-        " ;)
-        " Approach: Use sub-pattern flag so we'll know whether we have
-        " something that *could* be list chars, looking for non-whitespace,
-        " and skip to other side...
+        " logic, (almost) obviates need for further syntax checks. (See note
+        " further down on special logic required in backward search case.)
+        " Note: Use sub-pattern flag so we'll know whether we have something
+        " that *could* be list chars, looking for non-whitespace, and skip to
+        " other side...
         let elem = '\v%(' . s:vm_cc(s:macro_chars())
             \ . '*' . s:opening_bracket . '|' . s:closing_bracket . ')@!\S'
-        if !a:next
-            " We don't want the \v inside the char class.
-            let bracket_vm_cc = s:vm_cc(substitute(s:bracket, '^\\v', '', ''))
-        endif
         while cnt > 0
-            if !a:next | let opos = getpos('.')[1:2] | endif
             " Note: findpos doesn't move cursor, and returns [l, c]
             let pos = s:findpos(elem, a:next)
             if !pos[0]
@@ -1078,24 +1085,20 @@ function! sexp#leaf_flow(mode, count, next, tail)
                 " terminal element of list.
                 break
             endif
-            " Found what is most likely the near side of next element (but may
-            " be past it if we've landed on an ignored element).
+            " Position on what is *probably* the near side of next element
+            " (but may be past it in certain unusual cases).
             call cursor(pos)
-            let npos = [0, pos[0], pos[1], 0]
-            " Note: This test seems to work, but I'm wondering whether it
-            " might be safer, given the possibility of non-standard constructs
-            " (e.g., multi-line comments) in various dialects, to use a
-            " simpler (less exigent) element pattern and perform a
-            " syntax-based test for list, followed if necessary by
-            " move_to_current_element_terminal, unconditionally.
-            if !a:next && getline(pos[0])[pos[1] - 1 : ] =~# '\v^.\s*'
-                \ . (opos[0]==pos[0] ? '%<' . (opos[1]-pos[1]+1) . 'c' : '')
-                \ . bracket_vm_cc
-                " It's possible we've landed on an ignored element that ends
-                " with bracket(s); if so, adjust position to include the
-                " brackets; if not, this call is a nop.
-                " Assumption: Ignored elements can't *begin* with brackets.
+            " If searching backward, it's possible we've landed on an element
+            " that ends with bracket(s): e.g., char literal such as #\), or
+            " comment with brackets at the end. If so, we've gone too far and
+            " need to reposition on true end of element.
+            " Note: Currently, spurious brackets are possible only in ignored
+            " regions. If plugin ever supports (e.g.) escaped brackets in
+            " atoms, the following test will need to be adjusted accordingly.
+            if !a:next && s:syntax_match(s:ignored_region, pos[0], pos[1])
                 let npos = s:move_to_current_element_terminal(1)
+            else
+                let npos = [0, pos[0], pos[1], 0]
             endif
             if cnt > 1 || !near
                 " Either we're going to search again or we're done searching but
@@ -1419,8 +1422,8 @@ function! s:select_current_marks(mode, ...)
             " Caller has requested that cursor be left on particular side.
             " Caveat: We cannot rely on accurate '< and '> values from getpos
             " at this point: if the setpos() calls occur while visual mode is
-            " linewise, getpos() will continue to return 1 and -1 for col
-            " positions until mapping has completed. Fortunately, we can
+            " linewise, getpos() will continue to return line=1 and col=-1 for
+            " col positions until mapping has completed. Fortunately, we can
             " discern the true bounds of the characterwise visual region by
             " using normal! o in conjunction with getpos('.').
             let pos = getpos('.')

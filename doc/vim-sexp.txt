@@ -224,7 +224,7 @@ flow commands, jump directly from leaf to leaf, never stopping on a bracket.
 
 Note: The list and leaf commands are complementary and completely orthogonal:
 the target of a list flow command can never be the target of a leaf flow
-command and vice-versa; moreover, every element in the buffer can be reached
+command, and vice-versa; moreover, every element in the buffer can be reached
 using either list or leaf flow commands, but not both.
 
 Visual and operator-pending mode note~

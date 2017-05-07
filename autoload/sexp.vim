@@ -958,10 +958,10 @@ endfunction
 " skip over the near end of the element). The special logic assumes that the
 " brackets to be ignored will always be in an ignored region, as the plugin
 " currently treats all other brackets as list delimiters. In theory, however,
-" it is possible for a bracket to appear (escaped) in an atom. I don't think
-" it's a problem that the plugin doesn't support this (since brackets in atoms
-" probably falls into the category of things that could but shouldn't be
-" done), but if the plugin were eventually to support it, the special logic
+" it is possible for a bracket to appear (escaped) in a symbol. I don't think
+" it's a problem that the plugin doesn't support this (since brackets in
+" symbols probably falls into the category of things that could but shouldn't
+" be done), but if the plugin were eventually to support it, the special logic
 " would need to be tweaked slightly.
 function! sexp#list_flow(mode, count, next, close)
     let cnt = a:count ? a:count : 1
@@ -1094,7 +1094,8 @@ function! sexp#leaf_flow(mode, count, next, tail)
             " need to reposition on true end of element.
             " Note: Currently, spurious brackets are possible only in ignored
             " regions. If plugin ever supports (e.g.) escaped brackets in
-            " atoms, the following test will need to be adjusted accordingly.
+            " symbols, the following test will need to be adjusted
+            " accordingly.
             if !a:next && s:syntax_match(s:ignored_region, pos[0], pos[1])
                 let npos = s:move_to_current_element_terminal(1)
             else

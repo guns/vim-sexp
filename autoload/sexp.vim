@@ -38,11 +38,7 @@ let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
-let s:match_ignored_region_fn = 's:syntax_match(g:ignored_region, line("."), col("."))'
-" BPS TEMP DEBUG
-let g:ignored_region = s:string_region . '|comment|character'
-let g:match_ignored_region_fn = 'Syntax_match(g:ignored_region, line("."), col("."))'
-" END BPS TEMP DEBUG
+let s:match_ignored_region_fn = 's:syntax_match(s:ignored_region, line("."), col("."))'
 let s:macro_filetype_characters = {
     \ 'clojure': "#'`~@^_=",
     \ 'scheme':  "#'`,@",
@@ -946,6 +942,9 @@ endfunction
 " Move to [count]th next/prev bracket of type indicated by 'close', ignoring
 " (skipping over) brackets of the non-specified type.
 " Visual Mode: Visual command causes the destination list to be selected.
+" Note: If BOF or EOF preclude [count] jumps, go as far as possible.
+" Special Case: In visual mode, treat starting position as valid target if it
+" happens to be of the correct bracket type and we can go no further.
 " Selection Non Extension: Because flow commands intentionally cross list
 " boundaries, both operator-pending commands and commands that extend the
 " current visual selection would make it too easy for the user to destroy
@@ -954,19 +953,9 @@ endfunction
 " extending the current selection.
 " Note: This function is complementary and orthogonal to sexp#leaf_flow, which
 " flows similarly, but stops only on *non-list* (leaf) elements.
-" Backward Search Special Logic: The pattern used to find brackets can be
-" fooled by brackets appearing in ignored regions: e.g., it will match
-" brackets in character constants like `#\)' or comments like `; blah blah )'
-" Since brackets can't *begin* a non-list element, there's no need to consider
-" these special cases when searching forward (since the pattern will never
-" skip over the near end of the element). The special logic assumes that the
-" brackets to be ignored will always be in an ignored region, as the plugin
-" currently treats all other brackets as list delimiters. In theory, however,
-" it is possible for a bracket to appear (escaped) in a symbol. I don't think
-" it's a problem that the plugin doesn't support this (since brackets in
-" symbols probably falls into the category of things that could but shouldn't
-" be done), but if the plugin were eventually to support it, the special logic
-" would need to be tweaked slightly.
+" TODO: If vim-sexp ever adds logic to handle weird things like escaped
+" brackets in atoms - e.g., foo\(bar - revisit the ignore pattern used with
+" searchpair.
 function! sexp#list_flow(mode, count, next, close)
     let cnt = a:count ? a:count : 1
     let cursor = getpos('.')
@@ -975,25 +964,31 @@ function! sexp#list_flow(mode, count, next, close)
     " Note: Intentionally using searchpos with unmatchable start/end patterns
     " and desired target as 'middle' because it provides a simple way to apply
     " a syntax test to a match. The syntax test is needed because of the
-    " possibility of brackets appearing in ignored regions such as character
-    " literals and comments.
-    while cnt > 0 && 0 < searchpair('a\&b', a:close ? ')' : '(', 'a\&b',
+    " possibility of brackets appearing in ignored regions such as strings,
+    " character literals and comments: e.g.,
+    "   "(foo)"
+    "   #\)
+    "   ; (( blah blah ))
+    while cnt > 0 && 0 < searchpair('a\&b', a:close
+        \ ? s:closing_bracket
+        \ : s:opening_bracket, 'a\&b',
             \ 'W' . (a:next ? '' : 'b'),
             \ s:match_ignored_region_fn)
         let cnt -= 1
     endwhile
     if a:mode == 'v'
-        let pos = getpos('.')
-        " Note: No need for explicit setcursor, since select_current_marks
-        " sets position implicitly.
-        if pos != cursor
-            " We performed at least 1 jump, so change visual selection.
+        if cnt < a:count
+            \ || s:is_list(line('.'), col('.')) == (a:close ? 3 : 2)
+            " Either we performed at least 1 jump, or we started on desired
+            " bracket type. Either way, find other bracket and select list.
             let bpos = s:nearest_bracket(!a:close)
             " Re-enter visual mode with cursor on the desired side.
-            call s:set_visual_marks(!a:close ? [pos, bpos] : [bpos, pos])
+            " Note: No need to sort the marks, as Vim will swap as needed, and
+            " we're about to set cursor pos with select_current_marks.
+            call s:set_visual_marks([getpos('.'), bpos])
             call s:select_current_marks('v', a:close)
         else
-            " We didn't move cursor, so let restoration happen naturally.
+            " We didn't find desired bracket, so just restore old selection.
             call s:select_current_marks('v')
         endif
     endif
@@ -1008,41 +1003,53 @@ endfunction
 " similarly, but stops only on list (non-leaf) elements.
 " Selection Non Extension: See corresponding note in header of sexp#list_flow
 " for the reason visual commands do not extend selection.
+" Edge Cases:
+" 1. The ambiguity that arises when an atom and list are separated by only
+"    macro char(s) is solved differently by different lisp variants.
+"    Example: foo'(bar)
+"      Clojure: foo' (bar)
+"      CL:      foo '(bar)
+"    Moreover, current_element_terminal() is inconsistent, giving an answer
+"    that depends on the starting position. Though the edge case is legal
+"    lisp, it's not lisp a sane programmer should be writing, so I'm not going
+"    to add a lot of logic to try to handle it consistently.
+"    TODO: Revisit if current_element_terminal is ever updated to handle this
+"    edge case consistently.
+" 2. When a character literal ends in a literal space (e.g., `#\ '), special
+"    logic would be required to avoid skipping over the whitespace when
+"    searching backward for element tail. Since sexp_move_to_prev_element_tail
+"    map handles this case incorrectly (landing on the backslash rather than
+"    the following space char), and `#\Space' is much more readable than
+"    `#\ ', I really can't justify adding a lot of logic to handle it
+"    correctly here.
+"    TODO: Revisit if move_to_adjacent_element is ever updated to handle the
+"    edge case.
 function! sexp#leaf_flow(mode, count, next, tail)
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
     let cnt = a:count ? a:count : 1
     let cursor = getpos('.')
-    " Update nf to indicate last position attained in search:
-    "   unknown=-1, near=0, far=1
+    " Update nf to indicate target reached (i.e., last position attained in
+    " search, not necessarily the desired position specified by 'tail').
+    " Values: =-1, near=0, far=1
     let nf = -1
     " Are we starting on list (macro chars or brackets)?
-    let list = s:is_list(cursor[1], cursor[2])
-    if !list
-        " The current element is not a list (or macro chars), and hence
-        " *could* be target. If in element, position on far side in
+    if !s:is_list(cursor[1], cursor[2])
+        " The current element (if any) is not a list (or macro chars), and
+        " hence *could* be target. If inside element, position on far side in
         " preparation for subsequent search (which may or may not be needed,
         " given that if far side is sought, this initial positioning may
         " actually count as jump).
         let pos = s:move_to_current_element_terminal(a:next)
         if pos[1]
-            " We're on far side of non-list element. If far side is target,
-            " and we weren't already on it, first jump is complete.
+            " We're on far side of non-list element. If far side is desired
+            " target, and we weren't already on it, first jump is complete.
+            " Either way, we've reached *acceptable* target.
             if pos != cursor && !near
                 let cnt -= 1
             endif
             let nf = 1
         endif
-    elseif !a:next && (list == 1 || list == 2)
-        " Record beginning of list element so we can avoid getting stuck in a
-        " backward traversal at something pathological like foo'(bar).
-        " Note: Different lisps treat this differently: e.g.
-        "   Clojure: foo' (bar)
-        "   CL:      foo '(bar)
-        " Moreover, it's something a sane programmer shouldn't be doing. Thus,
-        " the goal in handling isn't correctness, but simply to avoid getting
-        " stuck.
-        let stop_pos = s:current_element_terminal(0)
     endif
     " We're either on list head/tail, at the far side of an element, or not on
     " anything at all. Fallback position isn't needed, since all jumps are in
@@ -1059,13 +1066,7 @@ function! sexp#leaf_flow(mode, count, next, tail)
             break
         endif
         " We're on near side of next element.
-        " Note: Although searchpair() generally positions us correctly on near
-        " side of a leaf, there's at least one edge case that needs to be
-        " considered: i.e., whitespace at the end of a character constant
-        " (e.g., `#\ '). For this reason, subsequent code should assume only
-        " that we've reached a leaf element and haven't gone past its far
-        " side. If actual near pos is needed, use current_element_terminal()
-        " rather than getpos('.').
+        let npos = getpos('.')
         if cnt > 1 || !near
             " Either we're going to search again or we're done searching but
             " target is far side: in either case, position on far side.
@@ -1077,262 +1078,22 @@ function! sexp#leaf_flow(mode, count, next, tail)
         endif
         let cnt -= 1
     endwhile
-    " Short-circuit if we didn't find acceptable leaf location.
-    if nf < 0
-        " Cursor is unchanged.
-        if a:mode ==? 'v'
-            " Simply restore original selection.
-            call s:select_current_marks('v')
-        endif
-        return
-    endif
-    " Special handling needed for near pos.
-    " Note: npos is always needed in visual mode; in normal mode, it's needed
-    " only when target is near side (nf==0) and position reached with
-    " searchpair() is unreliable due to edge/pathological cases described
-    " above.
-    if a:mode ==? 'v' || !a:next && nf == 0
-        let npos = s:current_element_terminal(!a:next)
-        if !a:next
-            if exists('l:stop_pos') && s:compare_pos(npos, stop_pos) >= 0
-                " Pathological Case: s:current_element_terminal can't
-                " distinguish end of element from start of subsequent list;
-                " rewind to just before the list's macro chars.
-                let npos[2] = stop_pos[2] - 1
-            endif
-            if a:mode !=? 'v'
-                call s:setcursor(npos)
-            endif
-        endif
-    endif
     if a:mode ==? 'v'
-        " Select target visually, placing cursor on target end.
-        " Assumption: Correction never needed for far pos.
-        let fpos = nf ? getpos('.') : s:current_element_terminal(a:next)
-        " Note: No need to sort the marks, as Vim will swap as needed, and
-        " we're about to set cursor pos with select_current_marks.
-        call s:set_visual_marks([npos, fpos])
-        " Re-enter visual mode with cursor on the desired end.
-        call s:select_current_marks('v', nf ? a:next : !a:next)
-    endif
-endfunction
-
-function! sexp#leaf_flow_exp(mode, count, next, tail)
-    " Is optimal destination near or far side of element?
-    let near = !!a:next != !!a:tail
-    let cnt = a:count ? a:count : 1
-    let pos = getpos('.')
-    " npos=near pos, fpos=far pos
-    let [npos, fpos] = [[0, 0, 0, 0], [0, 0, 0, 0]]
-    " Are we starting on list (macro chars or brackets)?
-    if !s:is_list(pos[1], pos[2])
-        " The current element is not a list (or macro chars), and hence
-        " *could* be target. Position on far side in preparation for
-        " subsequent search (if needed).
-        let fpos = s:move_to_current_element_terminal(a:next)
-        if fpos[1]
-            " We're in non-list element. If far side is target, and we weren't
-            " already on it, we've just performed our first jump.
-            if fpos != pos && !near
-                let cnt -= 1
-            endif
-        endif
-    endif
-    " Terminal positioning above could be the only required jump.
-    if cnt
-        " We're either on list head/tail, at the far side of an element, or in
-        " whitespace.
-        " Note: Fallback position isn't needed, since all jumps are in the
-        " desired direction, and will be accepted, even if they don't get us
-        " to desired target.
-        " Rationale: Analogous to how nearest_element_terminal behaves when
-        " we're already on terminal element of list.
-        while cnt > 0
-            " Note: See note on use of this unconventional use of searchpair
-            " in list_flow.
-            let pos = searchpair('a\&b', '\S', 'a\&b',
-                \ 'W' . (a:next ? '' : 'b'),
-                \ 's:is_list(line("."), col("."))')
-            if pos <= 0
-                " We've gone as far as we can.
-                " Note: Leave ourselves on far side of element (or at starting
-                " position if we didn't start in element).
-                break
-            endif
-            " We're on near side of next element.
-            if cnt > 1 || !near
-                " Either we're going to search again or we're done searching but
-                " target is far side: in either case, position on far side.
-                let fpos = s:move_to_current_element_terminal(a:next)
-            else
-                " Done searching and target is near side.
-                " Invalidate far pos, now that we've moved to new el.
-                let fpos = [0, 0, 0, 0]
-                if a:next
-                    let npos = getpos('.')
-                endif
-            endif
-            let cnt -= 1
-        endwhile
-    endif
-    " Cursor is in final (possibly original) position, though slight
-    " correction may still be required.
-    if a:mode ==? 'v'
-        " If we've found an acceptable target, select it visually, preserving
-        " current cursor position.
-        " Note that 'acceptable' does not imply 'optimal': if we're on an
-        " element (even the starting one), we have an acceptable target, even
-        " if we would have liked to move to another element.
-        " Possible cases:
-        " 1. !npos && !fpos: no acceptable target el found
-        " 2. !npos &&  fpos: accepted far side of start el (optimal if cnt==0)
-        " 3.  npos && !fpos: accepted near pos (optimal)
-        " 4.  npos &&  fpos: accepted far pos (optimal if cnt==0)
-        " Note: In case 1, we simply restore original selection; in all other
-        " cases, we select the 'accepted' target, leaving cursor where it
-        " currently is.
-        if fpos[1] || npos[1]
-            " Before setting missing fpos/npos, determine whether cursor
-            " should be on left (0) or right (1) side of visual selection.
-            let side = fpos[1] ? a:next : !a:next
-            " Obtain any missing (or unreliable) terminal positions.
-            " Note: Possibility of brackets in ignored regions and character
-            " literals ending in space (e.g., `\ ' in Clojure or `#\ ' in
-            " Lisp) means we can't trust an npos obtained in backward
-            " searchpair().
-            if !fpos[1]
-                let fpos = s:current_element_terminal(a:next)
-            elseif !npos[1] || !a:next
+        if nf >= 0
+            " Set near pos if we started past it.
+            if !exists('l:npos')
                 let npos = s:current_element_terminal(!a:next)
             endif
+            let fpos = nf ? getpos('.') : s:current_element_terminal(a:next)
+            " Select target visually, placing cursor on target end.
             " Note: No need to sort the marks, as Vim will swap as needed, and
-            " we're going to set cursor pos with select_current_marks.
+            " we're about to set cursor pos with select_current_marks.
             call s:set_visual_marks([npos, fpos])
-            " Re-enter visual mode with cursor on the desired end.
-            call s:select_current_marks('v', side)
+            " Re-enter visual mode with cursor on the target end.
+            call s:select_current_marks('v', nf ? a:next : !a:next)
         else
-            " Cursor hasn't moved; simply restore original selection.
+            " Cursor unchanged. Simply restore original selection.
             call s:select_current_marks('v')
-        endif
-    elseif !a:next && !fpos[1]
-        " Moving backwards and we've landed on near side; for reasons
-        " mentioned above, can't trust pos obtained with searchpair().
-        call s:move_to_current_element_terminal(1)
-    endif
-endfunction
-
-function! sexp#leaf_flow_current(mode, count, next, tail)
-    " Is optimal destination near or far side of element?
-    let near = !!a:next != !!a:tail
-    let cnt = a:count ? a:count : 1
-    let pos = getpos('.')
-    " npos=near pos, fpos=far pos
-    let [npos, fpos] = [[0, 0, 0, 0], [0, 0, 0, 0]]
-    " Are we starting on list (macro chars or brackets)?
-    if !s:is_list(pos[1], pos[2])
-        " The current element is not a list (or macro chars), and hence
-        " *could* be target. Position on far side in preparation for
-        " subsequent search (which may or may not be needed, given that in the
-        " non-near case, this initial positioning may actually count as jump).
-        let fpos = s:move_to_current_element_terminal(a:next)
-        if fpos[1]
-            " We're in non-list element. If far side is target, and we weren't
-            " already on it, we've just performed our first jump.
-            " TODO: How does the weirdness with
-            " move_to_current_element_terminal(1) returning current pos when
-            " called on blank line affect this? Do we need to check for the
-            " blank line case?
-            if fpos != pos && !near
-                " Terminal positioning constitutes a jump.
-                let cnt -= 1
-            endif
-        endif
-    endif
-    " Terminal positioning above could be the only required jump.
-    if cnt
-        " We're either on list head/tail, or at the far side of an element.
-        " Note: Fallback position isn't needed, since all jumps are in the
-        " desired direction, and will be accepted, even if they don't get us
-        " to desired target.
-        while cnt > 0
-            " Note: See note on use of this unconventional use of searchpair
-            " in list_flow.
-            let pos = searchpair('a\&b', '\S', 'a\&b',
-                \ 'W' . (a:next ? '' : 'b'),
-                \ 's:is_list(line("."), col("."))')
-            if pos <= 0
-                " We've gone as far as we can.
-                " Note: Leave ourselves on far side of element (or at starting
-                " position if we didn't start in element) in manner analogous
-                " to how nearest_element_terminal behaves when already on
-                " terminal element of list.
-                break
-            endif
-            " We're on near side of next element.
-            if cnt > 1 || !near
-                " Either we're going to search again or we're done searching but
-                " target is far side: in either case, position on far side.
-                let fpos = s:move_to_current_element_terminal(a:next)
-            else
-                " Done searching and target is near side.
-                " Invalidate far pos, now that we've moved to new el.
-                let fpos = [0, 0, 0, 0]
-            endif
-            let cnt -= 1
-        endwhile
-    endif
-    " Note: fpos should always be correct naturally, and only terminal end
-    " requires the special logic: ie, near pos when going backward is the
-    " problem.
-    " If we need near side to be correct (either because we're selecting or
-    " because accepted target is near side), correct for stuff like character
-    " literal ascii 32: e.g.,
-    " Clojure => `\ ', Common Lisp => `#\ '
-    "if !a:next && (a:mode ==? 'v' || !fpos[1])
-    "    let npos = fpos[1]
-    "        \ ? s:current_element_terminal(1)
-    "        \ : s:move_to_current_element_terminal(1)
-    "endif
-    " Cursor is in final position (possibly unchanged from original).
-    if a:mode ==? 'v'
-        " Restore visual selection: if we've found an acceptable target,
-        " select it visually, preserving current cursor position; otherwise,
-        " restore original selection (noting that cursor will not have moved).
-        " Note that 'acceptable' does not imply 'optimal': if we're on an
-        " element (even the starting one), we have an acceptable target, even
-        " if we would have liked to move to another element.
-        " Possible cases:
-        " 1. !npos && !fpos: no acceptable target el found
-        " 2. !npos &&  fpos: accepted far side of start el (optimal if cnt==0)
-        " 3.  npos && !fpos: accepted near pos (optimal)
-        " 4.  npos &&  fpos: accepted far pos (optimal if cnt==0)
-        " Note: In case 1, we simply restore original selection; in all other
-        " cases, we select the 'accepted' target, leaving cursor where it
-        " currently is.
-        " Issue: Currently, fpos can be true even if not accepted.
-        if fpos[1] || npos[1]
-            " Before setting missing fpos/npos, determine whether cursor
-            " should be on left (0) or right (1) side of visual selection.
-            let side = fpos[1] ? a:next : !a:next
-            " Obtain missing terminal position (if applicable)
-            if !fpos[1]
-                let fpos = s:current_element_terminal(a:next)
-            elseif !npos[1]
-                let npos = s:current_element_terminal(!a:next)
-            endif
-            " Note: No need to sort the marks, as Vim will swap as needed, and
-            " we're going to set cursor pos with select_current_marks.
-            call s:set_visual_marks([npos, fpos])
-            " Re-enter visual mode with cursor on the desired end.
-            call s:select_current_marks('v', side)
-        else
-            " Simply restore original selection.
-            call s:select_current_marks('v')
-        endif
-    else
-        " Make correction if necessary.
-        if !a:next && !fpos[1]
-            call s:move_to_current_element_terminal(1)
         endif
     endif
 endfunction
@@ -1600,8 +1361,9 @@ endfunction
 " Enter characterwise visual mode with current visual marks, unless '< is
 " invalid and mode equals 'o'.
 " Optional Arg:
-"   a:1 - where cursor should be left after performing the visual selection:
+"   a:1 - where to leave cursor after performing the visual selection:
 "         0=left side ('<), 1=right side ('>)
+"         Note: This arg is ignored if marks not set.
 function! s:select_current_marks(mode, ...)
     if getpos("'<")[1] > 0
         normal! gv
@@ -2307,6 +2069,3 @@ function! sexp#backspace_insertion()
         return "\<BS>"
     endif
 endfunction
-
-" BPS TEMP DEBUG
-let Syntax_match = function('s:syntax_match')

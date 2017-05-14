@@ -137,6 +137,7 @@ function! s:defplug(flags, mapmode, name, ...)
                  \ . ':<C-u>let b:sexp_count = v:count \| '
                  \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
                  \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g')
+
     " Expression, non-repeating
     if !repeat || (repeat && !s:have_repeat_set)
         execute prefix . '<CR>'

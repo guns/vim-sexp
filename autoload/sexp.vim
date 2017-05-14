@@ -1672,7 +1672,7 @@ endfunction
 " Logic:
 " 1. Attempt to position at head of current element.
 " 2. Cut text back to beginning of containing form.
-" 3. Raise what remains of the form (saving open/close brackets).
+" 3. Splice what remains of the form (saving open/close brackets).
 " 4. Wrap the form <count>+1 levels up with the saved open/close brackets,
 "    placing the text cut from step 2 just inside the open.
 " 5. Re-indent the form *containing* the newly-added form.
@@ -1680,8 +1680,6 @@ endfunction
 "    Note: In the general case, this will leave cursor where it was before the
 "    convolute.
 fu! sexp#convolute(count, ...)
-    " Save marks/pos for subsequent restore.
-    let marks = s:get_visual_marks()
     let cursor = getpos('.')
 
     " Var Nomenclature:
@@ -1723,8 +1721,6 @@ fu! sexp#convolute(count, ...)
     " 3. at cursor (when in whitespace preceding closing bracket)
     if cursor == tpos_i
         " Special Case: Cursor on closing bracket
-        " Alternative: Could use test like this.
-        " if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
         let pos = tpos_i
     else
         " Try to position on head of current element (including macro chars).
@@ -1784,9 +1780,6 @@ fu! sexp#convolute(count, ...)
     " Assumption: Closing brackets always a single byte.
     let pos[2] = col([pos[1], '$']) - pos_edist + edist_changing
     call s:setcursor(pos)
-
-    " Restore marks
-    call s:set_visual_marks(marks)
 endfu
 
 " Remove brackets from current list, placing cursor at position of deleted

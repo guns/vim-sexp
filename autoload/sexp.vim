@@ -704,7 +704,7 @@ function! s:is_list(line, col)
     let chars = getline(a:line)[a:col - 1:]
     let maybe = chars =~#
         \ '\v^' . s:vm_cc(s:macro_chars()) . '*%(' . s:opening_bracket . ')'
-        \ ? chars[0] == '(' ? 2 : 1
+        \ ? chars[0] =~# s:opening_bracket ? 2 : 1
         \ : chars =~# '\v^%(' . s:closing_bracket . ')' ? 3 : 0
     " Extra test needed to ensure we're not fooled by spurious brackets within
     " ignored region.

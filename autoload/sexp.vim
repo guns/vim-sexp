@@ -958,7 +958,6 @@ endfunction
 " searchpair.
 function! sexp#list_flow(mode, count, next, close)
     let cnt = a:count ? a:count : 1
-    let cursor = getpos('.')
     " Loop until we've landed on [count]th non-ignored bracket of desired type
     " or exhausted buffer trying.
     " Note: Intentionally using searchpos with unmatchable start/end patterns

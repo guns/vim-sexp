@@ -1470,67 +1470,12 @@ function! s:swap_current_selection(mode, next, pairwise)
     return 1
 endfunction
 
-" Indent S-Expression, maintaining cursor position. This is similar to mapping
-" to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
-" elements not contained in an compound form (e.g. top-level comments).
-function! sexp#indent(top, count)
-    let win = winsaveview()
-    let [_b, line, col, _o] = getpos('.')
-
-    " Move to current list tail since the expansion step of
-    " s:set_marks_around_current_list() happens at the tail.
-    if getline(line)[col - 1] =~ s:closing_bracket && !s:syntax_match(s:ignored_region, line, col)
-        let pos = [0, line, col, 0]
-    else
-        let pos = s:move_to_nearest_bracket(1)
-    endif
-
-    normal! v
-    if pos[1] < 1
-        keepjumps call sexp#select_current_element('v', 1)
-    elseif a:top
-        keepjumps call sexp#select_current_top_list('v', 0)
-    else
-        keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
-    endif
-    normal! =
-
-    call winrestview(win)
-endfunction
-
-" Place brackets around scope, then place cursor at head or tail, finally
-" leaving off in insert mode if specified. Insert also sets the headspace
-" parameter when inserting brackets.
-function! sexp#wrap(scope, bra, ket, at_tail, insert)
-    if a:scope ==# 'f'
-        call s:insert_brackets_around_current_list(a:bra, a:ket, a:at_tail, a:insert)
-    elseif a:scope ==# 'e'
-        call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
-    elseif a:scope ==# 'v'
-        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
-    endif
-
-    if a:insert
-        startinsert
-    endif
-endfunction
-
-" Replace parent list with selection resulting from executing func with given
-" varargs.
-function! sexp#raise(mode, func, ...)
-    if a:mode ==# 'v'
-        call s:select_current_marks('v')
-    else
-        call call(a:func, a:000)
-    endif
-    normal! d
-    call sexp#select_current_list('n', 0, 0)
-    normal! p
-endfunction
-
-" Note on optional include arg: Allow caller to specify inc either as list or
-" bool, with a bool assumed to apply only to end (with start being included by
-" default). If inc arg is omitted, assume range that is open only at end.
+" Yank (del=0) or delete (del=1) text in range defined by start/end. Optional
+" 'inc' arg allows inclusivity of range to be specified independently for
+" start and end.
+" Note: Allow caller to specify 'inc' either as list or bool, with a bool
+" assumed to apply only to end (with start being included by default). If inc
+" arg is omitted, defaults to [1, 0]: i.e., start=inclusive, end=exclusive.
 " Cursor Note: If we move cursor, we'll leave it at start of operated range.
 function! s:yankdel_range(start, end, del, ...)
     let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
@@ -1666,6 +1611,64 @@ fu! s:put_at(text, before, cursor_after, ...)
     endif
 endfu
 
+" Indent S-Expression, maintaining cursor position. This is similar to mapping
+" to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
+" elements not contained in an compound form (e.g. top-level comments).
+function! sexp#indent(top, count)
+    let win = winsaveview()
+    let [_b, line, col, _o] = getpos('.')
+
+    " Move to current list tail since the expansion step of
+    " s:set_marks_around_current_list() happens at the tail.
+    if getline(line)[col - 1] =~ s:closing_bracket && !s:syntax_match(s:ignored_region, line, col)
+        let pos = [0, line, col, 0]
+    else
+        let pos = s:move_to_nearest_bracket(1)
+    endif
+
+    normal! v
+    if pos[1] < 1
+        keepjumps call sexp#select_current_element('v', 1)
+    elseif a:top
+        keepjumps call sexp#select_current_top_list('v', 0)
+    else
+        keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+    endif
+    normal! =
+
+    call winrestview(win)
+endfunction
+
+" Place brackets around scope, then place cursor at head or tail, finally
+" leaving off in insert mode if specified. Insert also sets the headspace
+" parameter when inserting brackets.
+function! sexp#wrap(scope, bra, ket, at_tail, insert)
+    if a:scope ==# 'f'
+        call s:insert_brackets_around_current_list(a:bra, a:ket, a:at_tail, a:insert)
+    elseif a:scope ==# 'e'
+        call s:insert_brackets_around_current_element(a:bra, a:ket, a:at_tail, a:insert)
+    elseif a:scope ==# 'v'
+        call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:insert)
+    endif
+
+    if a:insert
+        startinsert
+    endif
+endfunction
+
+" Replace parent list with selection resulting from executing func with given
+" varargs.
+function! sexp#raise(mode, func, ...)
+    if a:mode ==# 'v'
+        call s:select_current_marks('v')
+    else
+        call call(a:func, a:000)
+    endif
+    normal! d
+    call sexp#select_current_list('n', 0, 0)
+    normal! p
+endfunction
+
 " Logic:
 " 1. Attempt to position at head of current element.
 " 2. Cut text back to beginning of containing form.
@@ -1794,6 +1797,7 @@ function! sexp#splice_list(...)
 
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
+
     " Climb the expression tree a:1 times
     if a:0 && a:1 > 1
         let idx = a:1

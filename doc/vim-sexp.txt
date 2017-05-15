@@ -195,6 +195,136 @@ g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
+"FLOW" COMMANDS (normal, visual)~
+
+Although the preceding commands are useful for moving forward and backward
+within a list, sometimes you want to "escape" from the current list, or
+descend into a child list. The commands in this section are called "flow"
+commands because they permit you to flow freely in and out of lists. In fact,
+it is possible to use an unbroken sequence of flow commands to move all the
+way from one end of the buffer to the other. Flow commands fall into 2 basic
+categories:
+
+1. List
+   Land only on brackets. There are 4 variants, differentiated by both the
+   direction moved in the buffer, and the type of bracket landed on (open or
+   close).
+   
+2. Leaf
+   Land only on leaf (non-list) elements (atoms, strings, comments)
+
+Visualizing forms as trees~
+It may be helpful to visualize a top-level form as a "tree" whose nodes can be
+either branches (lists) or leaves (atoms, strings, comments). One pair of list
+flow commands traverses the trees in depth-first fashion, skipping over leaf
+elements. A second pair of list flow commands permits "rewinding" these
+traversals (e.g., when a command from the first pair has gone too far). Leaf
+flow commands also perform a sort of depth-first traversal, but unlike list
+flow commands, jump directly from leaf to leaf, never stopping on a bracket.
+
+Note: The list and leaf commands are complementary and completely orthogonal:
+the target of a list flow command can never be the target of a leaf flow
+command, and vice-versa; moreover, every element in the buffer can be reached
+using either list or leaf flow commands, but not both.
+
+Visual and operator-pending mode note~
+Because the flow commands are designed to cross list boundaries,
+operator-pending commands and commands that extend the visual selection would
+make it too easy for the user to destroy bracket balance. For this reason, the
+flow commands are not defined in operator-pending mode at all, and the visual
+mode variants do not extend the current selection, but simply select the
+target element/list. Note that this is actually a very useful feature, which
+allows you to use the flow commands much as you would use |]e| and |[e|, but
+without being confined to the current list.
+
+Idiom: Use v[count]<M-S-w> in normal mode to select the [count]th non-list
+element from cursor. (Once you get the hang of ignoring brackets, it's easy to
+select an arbitrary child, grandchild or even more deeply-nested element with
+a single command.)
+
+List flow commands~
+
+<M-]>                                         *<Plug>(sexp_flow_to_next_open)*
+        [count] open brackets forward (ignoring any close brackets). Movement
+        is NOT bounded by the parent list.
+        Performs left-to-right, depth-first traversal of each form
+        encountered.
+
+<M-{>                                         *<Plug>(sexp_flow_to_prev_open)*
+        [count] open brackets backward (ignoring any close brackets). Movement
+        is NOT bounded by the parent list.
+        Visits the same positions as the preceding command, but in reverse
+        order: i.e, may be used to "rewind" a sequence of <M-]> commands.
+
+<M-[>                                        *<Plug>(sexp_flow_to_prev_close)*
+        [count] close brackets backward (ignoring any open brackets). Movement
+        is NOT bounded by the parent list.
+        Performs right-to-left, depth-first traversal of each form
+        encountered.
+
+<M-}>                                        *<Plug>(sexp_flow_to_next_close)*
+        [count] close brackets forward (ignoring any open brackets). Movement
+        is NOT bounded by the parent list.
+        Visits the same positions as the preceding command, but in reverse
+        order: i.e, may be used to "rewind" a sequence of <M-[> commands.
+
+Note: Another way of looking at the list flow commands is that the
+square-bracket commands tend to move down into lists, whereas the
+curly-bracket commands tend to move up and out of them. While it's true that
+the square-bracket commands also move out of lists, they do so only when they
+can go no deeper. In this way, they are exactly like depth-first tree
+traversals, which always choose to descend when descent is possible.
+
+List flow command examples:~
+        Note: | denotes starting cursor position.
+              ^ denotes positions reached by successive applications of the
+                indicated command.
+
+        sexp_flow_to_next_open                forward / in~
+                                   | (x1 (x2) (x3 (x4) (x5))) (x6)
+                                     ^   ^    ^   ^    ^      ^
+                                     1   2    3   4    5      6
+                                   --------------------------->
+
+        sexp_flow_to_prev_open               backward / out~
+                                     (x1 (x2) (x3 (x4) (x5))) (x6) |
+                                     ^   ^    ^   ^    ^      ^
+                                     6   5    4   3    2      1
+                                     <------------------------------
+
+        sexp_flow_to_prev_close              backward / in~
+                                     (x1) (((x2) (x3) x4) (x5) x6) |
+                                        ^      ^    ^   ^    ^   ^
+                                        6      5    4   3    2   1
+                                     <------------------------------
+
+        sexp_flow_to_next_close               forward / out~
+                                   | (x1) (((x2) (x3) x4) (x5) x6)
+                                        ^      ^    ^   ^    ^   ^
+                                        1      2    3   4    5   6
+                                   ------------------------------>
+
+
+Leaf flow commands~
+
+<M-S-b>                                  *<Plug>(sexp_flow_to_prev_leaf_head)*
+<M-S-w>                                  *<Plug>(sexp_flow_to_next_leaf_head)*
+        [count] leaf (non-list) elements backward or forward, placing the
+        cursor on the head of an element. Movement is NOT bounded by the
+        parent list.
+
+        Analogous to |b| and |w| motions.
+
+<M-S-g>                                  *<Plug>(sexp_flow_to_prev_leaf_tail)*
+<M-S-e>                                  *<Plug>(sexp_flow_to_next_leaf_tail)*
+        [count] leaf (non-list) elements backward or forward, placing the
+        cursor on the tail of an element. Movement is NOT bounded by the
+        parent list.
+
+        Analogous to |ge| and |e| motions.
+
+
+
 INDENT COMMANDS (normal)~
 
 ==                                                       *<Plug>(sexp_indent)*

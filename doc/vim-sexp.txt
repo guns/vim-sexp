@@ -391,6 +391,53 @@ LIST MANIPULATION (normal, visual)~
         Replace [count] enclosing lists (compound FORMs) with the current
         list, element, or visual selection.
 
+<LocalLeader>?                                        *<Plug>(sexp_convolute)*
+        Splice the tail of the current list into the current list's parent,
+        moving the head of the current list to the head of a new list
+        containing the [count]th parent of the current list.
+
+        Definitions~
+        current list:  list containing cursor
+        list head:     elements in current list lying completely before cursor
+        list tail:     elements in current list lying on or after cursor
+
+        Note: This mapping is not available in visual mode. (Since convolution
+        is defined in terms of cursor position, a visual mode variant would
+        introduce significant ambiguity without providing any appreciable
+        benefit: hence, convolute is supported only in normal mode.)
+
+        Comparison with Emacs Paredit~
+        This convolute is very similar to the Emacs Paredit version, but in
+        some cases a bit smarter. For instance, Paredit always divides the
+        current list _at_ the cursor, even if this means doing something silly
+        (and potentially dangerous) like splitting an atom. Vim-sexp on the
+        other hand always attempts to divide the current list at a sensible
+        location: preferably at the head of the current element (or the
+        subsequent one if cursor is in whitespace between elements).
+
+        Intended Use Case~
+        Widen the scope of a let binding to include [count] ancestor forms.
+        The following examples illustrate the intended usage.
+        Note: cursor position denoted by `|'
+
+        Original Form:~
+        (defun foo (a b)
+          (if (bar x y)
+              (baz (let ((x 1) (y 2))
+                     |(+ x y)))))
+
+        Example 1: convolute with [count]=1 (default):~
+        (defun foo (a b)
+          (if (bar x y)
+              (let ((x 1) (y 2))
+                (baz |(+ x y)))))
+
+        Example 2: convolute with [count]=2:~
+        (defun foo (a b)
+          (let ((x 1) (y 2))
+            (if (bar x y)
+                (baz |(+ x y)))))
+
 <M-k>                                        *<Plug>(sexp_swap_list_backward)*
 <M-j>                                         *<Plug>(sexp_swap_list_forward)*
 <M-h>                                     *<Plug>(sexp_swap_element_backward)*

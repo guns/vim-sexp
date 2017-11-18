@@ -540,7 +540,8 @@ function! s:terminals_with_whitespace(start, end)
         " bracket, so include all of ws_end, which is on a subsequent line.
         " Note that the double substring slicing here is intentional in order
         " to avoid calculating the substring index.
-        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*$|[([{]$'
+        " BPS TODO: Decide whether this change is appropriate.
+        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*$|[([{]\s*$'
             let end = ws_end
         " start does not begin its line, so just include any trailing
         " whitespace to eol, not to ws_end
@@ -756,6 +757,38 @@ endfunction
 " level than cursor(), omitting some UI niceties.
 function! s:setcursor(pos)
     call cursor(a:pos[1], a:pos[2])
+endfunction
+
+" Return 0 on success, else number of chars *not* moved.
+function! s:move_by(chars)
+    let [cmd, chars] = a:chars > 0 ? ['l', a:chars] : ['h', -a:chars]
+    let move_cmd = 'normal! ' . cmd
+    while chars > 0
+        if cmd == 'h' && col('.') == 1
+            " Handle BOL moving backward specially.
+            if line('.') > 1
+                normal! k$
+            else
+                break " at BOB
+            endif
+        else
+            " Attempt to move 1 char in desired direction.
+            let col = col('.')
+            exe move_cmd
+            " Check for attempt to move past EOL.
+            " Caveat: 'virtualedit' permits cursor move past EOL.
+            if cmd == 'l' && (col == col('.') || col('.') >= col('$'))
+                if line('.') < line('$')
+                    normal! j0
+                else
+                    break
+                endif
+            endif
+        endif
+        let chars -= 1
+    endwhile
+    " Return # of chars *not* moved.
+    return chars
 endfunction
 
 " Tries to move cursor to nearest paired bracket, returning its position.
@@ -1290,6 +1323,76 @@ function! s:set_marks_around_current_string(mode, offset)
     endif
 endfunction
 
+" TODO: Document...
+function! s:select_child(mode, count, next, inner)
+    let cursor = getpos('.')
+    " Are we on a list?
+    let isl = s:is_list(cursor[1], cursor[2])
+    if !isl
+        " Find parent list head or tail
+        let p = s:move_to_nearest_bracket(!a:next)
+        if !p[1]
+            " At top level. Move to buffer head/tail
+            exe 'normal!' (a:next ? 'gg0' : 'G$')
+        endif
+    else
+        " On list. Position on desired bracket (if not already there).
+        if a:next
+            if isl == 1
+                " Move to open
+                " Get to tail of macro chars.
+                call s:setcursor(s:current_macro_character_terminal(1))
+                call s:move_by(1)
+            elseif isl == 3
+                " Move to open
+                call s:move_to_nearest_bracket(0)
+            endif
+        elseif isl != 3
+            " Move to close
+            call s:move_to_current_element_terminal(1)
+        endif
+    endif
+    " On list open/close.
+    " Get opposite bracket's position so we can detect null list.
+    let p = s:nearest_bracket(a:next)
+    " Move inside bracket.
+    call s:move_by(a:next ? 1 : -1)
+    if p == getpos('.')
+        " Null list!
+        " TODO: How to handle...
+        return
+    endif
+    " We're inside non-null (but possibly empty) list.
+    " Are we on an element? If so, get to its near side.
+    let p = s:move_to_current_element_terminal(!a:next)
+    if !p[1]
+        " In whitespace next to bracket. Find head/tail element.
+        let pp = getpos('.')
+        " TODO: Fold this into the list perhaps, but need to differentiate
+        " case in which nothing found.
+        let p = s:move_to_adjacent_element(a:next, !a:next, 0)
+        if p == pp
+            " No elements in list.
+            " TODO: How to handle...
+            return
+        endif
+    endif
+    " Assumption: We're sitting on first/last element (whose position is p).
+    " If count > 1, find count-1'th adjacent element.
+    let cnt = a:count ? a:count - 1 : 0
+    while cnt
+        let pp = p
+        let p = s:move_to_adjacent_element(a:next, !a:next, 0)
+        if p == pp
+            " We've gone as far as we can go.
+            break
+        endif
+        let cnt -= 1
+    endwhile
+
+    call s:set_marks_around_current_element(a:mode, a:inner)
+endfunction
+
 " Set visual marks to the start and end of the current element. If
 " inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
@@ -1300,7 +1403,175 @@ endfunction
 "
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
-function! s:set_marks_around_current_element(mode, inner)
+function! s:set_marks_around_current_element(mode, inner, ...)
+    let cursor = getpos('.')
+    " Extra args imply extension mode only if mode is visual.
+    let ext = a:0 && !!a:1 && a:mode ==? 'v'
+    let prefer_leading_ws = 0
+    if ext
+        let [vs, ve] = [getpos("'<"), getpos("'>")]
+        call s:setcursor(vs)
+    endif
+    " Search from element start to avoid errors with elements that end
+    " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
+    " TODO: Rework this comment...
+    let start = s:move_to_current_element_terminal(0)
+
+    if !start[1]
+        " We are on whitespace; check for next element
+        let next = s:move_to_adjacent_element(1, 0, 0)
+        if next == cursor
+            " No next element!
+            if a:mode !=? 'v'
+                " Inhibit operation.
+                delmarks < >
+            endif
+            return
+        endif
+
+        " *Maybe* don't include whitespace at other end.
+        if ext
+            let prefer_leading_ws = 1
+        endif
+        let start = a:inner ? next : ext ? vs : cursor
+    endif
+
+    " Position ourselves to look for end.
+    " Assumption: We're at head of element.
+    let end = []
+    if ext && s:compare_pos(start, ve) < 0
+        " Position on end of visual region, then find either end of current or
+        " end of previous (if no current element).
+        call s:setcursor(ve)
+        let end = s:current_element_terminal(1)
+        if !end[1]
+            " Weren't on an element. Get to end of previous (whose
+            " existence is guaranteed).
+            let end = s:move_to_adjacent_element(0, 1, 0)
+        endif
+    endif
+    if empty(end)
+        " Assumption: Still at element head.
+        let end = s:current_element_terminal(1)
+    endif
+
+    " Handle surrounding whitespace if 'outer'.
+    if !a:inner
+        " Is there a previous element?
+        call s:setcursor(start)
+        let p = s:nearest_element_terminal(0, 1)
+        " Note: Consider previous elements on same line only.
+        let pre_el = p[1] == start[1] && p[2] < start[2]
+        " Is there a next element?
+        call s:setcursor(end)
+        let post_el = s:nearest_element_terminal(1, 0) != end
+        " Get end of trailing whitespace, which may or may not be used to
+        " adjust current end, but if not, will certainly be used as end
+        " position in subsequent call to s:terminals_with_whitespace, if
+        " needed to adjust start pos.
+        let [_, e] = s:terminals_with_whitespace(start, end)
+        if !prefer_leading_ws || !pre_el || !post_el
+            let end = e
+        endif
+        if prefer_leading_ws || !post_el || !pre_el
+            let [start, _] = s:terminals_with_whitespace(start, e)
+        endif
+    endif
+
+    call s:setcursor(cursor)
+    " TODO: May need to ensure cursor at specific side.
+    call s:set_visual_marks([start, end])
+endfunction
+
+function! s:set_marks_around_current_element_1(mode, inner, ...)
+    let cursor = getpos('.')
+    if a:0
+        " Extra args imply extended mode.
+        let [ext, rev] = [1, !!a:1]
+    else
+        let [ext, rev] = [0, 0]
+    endif
+    if a:mode ==? 'v'
+        let [vs, ve] = [getpos("'<"), getpos("'>")]
+        call s:setcursor(vs)
+    endif
+    let start = s:current_element_terminal(0)
+    let include_ws = !a:inner
+    let exclude_trailing_ws = 0
+
+    if start[1] < 1
+        " We are on whitespace; check for next element
+        let next = s:move_to_adjacent_element(1, 0, 0)
+
+        if s:compare_pos(next, cursor) == 0
+            " No next element! We are at the eof or in a blank buffer.
+            if a:mode !=? 'v'
+                " Inhibit operation.
+                delmarks < >
+            endif
+            return
+        endif
+
+        " Don't include whitespace at other end.
+        let exclude_trailing_ws = 1
+        let start = a:inner ? next : a:mode ==? 'v' ? vs : cursor
+    endif
+    if ext && a:mode ==? 'v'
+        call s:setcursor(ve)
+    else
+        " Search from element start to avoid errors with elements that end
+        " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
+        call s:setcursor(start)
+    endif
+
+    let p = getpos('.')
+    let end = s:current_element_terminal(1)
+
+    if ext && a:mode ==? 'v'
+        if !end[1]
+            " Prev element must exist
+            let end = s:move_to_adjacent_element(0, 1, 0)
+        endif
+
+        let done = 0
+        if include_ws
+            " See whether selection will change.
+            let [s, e] = s:terminals_with_whitespace(start, end)
+            if exclude_trailing_ws
+                let e = end
+            endif
+            if vs != s || ve != e
+                let done = 1
+                let [start, end] = [s, exclude_trailing_ws ? end : e]
+            endif
+        elseif start != vs || end != ve
+            let done = 1
+        endif
+        if !done
+            " Try to include next.
+            let next = s:move_to_adjacent_element(1, 0, 0)
+            if end != next
+                let end = s:current_element_terminal(1)
+                if include_ws
+                    let [start, e] = s:terminals_with_whitespace(start, end)
+                    if !exclude_trailing_ws
+                        let end = e
+                    endif
+                endif
+            endif
+        endif
+    else
+        if include_ws
+            let [start, end] = s:terminals_with_whitespace(start, end)
+        endif
+    endif
+
+    call s:setcursor(cursor)
+    " TODO: May need to ensure cursor at specific side.
+    call s:set_visual_marks([start, end])
+endfunction
+
+function! s:set_marks_around_current_element_old(mode, inner)
     let cursor = getpos('.')
     let start = s:current_element_terminal(0)
     let end = [0, 0, 0, 0]
@@ -1431,8 +1702,8 @@ function! sexp#select_current_string(mode, offset)
 endfunction
 
 " Set visual marks around current element and enter visual mode.
-function! sexp#select_current_element(mode, inner)
-    call s:set_marks_around_current_element(a:mode, a:inner)
+function! sexp#select_current_element(mode, inner, ...)
+    call s:set_marks_around_current_element(a:mode, a:inner, 1)
     return s:select_current_marks(a:mode)
 endfunction
 
@@ -1441,6 +1712,14 @@ endfunction
 " element.
 function! sexp#select_adjacent_element(mode, next)
     call s:set_marks_around_adjacent_element(a:mode, a:next)
+    return s:select_current_marks(a:mode)
+endfunction
+
+" Set visual marks around count'th child of current (or parent) list; 0 to
+" count backwards from tail, 1 to count forwards from head. If no such child
+" element exists, selects closest one (i.e., last in the specified direction).
+function! sexp#select_child(mode, count, next, rev)
+    call s:select_child(a:mode, a:count, a:next, a:rev)
     return s:select_current_marks(a:mode)
 endfunction
 

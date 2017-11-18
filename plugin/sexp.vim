@@ -44,6 +44,10 @@ let s:sexp_mappings = {
     \ 'sexp_inner_string':              'is',
     \ 'sexp_outer_element':             'ae',
     \ 'sexp_inner_element':             'ie',
+    \ 'sexp_outer_child_backward':      'aC',
+    \ 'sexp_outer_child_forward':       'ac',
+    \ 'sexp_inner_child_backward':      'iC',
+    \ 'sexp_inner_child_forward':       'ic',
     \ 'sexp_move_to_prev_bracket':      '(',
     \ 'sexp_move_to_next_bracket':      ')',
     \ 'sexp_move_to_prev_element_head': '<M-b>',
@@ -178,10 +182,12 @@ endfunction
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 function! s:sexp_create_mappings()
-    for plug in ['sexp_outer_list',     'sexp_inner_list',
-               \ 'sexp_outer_top_list', 'sexp_inner_top_list',
-               \ 'sexp_outer_string',   'sexp_inner_string',
-               \ 'sexp_outer_element',  'sexp_inner_element']
+    for plug in ['sexp_outer_list',           'sexp_inner_list',
+               \ 'sexp_outer_top_list',       'sexp_inner_top_list',
+               \ 'sexp_outer_string',         'sexp_inner_string',
+               \ 'sexp_outer_element',        'sexp_inner_element',
+               \ 'sexp_outer_child_backward', 'sexp_outer_child_forward',
+               \ 'sexp_inner_child_backward', 'sexp_inner_child_forward']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -266,11 +272,20 @@ Defplug  xnoremap sexp_inner_string sexp#select_current_string('v', 1)
 Defplug! onoremap sexp_inner_string sexp#select_current_string('o', 1)
 
 " Current element
-Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0)
-Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0)
-Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1)
-Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1)
+Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, 1)
+Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, 1)
+Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, 1)
+Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, 1)
 
+Defplug  xnoremap sexp_outer_child_forward sexp#select_child('v', v:count, 1, 0)
+Defplug! onoremap sexp_outer_child_forward sexp#select_child('o', v:count, 1, 0)
+Defplug  xnoremap sexp_inner_child_forward sexp#select_child('v', v:count, 1, 1)
+Defplug! onoremap sexp_inner_child_forward sexp#select_child('o', v:count, 1, 1)
+
+Defplug  xnoremap sexp_outer_child_backward sexp#select_child('v', v:count, 0, 0)
+Defplug! onoremap sexp_outer_child_backward sexp#select_child('o', v:count, 0, 0)
+Defplug  xnoremap sexp_inner_child_backward sexp#select_child('v', v:count, 0, 1)
+Defplug! onoremap sexp_inner_child_backward sexp#select_child('o', v:count, 0, 1)
 """ Text Object Motions {{{1
 
 " Nearest bracket

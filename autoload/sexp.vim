@@ -662,6 +662,57 @@ function! s:count_elements(start, end)
     return n
 endfunction
 
+" Return pos with signed character offset off added to it.
+function! s:offset_pos(pos, off)
+    let cursor = getpos('.')
+    call s:setcursor(a:pos)
+    call s:move_by(a:off)
+    let ret = getpos('.')
+    call s:setcursor(cursor)
+    return ret
+endfunction
+
+" Return a constrained range.
+function! s:constrained_range(start, end, keep_end)
+    let cursor = getpos('.')
+    let [this_dir, that_dir] = [a:keep_end, !a:keep_end]
+    let [this, that] = a:keep_end ? [a:end, a:start] : [a:start, a:end]
+    let ret = [a:start[:], a:end[:]]
+    let lim = []
+    " Find parents of position we know will be kept.
+    call s:setcursor(this)
+    let [bra, ket] = [s:nearest_bracket(this_dir), s:nearest_bracket(that_dir)]
+    if ket[1]
+        let cmp = s:compare_pos(that, ket)
+        if that_dir && cmp >= 0 || this_dir && cmp <= 0
+            let lim = s:offset_pos(ket, this_dir ? 1 : -1)
+        endif
+    else
+        " that is either in descendant list or at same level as this.
+        " Look for ancestor bracket of that at same level as this; if no such
+        " bracket exists, that and this are at same level and no limiting is
+        " needed.
+        call s:setcursor(that)
+        let pos = []
+        while 1
+            let p = s:move_to_nearest_bracket(that_dir)
+            if !p[1] || p == ket
+                " We've hit either top or bracket containing this.
+                if !empty(pos)
+                    let lim = pos
+                endif
+                break
+            endif
+            let pos = p
+        endwhile
+    endif
+    if !empty(lim)
+        let ret[that_dir] = lim
+    endif
+    call s:setcursor(cursor)
+    return ret
+endfunction
+
 """ PREDICATES AND COMPARATORS {{{1
 
 " Returns 1 if char matches the current FileType's macro pattern
@@ -694,6 +745,15 @@ function! s:is_comment(line, col)
 
         return incomment
     endif
+endfunction
+
+" Returns nonzero if input position is at toplevel.
+function! s:at_top(line, col)
+    let cursor = getpos('.')
+    call cursor(a:line, a:col)
+    let ret = !s:nearest_bracket(0)[1] || !s:nearest_bracket(1)[1]
+    call s:setcursor(cursor)
+    return ret
 endfunction
 
 " Returns nonzero if on list opening/closing chars:
@@ -1403,13 +1463,20 @@ endfunction
 "
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
+" Optional Args:
+"   a:1  allow multi-select
+"   a:2  inhibit visual selection (return range only)
+"   a:3  range to use in lieu of actual visual range
 function! s:set_marks_around_current_element(mode, inner, ...)
     let cursor = getpos('.')
     " Extra args imply extension mode only if mode is visual.
     let ext = a:0 && !!a:1 && a:mode ==? 'v'
+    let no_sel = a:0 > 1 ? !!a:2 : 0
     let prefer_leading_ws = 0
     if ext
-        let [vs, ve] = [getpos("'<"), getpos("'>")]
+        " TODO: Reconsider null sentinel values for a:3.
+        let [vs, ve] = a:0 > 2 && a:3[0][1]
+            \ ? a:3 : [getpos("'<"), getpos("'>")]
         call s:setcursor(vs)
     endif
     " Search from element start to avoid errors with elements that end
@@ -1426,7 +1493,7 @@ function! s:set_marks_around_current_element(mode, inner, ...)
                 " Inhibit operation.
                 delmarks < >
             endif
-            return
+            return [[0, 0, 0, 0], [0, 0, 0, 0]]
         endif
 
         " *Maybe* don't include whitespace at other end.
@@ -1480,7 +1547,10 @@ function! s:set_marks_around_current_element(mode, inner, ...)
 
     call s:setcursor(cursor)
     " TODO: May need to ensure cursor at specific side.
-    call s:set_visual_marks([start, end])
+    if !no_sel
+        call s:set_visual_marks([start, end])
+    endif
+    return [start, end]
 endfunction
 
 function! s:set_marks_around_current_element_1(mode, inner, ...)
@@ -1636,7 +1706,11 @@ endfunction
 "         Note: This arg is ignored if marks not set.
 function! s:select_current_marks(mode, ...)
     if getpos("'<")[1] > 0
-        normal! gv
+        if mode() !=? 'v'
+            " Caveat: If we're already in visual mode, gv would revert to
+            " *previous* visual marks!!!
+            normal! gv
+        endif
         if !s:is_characterwise(visualmode())
             normal! v
         endif
@@ -2261,6 +2335,99 @@ fu! sexp#convolute(count, ...)
     let pos[2] = col([pos[1], '$']) - pos_edist + edist_changing
     call s:setcursor(pos)
 endfu
+
+" Return [start, end] of region to be cloned.
+" TODO: Consider adding optional flag to set_marks_around_adjacent_element,
+" which would request return of marks rather than change to visual area.
+function! s:get_clone_target(mode, before)
+    let cursor = getpos('.')
+    let [cvs, cve] = [[0, 0, 0, 0], [0, 0, 0, 0]]
+    if a:mode ==? 'v'
+        let [vs, ve] = [getpos("'<"), getpos("'>")]
+        " Constrain
+        " Note: Currently, cursor will always be vs, but this may change...
+        let [cvs, cve] = s:constrained_range(vs, ve, ve == cursor)
+    else
+        " Get our bearings...
+        let p = s:current_element_terminal(0)
+        if !p[1]
+            let p = getpos('.')
+            " Not on an element. Find adjacent (if it exists).
+            call s:move_to_adjacent_element(a:before, 0, 0)
+            if p == getpos('.')
+                " Nothing to clone at this level!
+                return [[0, 0, 0, 0], [0, 0, 0, 0], 0]
+            endif
+        endif
+    endif
+    " If non-visual mode, we're on element to be cloned.
+    return s:set_marks_around_current_element(a:mode, 1, 1, 1, [cvs, cve])
+endfunction
+
+function! sexp#clone(mode, count, before)
+    let cursor = getpos('.')
+    " Set visual marks around region to be cloned.
+    let [start, end] = s:get_clone_target(a:mode, a:before)
+    if !start[1]
+        " Nothing to clone. TODO: How to handle...
+        return
+    endif
+    " Assumption: Prior logic guarantees start and end at same level.
+    let wsv = winsaveview()
+    let top = s:at_top(start[1], start[2])
+    let multi = start[1] != end[1]
+    let copy = s:yankdel_range(start, end, 0, 1)
+    call s:setcursor(a:before ? start : end)
+    let repl = multi
+        \ ? a:before ? [copy, "\n"] : ["\n", copy]
+        \ : a:before ? [copy, " "] : [" ", copy]
+    let copy = join(repeat(repl, a:count ? a:count : 1), "")
+
+    " TODO: Don't rely on put_at()'s positioning...
+    " Idea: Consider taking into account the length of inserted text and
+    " attempting to maintain original position precisely.
+    let lines_orig = line('$')
+    let cur_eol = col([cursor[1], '$'])
+    silent call s:put_at(copy, a:before, 0, a:before ? start : end)
+    let lines_added = line('$') - lines_orig
+    if top && multi
+        " Indent range
+        let [l, n] = [a:before ? start[1] : end[1] + 1, end[1] + lines_added]
+        " How many lines were added?
+        exe l . "," . n . "="
+    else
+        " Indent parent
+        call sexp#indent(0, 2)
+    endif
+
+    " Design Decision: Single line clone can't change indent.
+    " Rationale: If it's wrong now, it was already wrong.
+    if multi && a:before
+        " Cursor position may require adjustment.
+        let wsv.lnum = cursor[1] + lines_added
+        " Caveat: wsv.col used zero-based index.
+        let wsv.col = cursor[2] - 1 - (cur_eol - col([cursor[1], '$']))
+        let wsv.topline += lines_added
+    endif
+
+    call winrestview(wsv)
+    " TODO: Reformat containing list.
+    "Non-toplevel targets
+    "    Single line target
+    "        Before
+    "            prepend <copy><space>... to <target>
+    "        After
+    "            append <space><copy>... to <target>
+    "    Multi line target 
+    "        Before
+    "            prepend <copy><nl>... to <target>
+    "        After
+    "            append ...<nl><copy> to <target>
+    "Toplevel targets
+    "    prepend/append <nl><copy><nl>... to <target>
+
+    " TODO: Handle cursor positioning.
+endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted
 " first bracket. Takes optional count parameter, which specifies which pair of

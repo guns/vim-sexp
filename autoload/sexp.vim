@@ -678,20 +678,43 @@ function! s:constrained_range(start, end, keep_end)
     let [this_dir, that_dir] = [a:keep_end, !a:keep_end]
     let [this, that] = a:keep_end ? [a:end, a:start] : [a:start, a:end]
     let ret = [a:start[:], a:end[:]]
+    " Set to [0, 0, 0, 0] if we determine definitively no limit needed.
     let lim = []
-    " Find parents of position we know will be kept.
+    " Find 'that'-side bracket containing position we know will be kept.
     call s:setcursor(this)
-    let [bra, ket] = [s:nearest_bracket(this_dir), s:nearest_bracket(that_dir)]
+    let ket = s:move_to_nearest_bracket(that_dir)
     if ket[1]
+        " If we found bracket matching 'this', move one level higher.
+        let isl = s:is_list(this[1], this[2])
+        if that_dir && isl == 2 || this_dir && isl == 3
+            " Go a level higher if possible...
+            let ket = s:move_to_nearest_bracket(that_dir)
+        endif
+    endif
+    " Did we find a containing bracket?
+    if ket[1]
+        " Not at toplevel. Determine whether ket *could* represent a limit.
         let cmp = s:compare_pos(that, ket)
         if that_dir && cmp >= 0 || this_dir && cmp <= 0
-            let lim = s:offset_pos(ket, this_dir ? 1 : -1)
+            " Limiting *may* be required. In any case, we need to determine
+            " exclusivity of limit: even if cmp alone guarantees we'll be
+            " limiting, exclusivity will determine the limiting position.
+            let exc = s:nearest_bracket(this_dir) != this
+            if exc || cmp
+                let lim = exc ? s:offset_pos(ket, this_dir ? 1 : -1) : ket
+            else
+                let lim = [0, 0, 0, 0]
+            endif
         endif
-    else
-        " that is either in descendant list or at same level as this.
-        " Look for ancestor bracket of that at same level as this; if no such
-        " bracket exists, that and this are at same level and no limiting is
-        " needed.
+    endif
+    " Are we still uncertain about limit?
+    if empty(lim)
+        " 'that' is either in descendant list or at same level as 'this'.
+        " Search containing brackets till we hit either toplevel or bracket
+        " containing this (i.e., ket), at which point, the previous found
+        " bracket (if any) will be at the same level as 'this' and is the
+        " sought limit. If no brackets were found, 'that' was already at same
+        " level as 'this' and no limiting is required.
         call s:setcursor(that)
         let pos = []
         while 1
@@ -706,7 +729,8 @@ function! s:constrained_range(start, end, keep_end)
             let pos = p
         endwhile
     endif
-    if !empty(lim)
+    " Apply limit if one was determined.
+    if !empty(lim) && lim[1]
         let ret[that_dir] = lim
     endif
     call s:setcursor(cursor)
@@ -717,7 +741,8 @@ endfunction
 
 " Returns 1 if char matches the current FileType's macro pattern
 function! s:is_macro_char(char)
-    return stridx(s:macro_chars(), a:char) >= 0
+    " Caveat: stridx returns 0 for empty needle.
+    return !empty(a:char) && stridx(s:macro_chars(), a:char) >= 0
 endfunction
 
 " Returns 1 if character at position is in a comment, or is in the whitespace
@@ -1553,94 +1578,6 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     return [start, end]
 endfunction
 
-function! s:set_marks_around_current_element_1(mode, inner, ...)
-    let cursor = getpos('.')
-    if a:0
-        " Extra args imply extended mode.
-        let [ext, rev] = [1, !!a:1]
-    else
-        let [ext, rev] = [0, 0]
-    endif
-    if a:mode ==? 'v'
-        let [vs, ve] = [getpos("'<"), getpos("'>")]
-        call s:setcursor(vs)
-    endif
-    let start = s:current_element_terminal(0)
-    let include_ws = !a:inner
-    let exclude_trailing_ws = 0
-
-    if start[1] < 1
-        " We are on whitespace; check for next element
-        let next = s:move_to_adjacent_element(1, 0, 0)
-
-        if s:compare_pos(next, cursor) == 0
-            " No next element! We are at the eof or in a blank buffer.
-            if a:mode !=? 'v'
-                " Inhibit operation.
-                delmarks < >
-            endif
-            return
-        endif
-
-        " Don't include whitespace at other end.
-        let exclude_trailing_ws = 1
-        let start = a:inner ? next : a:mode ==? 'v' ? vs : cursor
-    endif
-    if ext && a:mode ==? 'v'
-        call s:setcursor(ve)
-    else
-        " Search from element start to avoid errors with elements that end
-        " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
-        call s:setcursor(start)
-    endif
-
-    let p = getpos('.')
-    let end = s:current_element_terminal(1)
-
-    if ext && a:mode ==? 'v'
-        if !end[1]
-            " Prev element must exist
-            let end = s:move_to_adjacent_element(0, 1, 0)
-        endif
-
-        let done = 0
-        if include_ws
-            " See whether selection will change.
-            let [s, e] = s:terminals_with_whitespace(start, end)
-            if exclude_trailing_ws
-                let e = end
-            endif
-            if vs != s || ve != e
-                let done = 1
-                let [start, end] = [s, exclude_trailing_ws ? end : e]
-            endif
-        elseif start != vs || end != ve
-            let done = 1
-        endif
-        if !done
-            " Try to include next.
-            let next = s:move_to_adjacent_element(1, 0, 0)
-            if end != next
-                let end = s:current_element_terminal(1)
-                if include_ws
-                    let [start, e] = s:terminals_with_whitespace(start, end)
-                    if !exclude_trailing_ws
-                        let end = e
-                    endif
-                endif
-            endif
-        endif
-    else
-        if include_ws
-            let [start, end] = s:terminals_with_whitespace(start, end)
-        endif
-    endif
-
-    call s:setcursor(cursor)
-    " TODO: May need to ensure cursor at specific side.
-    call s:set_visual_marks([start, end])
-endfunction
-
 function! s:set_marks_around_current_element_old(mode, inner)
     let cursor = getpos('.')
     let start = s:current_element_terminal(0)
@@ -2168,9 +2105,10 @@ endfu
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in an compound form (e.g. top-level comments).
-function! sexp#indent(top, count)
+function! sexp#indent(top, count, ...)
     let win = winsaveview()
     let [_b, line, col, _o] = getpos('.')
+    let force_syntax = a:0 && !!a:1
 
     " Move to current list tail since the expansion step of
     " s:set_marks_around_current_list() happens at the tail.
@@ -2187,6 +2125,17 @@ function! sexp#indent(top, count)
         keepjumps call sexp#select_current_top_list('v', 0)
     else
         keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+    endif
+    if force_syntax
+        " Force syntax update on visual lines before running indent.
+        " Rationale: Certain indent functions rely on syntax attributes to
+        " calculate indent: e.g., GetClojureIndent() contains a call to
+        " s:MatchPairs(), which in turn contains a call to searchpairpos(),
+        " which can find the wrong bracket if pasted text has not yet had its
+        " syntax recalculated (e.g., because the paste and subsequent indent
+        " happen in a single command). Caller should set the force_syntax flag
+        " in such scenarios to force syntax recalculation prior to the =.
+        '<,'>call synID(line("."), col("."), 1)
     endif
     normal! =
 
@@ -2337,35 +2286,34 @@ fu! sexp#convolute(count, ...)
 endfu
 
 " Return [start, end] of region to be cloned.
-" TODO: Consider adding optional flag to set_marks_around_adjacent_element,
-" which would request return of marks rather than change to visual area.
 function! s:get_clone_target(mode, before)
     let cursor = getpos('.')
-    let [cvs, cve] = [[0, 0, 0, 0], [0, 0, 0, 0]]
     if a:mode ==? 'v'
         let [vs, ve] = [getpos("'<"), getpos("'>")]
-        " Constrain
+        " Constrain visual ranges.
         " Note: Currently, cursor will always be vs, but this may change...
         let [cvs, cve] = s:constrained_range(vs, ve, ve == cursor)
+        return s:set_marks_around_current_element('v', 1, 1, 1, [cvs, cve])
     else
         " Get our bearings...
         let p = s:current_element_terminal(0)
         if !p[1]
             let p = getpos('.')
-            " Not on an element. Find adjacent (if it exists).
-            call s:move_to_adjacent_element(a:before, 0, 0)
+            " Not on an element. Find adjacent (if one exists in applicable
+            " direction).
+            call s:move_to_adjacent_element(!a:before, 0, 0)
             if p == getpos('.')
                 " Nothing to clone at this level!
-                return [[0, 0, 0, 0], [0, 0, 0, 0], 0]
+                return [[0, 0, 0, 0], [0, 0, 0, 0]]
             endif
         endif
+        return s:set_marks_around_current_element('n', 1, 0, 1)
     endif
-    " If non-visual mode, we're on element to be cloned.
-    return s:set_marks_around_current_element(a:mode, 1, 1, 1, [cvs, cve])
 endfunction
 
 function! sexp#clone(mode, count, before)
     let cursor = getpos('.')
+    let wsv = winsaveview()
     " Set visual marks around region to be cloned.
     let [start, end] = s:get_clone_target(a:mode, a:before)
     if !start[1]
@@ -2373,7 +2321,6 @@ function! sexp#clone(mode, count, before)
         return
     endif
     " Assumption: Prior logic guarantees start and end at same level.
-    let wsv = winsaveview()
     let top = s:at_top(start[1], start[2])
     let multi = start[1] != end[1]
     let copy = s:yankdel_range(start, end, 0, 1)
@@ -2388,29 +2335,61 @@ function! sexp#clone(mode, count, before)
     " attempting to maintain original position precisely.
     let lines_orig = line('$')
     let cur_eol = col([cursor[1], '$'])
+    if a:mode ==? 'v'
+        let [start_eol, end_eol] = [col([start[1], '$']), col([end[1], '$'])]
+    endif
     silent call s:put_at(copy, a:before, 0, a:before ? start : end)
     let lines_added = line('$') - lines_orig
     if top && multi
         " Indent range
-        let [l, n] = [a:before ? start[1] : end[1] + 1, end[1] + lines_added]
+        " TODO: Consider whether to indent target or not.
+        let [l1, l2] = [start[1], end[1] + lines_added]
         " How many lines were added?
-        exe l . "," . n . "="
+        " Design Question: Format the cloned element when it's not affected?
+        " Note: := doesn't do what you think...
+        keepjumps exe 'normal! ' . l1 . 'G=' . l2 . "G"
     else
         " Indent parent
-        call sexp#indent(0, 2)
+        " Note: Because of the way sexp#indent works, we need to know whether
+        " cursor is on an open or close.
+        let isl = s:is_list(line('.'), col('.'))
+        " Caveat: Failure to set optional force_syntax flag in call to indent
+        " may result in incorrect indentation.
+        call sexp#indent(0, isl > 1 ? 2 : 1, 1)
     endif
 
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong.
     if multi && a:before
-        " Cursor position may require adjustment.
+        " Cursor has effectively moved.
         let wsv.lnum = cursor[1] + lines_added
-        " Caveat: wsv.col used zero-based index.
-        let wsv.col = cursor[2] - 1 - (cur_eol - col([cursor[1], '$']))
-        let wsv.topline += lines_added
+        " Design Decision: Don't adjust wsv.topline.
+        " Rationale: When near start of file, it can prevent user from
+        " noticing that anything changed (since added stuff would be above
+        " view).
+        " Fixme: If end is no longer in view, scroll up to put it at bottom or
+        " start at top...
+        if a:mode ==? 'v'
+            let start[1] += lines_added
+            let end[1] += lines_added
+        endif
+    endif
+    " Caveat: wsv.col uses zero-based index.
+    let wsv.col += col([wsv.lnum, '$']) - cur_eol
+    if a:mode ==? 'v'
+        let start[2] += col([start[1], '$']) - start_eol
+        let end[2] += col([end[1], '$']) - end_eol
     endif
 
     call winrestview(wsv)
+    " TODO: Consider checking whether cloned element is partly below view and
+    " scrolling up if so...
+
+    " TODO: Handle visual selection...
+    if a:mode ==? 'v'
+        call s:set_visual_marks([start, end])
+        call s:select_current_marks('v')
+    endif
     " TODO: Reformat containing list.
     "Non-toplevel targets
     "    Single line target

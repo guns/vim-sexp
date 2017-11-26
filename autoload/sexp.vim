@@ -520,16 +520,26 @@ endfunction
 "     by something other than whitespace (but not an opening bracket), in
 "     which case end' is set to include only the trailing whitespace to the
 "     end of line.
-"   * If no trailing whitespace after end, start' is set to include leading
-"     whitespace up to the previous element on the same line if any exist.
+"   * If start is preceded by opening bracket earlier on line (possibly with
+"     intervening whitespace) or there's an element between BOL and start but
+"     none between end and EOL, start' is set to include leading whitespace
+"     back to the previous element or opening bracket.
 "   * Otherwise start and end are returned verbatim.
+"   Possible TODO: There's a pair of scenarios in which it might make sense to
+"   pull in leading whitespace, even going back to an earlier line:
+"   ) [<ws>] <element> [<ws>] )
+"   ( [<ws>] <element> [<ws>] (
 "
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
 function! s:terminals_with_whitespace(start, end)
     let start = a:start
     let end = a:end
+    " Find end of any sequence of whitespace immediately following end.
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
+
+    " Get text from BOL to start (exclusive).
+    let bol_text = getline(start[1])[: start[2] - 1][: -2]
 
     " There is trailing whitespace
     if s:compare_pos(end, ws_end) != 0
@@ -537,23 +547,25 @@ function! s:terminals_with_whitespace(start, end)
         if end[1] == ws_end[1]
             let end = ws_end
         " start begins its line or is immediately preceded by an opening
-        " bracket, so include all of ws_end, which is on a subsequent line.
-        " Note that the double substring slicing here is intentional in order
-        " to avoid calculating the substring index.
-        " BPS TODO: Decide whether this change is appropriate.
-        elseif getline(start[1])[: start[2] - 1][: -2] =~# '\v^\s*$|[([{]\s*$'
+        " bracket (possibly followed by useless whitespace), so include all of
+        " ws_end, which is on a subsequent line.  Note that the double
+        " substring slicing here is intentional in order to avoid calculating
+        " the substring index.
+        elseif bol_text =~# '\v^\s*$|[([{]\s*$'
             let end = ws_end
         " start does not begin its line, so just include any trailing
-        " whitespace to eol, not to ws_end
+        " whitespace to eol, not to ws_end, as well as any leading whitespace
+        " to previous element on same line
         elseif getline(end[1])[end[2]] =~# '\v\s'
             let end = s:pos_with_col_offset(end, col([end[1], '$']) - 1 - end[2])
-        " end does not have trailing whitespace on its own line, so include
-        " leading whitespace to previous element on same line
-        else
-            let start = s:adjacent_whitespace_terminal(start, 0)
         endif
-    " Otherwise include leading whitespace unless start begins its line
-    elseif getline(start[1])[: start[2] - 1][: -2] !~# '\v^\s*$'
+    endif
+    " Include leading whitespace if just after an open bracket (possibly
+    " followed by useless whitespace), or there's a preceding element but no
+    " following one on the current line.
+    if bol_text =~# '^[([{]\s*$'
+        \ || getline(end[1])[end[2] - 1 :] =~# '.\s*$'
+        \ && bol_text =~# '\S'
         let start = s:adjacent_whitespace_terminal(start, 0)
     endif
 
@@ -1489,19 +1501,19 @@ endfunction
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
 " Optional Args:
-"   a:1  allow multi-select
+"   a:1  extend (allow multi-select)
 "   a:2  inhibit visual selection (return range only)
 "   a:3  range to use in lieu of actual visual range
 function! s:set_marks_around_current_element(mode, inner, ...)
     let cursor = getpos('.')
     " Extra args imply extension mode only if mode is visual.
-    let ext = a:0 && !!a:1 && a:mode ==? 'v'
+    let extend = a:0 && !!a:1 && a:mode ==? 'v'
     let no_sel = a:0 > 1 ? !!a:2 : 0
     let prefer_leading_ws = 0
-    if ext
-        " TODO: Reconsider null sentinel values for a:3.
+    if extend
         let [vs, ve] = a:0 > 2 && a:3[0][1]
             \ ? a:3 : [getpos("'<"), getpos("'>")]
+        let [vs, ve] = s:constrained_range(vs, ve, ve == cursor)
         call s:setcursor(vs)
     endif
     " Search from element start to avoid errors with elements that end
@@ -1522,16 +1534,16 @@ function! s:set_marks_around_current_element(mode, inner, ...)
         endif
 
         " *Maybe* don't include whitespace at other end.
-        if ext
+        if extend
             let prefer_leading_ws = 1
         endif
-        let start = a:inner ? next : ext ? vs : cursor
+        let start = a:inner ? next : extend ? vs : cursor
     endif
 
     " Position ourselves to look for end.
     " Assumption: We're at head of element.
     let end = []
-    if ext && s:compare_pos(start, ve) < 0
+    if extend && s:compare_pos(start, ve) < 0
         " Position on end of visual region, then find either end of current or
         " end of previous (if no current element).
         call s:setcursor(ve)
@@ -2137,7 +2149,9 @@ function! sexp#indent(top, count, ...)
         " in such scenarios to force syntax recalculation prior to the =.
         '<,'>call synID(line("."), col("."), 1)
     endif
-    normal! =
+    " Caveat: Attempting to apply = operator in visual mode does not work
+    " consistently.
+    keepjumps exe "normal! \<Esc>" . getpos("'<")[1] . 'G=' . getpos("'>")[1] . "G"
 
     call winrestview(win)
 endfunction
@@ -2345,8 +2359,13 @@ function! sexp#clone(mode, count, before)
         " TODO: Consider whether to indent target or not.
         let [l1, l2] = [start[1], end[1] + lines_added]
         " How many lines were added?
-        " Design Question: Format the cloned element when it's not affected?
-        " Note: := doesn't do what you think...
+        " Design Decision: Format both cloned element and clones.
+        " Rationale: In some cases, a cloned element that was not the first
+        " element on its line will be moved to a line of its own, and in such
+        " cases, re-indenting is needed.
+        " Note: := command doesn't do what you think...
+        " TODO: Determine whether the special force_syntax logic added to
+        " sexp#indent is required in this case as well.
         keepjumps exe 'normal! ' . l1 . 'G=' . l2 . "G"
     else
         " Indent parent
@@ -2390,22 +2409,6 @@ function! sexp#clone(mode, count, before)
         call s:set_visual_marks([start, end])
         call s:select_current_marks('v')
     endif
-    " TODO: Reformat containing list.
-    "Non-toplevel targets
-    "    Single line target
-    "        Before
-    "            prepend <copy><space>... to <target>
-    "        After
-    "            append <space><copy>... to <target>
-    "    Multi line target 
-    "        Before
-    "            prepend <copy><nl>... to <target>
-    "        After
-    "            append ...<nl><copy> to <target>
-    "Toplevel targets
-    "    prepend/append <nl><copy><nl>... to <target>
-
-    " TODO: Handle cursor positioning.
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted

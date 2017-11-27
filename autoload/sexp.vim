@@ -565,6 +565,7 @@ endfunction
 "   pull in leading whitespace, even going back to an earlier line:
 "   ) [<ws>] <element> [<ws>] )
 "   ( [<ws>] <element> [<ws>] (
+"   TODO: Completely REWORK this comment to reflect changed logic!!!!!!
 "
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
@@ -581,10 +582,10 @@ function! s:terminals_with_whitespace(start, end, ...)
 
     let o = s:terminals_with_whitespace_info(start, end)
     " Trailing
-    if prefer_leading && !o.eol
-        \ || o.precedes_com && end[1] == ws_end[1]
+    " FIXME: This if condition has been changed and should be vetted a bit...
+    if prefer_leading && !o.bol && !o.eol
         let tmode = 'none'
-    elseif o.precedes_com || (!o.eos && !o.bol && !o.bos)
+    elseif (o.precedes_com && o.eol) || (!o.eos && !o.bol && !o.bos)
         let tmode = 'some'
     endif
     " Leading
@@ -1578,6 +1579,31 @@ function! s:select_child(mode, count, next, inner)
     call s:set_marks_around_current_element(a:mode, a:inner)
 endfunction
 
+" Logic: Visual marks can lie past eol, but cursor cannot (except on blank
+" line). To simplify matters, pull visual marks inward in such cases.
+" Assumption: called for visual commands only.
+function! s:get_normalized_cursor_and_visual_marks()
+    let cursor = getpos('.')
+    let [vs, ve] = [getpos("'<"), getpos("'>")]
+
+    " Check for visual range beginning past eol
+    if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
+        let vs = [0, vs[1] + 1, 1, 0]
+    endif
+    " Check for visual range ending past eol
+    if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
+        " Assumption: Will work even if multi-byte...
+        let ve[2] -= 1
+    endif
+    " Normalize cursor position (by placing on appropriate end of visual
+    " range).
+    " Note: When range begins past eol, exiting visual mode causes cursor to
+    " fall back to last char on line (which is not actually *within* the
+    " visual range).
+    let cursor = s:compare_pos(cursor, vs) <= 0 ? vs : ve
+    return [cursor, vs, ve]
+endfunction
+
 " Set visual marks to the start and end of the current element. If
 " inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
@@ -1593,16 +1619,19 @@ endfunction
 " Optional Args:
 "   a:1  extend (allow multi-select)
 "   a:2  inhibit visual selection (return range only)
-"   a:3  range to use in lieu of actual visual range
 function! s:set_marks_around_current_element(mode, inner, ...)
-    let cursor = getpos('.')
+    if a:mode ==? 'v'
+        let [cursor, vs, ve] = s:get_normalized_cursor_and_visual_marks()
+    else
+        let cursor = getpos('.')
+    endif
     " Extra args imply extension mode only if mode is visual.
     let extend = a:0 && !!a:1 && a:mode ==? 'v'
     let no_sel = a:0 > 1 ? !!a:2 : 0
     let prefer_leading_ws = 0
+    " TODO: Do we need to do the special visual range adjustments even if
+    " 'extend' is not set?
     if extend
-        let [vs, ve] = a:0 > 2 && a:3[0][1]
-            \ ? a:3 : [getpos("'<"), getpos("'>")]
         " Caveat: Visual marks can lie past eol, but cursor cannot (except on
         " blank line). To simplify matters, pull visual marks inward in such
         " cases.
@@ -1614,7 +1643,10 @@ function! s:set_marks_around_current_element(mode, inner, ...)
             " Assumption: Will work even if multi-byte...
             let ve[2] -= 1
         endif
-        let [vs, ve] = s:constrained_range(vs, ve, s:compare_pos(cursor, ve) >= 0)
+        " Normalize cursor position.
+        let cursor = s:compare_pos(cursor, vs) <= 0 ? vs : ve
+        " Rationalize visual range.
+        let [vs, ve] = s:constrained_range(vs, ve, cursor == ve)
         call s:setcursor(vs)
     endif
     " Search from element start to avoid errors with elements that end
@@ -1636,9 +1668,7 @@ function! s:set_marks_around_current_element(mode, inner, ...)
         endif
 
         " *Maybe* don't include whitespace at other end.
-        if extend
-            let prefer_leading_ws = 1
-        endif
+        let prefer_leading_ws = 1
         let start = a:inner ? next : extend ? vs : cursor
     endif
 
@@ -1690,14 +1720,14 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     endif
 
     call s:setcursor(cursor)
-    " TODO: May need to ensure cursor at specific side.
+    " TODO: Perhaps ensure cursor at specific side?
     if !no_sel
         call s:set_visual_marks([start, end])
     endif
     return [start, end]
 endfunction
 
-function! s:set_marks_around_current_element_old(mode, inner)
+function! s:set_marks_around_current_element_orig(mode, inner)
     let cursor = getpos('.')
     let start = s:current_element_terminal(0)
     let end = [0, 0, 0, 0]
@@ -2410,11 +2440,7 @@ endfu
 function! s:get_clone_target(mode, before)
     let cursor = getpos('.')
     if a:mode ==? 'v'
-        let [vs, ve] = [getpos("'<"), getpos("'>")]
-        " Constrain visual ranges.
-        " Note: Currently, cursor will always be vs, but this may change...
-        let [cvs, cve] = s:constrained_range(vs, ve, ve == cursor)
-        return s:set_marks_around_current_element('v', 1, 1, 1, [cvs, cve])
+        return s:set_marks_around_current_element('v', 1, 1, 1)
     else
         " Get our bearings...
         let p = s:current_element_terminal(0)

@@ -513,6 +513,42 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     return [0, termline, termcol, 0]
 endfunction
 
+function! s:terminals_with_whitespace_info(start, end)
+    let cursor = getpos('.')
+    let o = {}
+    " Get text from BOL to start (exclusive).
+    let bol_text = getline(a:start[1])[: a:start[2] - 1][: -2]
+    let eol_text = getline(a:end[1])[a:end[2] - 1 :]
+
+    let o.bol = bol_text =~ '^\s*$'
+    let o.eol = eol_text =~ '^.\s*$'
+    " Are we at beginning of sexp?
+    call s:setcursor(a:start)
+    let p = s:nearest_element_terminal(0, 1)
+    let o.bos = s:compare_pos(p, a:start) >= 0
+    " Is current element a comment?
+    " Make sure we're on an element.
+    let p = s:current_element_terminal(0)
+    if !p[1]
+        let p = s:nearest_element_terminal(1, 0)
+    endif
+    let o.is_com = s:is_comment(p[1], p[2])
+    " Are we at end of sexp?
+    call s:setcursor(a:end)
+    let p = s:nearest_element_terminal(1, 0)
+    if s:compare_pos(p, a:end) <= 0
+        let o.eos = 1
+        let o.precedes_com = 0
+    else
+        " Another element exists
+        let o.eos = 0
+        let o.precedes_com = s:is_comment(p[1], p[2])
+    endif
+
+    call s:setcursor(cursor)
+    return o
+endfunction
+
 " Given start and end positions, returns new positions [start', end']:
 "
 "   * If trailing whitespace after end, end' is set to include the trailing
@@ -532,7 +568,59 @@ endfunction
 "
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
-function! s:terminals_with_whitespace(start, end)
+function! s:terminals_with_whitespace(start, end, ...)
+    let start = a:start
+    let end = a:end
+    let prefer_leading = a:0 && !!a:1
+    let [lmode, tmode] = ['none', 'all']
+    " Find end of any sequences of whitespace immediately preceding start or following end.
+    " TODO: Decide whether to let adjacent_whitespace_terminal() handle
+    " special eol positioning...
+    let ws_start = s:adjacent_whitespace_terminal(start, 0)
+    let ws_end = s:adjacent_whitespace_terminal(end, 1)
+
+    let o = s:terminals_with_whitespace_info(start, end)
+    " Trailing
+    if prefer_leading && !o.eol
+        \ || o.precedes_com && end[1] == ws_end[1]
+        let tmode = 'none'
+    elseif o.precedes_com || (!o.eos && !o.bol && !o.bos)
+        let tmode = 'some'
+    endif
+    " Leading
+    if o.bos && !o.is_com
+        \ || o.eos
+        \ || !o.bol && o.eol
+        \ || prefer_leading && !o.bol && !o.eol
+        let lmode = 'all'
+    endif
+    if lmode == 'all'
+        " TODO: Consider having s:adjacent_whitespace_terminal() handle
+        " this...
+        if ws_start[2] == 1 && ws_start[1] > 1
+            let ws_start = [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
+        endif
+        let start = ws_start
+    endif
+    if tmode == 'all'
+        let end = ws_end
+        " If at eol, push to include eol.
+        if s:offset_pos(end, 1)[1] > end[1]
+            let end[2] = col([end[1], '$'])
+        endif
+    elseif tmode == 'some'
+        if ws_end[1] > end[1]
+            let end = [0, ws_end[1] - 1, col([ws_end[1] - 1, '$']) - 1, 0]
+        else
+            let end = ws_end
+        endif
+    endif
+    " Handle
+    return [start, end]
+endfunction
+
+" Replacing this one...
+function! s:terminals_with_whitespace_orig(start, end)
     let start = a:start
     let end = a:end
     " Find end of any sequence of whitespace immediately following end.
@@ -1493,6 +1581,8 @@ endfunction
 " Set visual marks to the start and end of the current element. If
 " inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
+" TODO: Update documentation to reflect changes in s:terminals_with_whitespace
+" logic.
 "
 " If cursor is on whitespace that is not in a string or between line comments,
 " the marks are set around the next element if inner is 1, and around the
@@ -1513,7 +1603,18 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     if extend
         let [vs, ve] = a:0 > 2 && a:3[0][1]
             \ ? a:3 : [getpos("'<"), getpos("'>")]
-        let [vs, ve] = s:constrained_range(vs, ve, ve == cursor)
+        " Caveat: Visual marks can lie past eol, but cursor cannot (except on
+        " blank line). To simplify matters, pull visual marks inward in such
+        " cases.
+        " TODO: Is it necessary to adjust cursor?
+        if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
+            let vs = [0, vs[1] + 1, 1, 0]
+        endif
+        if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
+            " Assumption: Will work even if multi-byte...
+            let ve[2] -= 1
+        endif
+        let [vs, ve] = s:constrained_range(vs, ve, s:compare_pos(cursor, ve) >= 0)
         call s:setcursor(vs)
     endif
     " Search from element start to avoid errors with elements that end
@@ -1523,8 +1624,9 @@ function! s:set_marks_around_current_element(mode, inner, ...)
 
     if !start[1]
         " We are on whitespace; check for next element
+        let p = getpos('.')
         let next = s:move_to_adjacent_element(1, 0, 0)
-        if next == cursor
+        if next == p
             " No next element!
             if a:mode !=? 'v'
                 " Inhibit operation.
@@ -1573,13 +1675,18 @@ function! s:set_marks_around_current_element(mode, inner, ...)
         " adjust current end, but if not, will certainly be used as end
         " position in subsequent call to s:terminals_with_whitespace, if
         " needed to adjust start pos.
-        let [_, e] = s:terminals_with_whitespace(start, end)
-        if !prefer_leading_ws || !pre_el || !post_el
-            let end = e
+        " TODO: UNDER CONSTRUCTION - convert to use new
+        " terminals_with_whitespace...
+        if 0
+            let [_, e] = s:terminals_with_whitespace(start, end)
+            if !prefer_leading_ws || !pre_el || !post_el
+                let end = e
+            endif
+            if prefer_leading_ws || !post_el || !pre_el
+                let [start, _] = s:terminals_with_whitespace(start, e)
+            endif
         endif
-        if prefer_leading_ws || !post_el || !pre_el
-            let [start, _] = s:terminals_with_whitespace(start, e)
-        endif
+        let [start, end] = s:terminals_with_whitespace(start, end, prefer_leading_ws)
     endif
 
     call s:setcursor(cursor)

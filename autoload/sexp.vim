@@ -76,6 +76,118 @@ function! s:vm_cc(chars)
     return '[' . substitute(a:chars, '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
 endfunction
 
+""" CALLBACKS {{{1
+let s:cmd = {'buffers': {}}
+
+" Dirty flags: m=mode, n=command name, t=changedtick, v=visual range, c=cursor
+" TODO: Need to save some stuff even in pre_op: e.g., name and mode.
+function! s:cmd.pre_op(mode, name) dict
+    let old = self.get()
+    let vi = s:get_cursor_and_visual_info()
+    if old.dirty != '_'
+        " We have a previous object to compare against.
+        let dirty =
+            \ a:mode == old.mode ? '' : 'm'
+            \ . a:name == old.name ? '' : 'n'
+            \ . b:changedtick == old.changedtick ? '' : 't'
+        if a:mode ==? 'v'
+            let v_changed = vi.vs != old.vs || vi.ve != old.ve
+            let dirty .= v_changed ? 'v' : ''
+            let dirty .= vi.cursor == old.cursor ||
+                \ !v_changed && (vi.cursor == (vi.at_end ? old.ve : old.vs))
+                \ ? '' : 'c'
+        else
+            let dirty .= getpos('.') == old.cursor ? '' : 'c'
+        endif
+        let old.dirty = dirty
+    endif
+    if a:mode ==? 'v'
+        let old.vi = vi
+    endif
+    let self.buffers[bufnr('%')] = old
+endfunction
+
+function! s:cmd.get() dict
+    return get(self.buffers, bufnr('%'), {'dirty': '_'})
+endfunction
+
+function! s:cmd.post_op(mode, name) dict
+    " TODO: Decide whether to save a:mode or just actual mode at this point.
+    let o = {
+        \ 'mode': mode(),
+        \ 'name': a:name,
+        \ 'cursor': getpos('.'),
+        \ 'dirty': ''
+    \ }
+    if mode() ==? 'v'
+        let [o.vs, o.ve] = [getpos("'<"), getpos("'>")]
+    endif
+    let self.buffers[bufnr('%')] = o
+endfunction
+
+function! s:cmd.is_dirty(...) dict
+    let dirty = s:cmd.get().dirty
+    return dirty == '_'
+        \ ? 1
+        \ : a:0
+            \ ? dirty =~ '[' . a:1 . ']'
+            \ : !empty(dirty)
+endfunction
+
+
+function! s:make_cache(mode, name)
+    return {
+        \ 'cvi': s:get_cursor_and_visual_info(),
+        \ 'mode': a:mode,
+        \ 'name': a:name,
+        \ 'changedtick': b:changedtick
+    \ }
+endfunction
+
+" Dirty flags: m=mode, n=command name, t=changedtick, c=cursor and/or visual range
+function! s:is_dirty(...)
+    let any = !a:0
+    let flags = a:0 ? a:1 : ''
+    let [oc, nc] = [b:sexp_cmd_prev_cache, b:sexp_cmd_cache]
+    if !empty(oc)
+        " We have a previous object to compare against.
+        if (any || flags =~ 'm') && oc.mode != nc.mode
+            return 1
+        elseif (any || flags =~ 'n') && oc.name != nc.name
+            return 1
+        elseif (any || flags =~ 't') && oc.changedtick != nc.changedtick
+            return 1
+        " TODO: Rework this...
+        elseif (any || flags =~ 'c') &&
+            \ ( oc.mode ==? 'v' && nc.mode ==? 'v'
+            \ ? oc.cvi.vs != nc.cvi.vs || oc.cvi.ve != nc.cvi.ve
+            \ : oc.mode ==? 'v' || nc.mode ==? 'v'
+            \ ? oc.mode != nc.mode
+            \ : oc.cvi.cursor != nc.cvi.cursor)
+            return 1
+        endif
+    endif
+    return empty(oc)
+endfunction
+
+function! sexp#pre_op(mode, name)
+    if !exists('b:sexp_cmd_prev_cache')
+        let b:sexp_cmd_prev_cache = {}
+    endif
+    let b:sexp_cmd_cache = s:make_cache(a:mode == 'x' ? 'v' : a:mode, a:name)
+    "echomsg "pre_op: vs=" . string(b:sexp_cmd_cache.cvi.vs) . " ve=" . string(b:sexp_cmd_cache.cvi.ve)
+    "call s:cmd.pre_op(a:mode, a:name)
+endfunction
+
+function! sexp#post_op(mode, name)
+    "call s:cmd.post_op(a:mode, a:name)
+    " Note: Use real mode in post command handler.
+    let b:sexp_cmd_prev_cache = s:make_cache(mode(), a:name)
+    "echomsg "post_op:"
+    "echomsg "curr: vs=" . string(b:sexp_cmd_cache.cvi.vs) . " ve=" . string(b:sexp_cmd_cache.cvi.ve)
+    "echomsg "prev: vs=" . string(b:sexp_cmd_prev_cache.cvi.vs) . " ve=" . string(b:sexp_cmd_prev_cache.cvi.ve)
+endfunction
+
 """ QUERIES AT CURSOR {{{1
 
 " Simple wrapper around searchpos() with flags 'nW', and optionally the
@@ -1604,6 +1716,44 @@ function! s:get_normalized_cursor_and_visual_marks()
     return [cursor, vs, ve]
 endfunction
 
+" Assumption: Called from command that was executed in visual mode (though
+" we're currently in normal mode).
+" TODO: Work this into current element selection.
+function! s:get_cursor_and_visual_info()
+    let o = {}
+
+    let [vs, ve] = [getpos("'<"), getpos("'>")]
+    " Save raw visual marks before possible adjustment.
+    let [o.raw_vs, o.raw_ve] = [vs, ve]
+    " Check for visual range beginning past eol
+    if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
+        let vs = [0, vs[1] + 1, 1, 0]
+    endif
+    " Check for visual range ending past eol
+    if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
+        " Assumption: Will work even if multi-byte...
+        let ve[2] -= 1
+    endif
+    let [o.vs, o.ve] = [vs, ve]
+    " Normalize cursor position (by placing on appropriate end of visual
+    " range).
+    " Note: When range begins past eol, exiting visual mode causes cursor to
+    " fall back to last char on line (which is not actually *within* the
+    " visual range).
+    let mode = mode()
+    if mode !=? 'v'
+        normal! gv
+    endif
+    let o.at_end = s:compare_pos(getpos('.'), getpos("'<")) > 0
+    if mode !=? 'v'
+        exe "normal! \<Esc>"
+    endif
+
+    let o.cursor = o.at_end ? ve : vs
+    return o
+endfunction
+vnoremap <F10> :<C-U>let g:vi = <SID>get_cursor_and_visual_info()<CR>:echo printf("cur=%s vs=%s ve=%s at_end=%d", string(vi.cursor), string(vi.vs), string(vi.ve), vi.at_end)<CR>
+
 " Set visual marks to the start and end of the current element. If
 " inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
@@ -1617,37 +1767,37 @@ endfunction
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
 " Optional Args:
-"   a:1  extend (allow multi-select)
+"   a:1  count (implies multi-select)
 "   a:2  inhibit visual selection (return range only)
 function! s:set_marks_around_current_element(mode, inner, ...)
-    if a:mode ==? 'v'
-        let [cursor, vs, ve] = s:get_normalized_cursor_and_visual_marks()
-    else
-        let cursor = getpos('.')
-    endif
     " Extra args imply extension mode only if mode is visual.
-    let extend = a:0 && !!a:1 && a:mode ==? 'v'
+    "let extend = a:0 && !!a:1 && a:mode ==? 'v'
+    let multi = a:0 && a:1 >= 0
+    let cnt = a:0 && a:1 >= 0 ? a:1 : 0
     let no_sel = a:0 > 1 ? !!a:2 : 0
     let prefer_leading_ws = 0
-    " TODO: Do we need to do the special visual range adjustments even if
-    " 'extend' is not set?
-    if extend
-        " Caveat: Visual marks can lie past eol, but cursor cannot (except on
-        " blank line). To simplify matters, pull visual marks inward in such
-        " cases.
-        " TODO: Is it necessary to adjust cursor?
-        if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
-            let vs = [0, vs[1] + 1, 1, 0]
+    if multi
+        if a:mode ==? 'v'
+            " TODO: Don't like the duplication here. Perhaps get from object
+            " saved in pre_op...
+            let vi = s:get_cursor_and_visual_info()
+            let dir = vi.at_end
+            " Rationalize visual range.
+            let [vs, ve] = s:constrained_range(vi.vs, vi.ve, dir)
+            " In case actual cursor position has changed.
+            " Note: Cursor will align with either '< or '>
+            let cursor = dir ? ve : vs
+            call s:setcursor(cursor)
+            let p = cursor
+        else
+            let cursor = getpos('.')
+            let [vs, ve] = [cursor, cursor]
+            let dir = 1
         endif
-        if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
-            " Assumption: Will work even if multi-byte...
-            let ve[2] -= 1
-        endif
-        " Normalize cursor position.
-        let cursor = s:compare_pos(cursor, vs) <= 0 ? vs : ve
-        " Rationalize visual range.
-        let [vs, ve] = s:constrained_range(vs, ve, cursor == ve)
+        " Position at start of range.
         call s:setcursor(vs)
+    else
+        let cursor = getpos('.')
     endif
     " Search from element start to avoid errors with elements that end
     " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
@@ -1669,15 +1819,17 @@ function! s:set_marks_around_current_element(mode, inner, ...)
 
         " *Maybe* don't include whitespace at other end.
         let prefer_leading_ws = 1
-        let start = a:inner ? next : extend ? vs : cursor
+        let start = a:inner ? next : multi ? vs : cursor
     endif
 
     " Position ourselves to look for end.
     " Assumption: We're at head of element.
     let end = []
-    if extend && s:compare_pos(start, ve) < 0
+    " TODO: Consider not setting vs/ve in multi when mode not visual.
+    if multi && s:compare_pos(start, ve) < 0
         " Position on end of visual region, then find either end of current or
         " end of previous (if no current element).
+        " TODO: Consider changing this logic when counts involved...
         call s:setcursor(ve)
         let end = s:current_element_terminal(1)
         if !end[1]
@@ -1691,23 +1843,43 @@ function! s:set_marks_around_current_element(mode, inner, ...)
         let end = s:current_element_terminal(1)
     endif
 
+    " We've now established 'current' selection. Consider pulling in extra,
+    " taking direction into account.
+    if cnt > 0
+        let p = dir ? end : start
+        call s:setcursor(p)
+        while cnt > 0
+            let pp = p
+            " Assumption: Can't get here in legacy case.
+            " TODO: Consider breaking the legacy case out into legacy func...
+            let p = s:move_to_adjacent_element(dir, dir, 0)
+            if p == pp
+                " We've gone as far as possible.
+                break
+            endif
+            let cnt -= 1
+        endwhile
+        " Adjust the end we've pulled.
+        let l:[dir ? 'end' : 'start'] = p
+    endif
+
     " Handle surrounding whitespace if 'outer'.
     if !a:inner
-        " Is there a previous element?
-        call s:setcursor(start)
-        let p = s:nearest_element_terminal(0, 1)
-        " Note: Consider previous elements on same line only.
-        let pre_el = p[1] == start[1] && p[2] < start[2]
-        " Is there a next element?
-        call s:setcursor(end)
-        let post_el = s:nearest_element_terminal(1, 0) != end
-        " Get end of trailing whitespace, which may or may not be used to
-        " adjust current end, but if not, will certainly be used as end
-        " position in subsequent call to s:terminals_with_whitespace, if
-        " needed to adjust start pos.
-        " TODO: UNDER CONSTRUCTION - convert to use new
-        " terminals_with_whitespace...
         if 0
+            " Is there a previous element?
+            call s:setcursor(start)
+            let p = s:nearest_element_terminal(0, 1)
+            " Note: Consider previous elements on same line only.
+            let pre_el = p[1] == start[1] && p[2] < start[2]
+            " Is there a next element?
+            call s:setcursor(end)
+            let post_el = s:nearest_element_terminal(1, 0) != end
+            " Get end of trailing whitespace, which may or may not be used to
+            " adjust current end, but if not, will certainly be used as end
+            " position in subsequent call to s:terminals_with_whitespace, if
+            " needed to adjust start pos.
+            " TODO: UNDER CONSTRUCTION - convert to use new
+            " terminals_with_whitespace...
             let [_, e] = s:terminals_with_whitespace(start, end)
             if !prefer_leading_ws || !pre_el || !post_el
                 let end = e
@@ -1720,7 +1892,8 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     endif
 
     call s:setcursor(cursor)
-    " TODO: Perhaps ensure cursor at specific side?
+    " TODO: Need to ensure cursor at specific side, but need additional inputs
+    " for that...
     if !no_sel
         call s:set_visual_marks([start, end])
     endif
@@ -1863,6 +2036,20 @@ endfunction
 
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner, ...)
+    " TODO: Take actual command name into account, or create new command
+    " (e.g., select_current_elements).
+    let cnt = a:0 ? a:1 ? a:1 : 1 : -1
+    if cnt > 0
+        \ && b:sexp_cmd_cache.name =~ 'sexp_\%(inner\|outer\)_element'
+        \ && s:is_dirty()
+        let cnt -= 1
+    endif
+    call s:set_marks_around_current_element(a:mode, a:inner, cnt)
+    return s:select_current_marks(a:mode)
+endfunction
+
+" Set visual marks around current element and enter visual mode.
+function! sexp#select_current_element_orig(mode, inner, ...)
     call s:set_marks_around_current_element(a:mode, a:inner, 1)
     return s:select_current_marks(a:mode)
 endfunction

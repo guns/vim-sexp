@@ -149,12 +149,13 @@ function! s:defplug(flags, mapmode, name, ...)
     "   returns to its original position after an = command.
     let prefix = lhs . ' '
                  \ . ':<C-u>let b:sexp_count = v:count \| '
+                 \ . 'call sexp#pre_op("' . a:mapmode[0] . '", "' . a:name . '") \| '
                  \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
                  \ . 'call ' . substitute(rhs, '\v<v:count>', 'b:sexp_count', 'g')
-
+    let postfix = ' \| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")'
     " Expression, non-repeating
     if !repeat || (repeat && !s:have_repeat_set)
-        execute prefix . '<CR>'
+        execute prefix . postfix . '<CR>'
     " Expression, repeating, operator-pending mode
     elseif opmode
         execute prefix . ' \| '
@@ -162,10 +163,12 @@ function! s:defplug(flags, mapmode, name, ...)
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
                 \ . 'else \| '
                 \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')", b:sexp_count) \| '
-                \ . 'endif<CR>'
+                \ . 'endif'
+                \ . postfix . '<CR>'
     " Expression, repeating, non-operator-pending mode
     else
-        execute prefix . ' \| call <SID>repeat_set("\<Plug>(' . a:name . ')", b:sexp_count)<CR>'
+        execute prefix . ' \| call <SID>repeat_set("\<Plug>(' . a:name . ')", b:sexp_count)'
+                \ . postfix . '<CR>'
     endif
 endfunction
 
@@ -275,10 +278,10 @@ Defplug  xnoremap sexp_inner_string sexp#select_current_string('v', 1)
 Defplug! onoremap sexp_inner_string sexp#select_current_string('o', 1)
 
 " Current element
-Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, 1)
-Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, 1)
-Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, 1)
-Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, 1)
+Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, 1, v:count)
+Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, 1, v:count)
+Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, 1, v:count)
+Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, 1, v:count)
 
 Defplug  xnoremap sexp_outer_child_forward sexp#select_child('v', v:count, 1, 0)
 Defplug! onoremap sexp_outer_child_forward sexp#select_child('o', v:count, 1, 0)

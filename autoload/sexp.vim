@@ -76,64 +76,7 @@ function! s:vm_cc(chars)
     return '[' . substitute(a:chars, '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
 endfunction
 
-""" CALLBACKS {{{1
-let s:cmd = {'buffers': {}}
-
-" Dirty flags: m=mode, n=command name, t=changedtick, v=visual range, c=cursor
-" TODO: Need to save some stuff even in pre_op: e.g., name and mode.
-function! s:cmd.pre_op(mode, name) dict
-    let old = self.get()
-    let vi = s:get_cursor_and_visual_info()
-    if old.dirty != '_'
-        " We have a previous object to compare against.
-        let dirty =
-            \ a:mode == old.mode ? '' : 'm'
-            \ . a:name == old.name ? '' : 'n'
-            \ . b:changedtick == old.changedtick ? '' : 't'
-        if a:mode ==? 'v'
-            let v_changed = vi.vs != old.vs || vi.ve != old.ve
-            let dirty .= v_changed ? 'v' : ''
-            let dirty .= vi.cursor == old.cursor ||
-                \ !v_changed && (vi.cursor == (vi.at_end ? old.ve : old.vs))
-                \ ? '' : 'c'
-        else
-            let dirty .= getpos('.') == old.cursor ? '' : 'c'
-        endif
-        let old.dirty = dirty
-    endif
-    if a:mode ==? 'v'
-        let old.vi = vi
-    endif
-    let self.buffers[bufnr('%')] = old
-endfunction
-
-function! s:cmd.get() dict
-    return get(self.buffers, bufnr('%'), {'dirty': '_'})
-endfunction
-
-function! s:cmd.post_op(mode, name) dict
-    " TODO: Decide whether to save a:mode or just actual mode at this point.
-    let o = {
-        \ 'mode': mode(),
-        \ 'name': a:name,
-        \ 'cursor': getpos('.'),
-        \ 'dirty': ''
-    \ }
-    if mode() ==? 'v'
-        let [o.vs, o.ve] = [getpos("'<"), getpos("'>")]
-    endif
-    let self.buffers[bufnr('%')] = o
-endfunction
-
-function! s:cmd.is_dirty(...) dict
-    let dirty = s:cmd.get().dirty
-    return dirty == '_'
-        \ ? 1
-        \ : a:0
-            \ ? dirty =~ '[' . a:1 . ']'
-            \ : !empty(dirty)
-endfunction
-
+""" PRE/POST COMMAND CALLBACKS/CACHE {{{1
 
 function! s:make_cache(mode, name)
     return {
@@ -157,7 +100,7 @@ function! s:is_dirty(...)
             return 1
         elseif (any || flags =~ 't') && oc.changedtick != nc.changedtick
             return 1
-        " TODO: Rework this...
+        " TODO: Document this a bit...
         elseif (any || flags =~ 'c') &&
             \ ( oc.mode ==? 'v' && nc.mode ==? 'v'
             \ ? oc.cvi.vs != nc.cvi.vs || oc.cvi.ve != nc.cvi.ve
@@ -175,17 +118,11 @@ function! sexp#pre_op(mode, name)
         let b:sexp_cmd_prev_cache = {}
     endif
     let b:sexp_cmd_cache = s:make_cache(a:mode == 'x' ? 'v' : a:mode, a:name)
-    "echomsg "pre_op: vs=" . string(b:sexp_cmd_cache.cvi.vs) . " ve=" . string(b:sexp_cmd_cache.cvi.ve)
-    "call s:cmd.pre_op(a:mode, a:name)
 endfunction
 
 function! sexp#post_op(mode, name)
-    "call s:cmd.post_op(a:mode, a:name)
-    " Note: Use real mode in post command handler.
+    " Note: Use actual mode in post command handler.
     let b:sexp_cmd_prev_cache = s:make_cache(mode(), a:name)
-    "echomsg "post_op:"
-    "echomsg "curr: vs=" . string(b:sexp_cmd_cache.cvi.vs) . " ve=" . string(b:sexp_cmd_cache.cvi.ve)
-    "echomsg "prev: vs=" . string(b:sexp_cmd_prev_cache.cvi.vs) . " ve=" . string(b:sexp_cmd_prev_cache.cvi.ve)
 endfunction
 
 """ QUERIES AT CURSOR {{{1
@@ -688,7 +625,8 @@ function! s:terminals_with_whitespace(start, end, ...)
     let [lmode, tmode] = ['none', 'all']
     " Find end of any sequences of whitespace immediately preceding start or following end.
     " TODO: Decide whether to let adjacent_whitespace_terminal() handle
-    " special eol positioning...
+    " special eol positioning, which is currently handled in the
+    " leading/trailing 'all' cases below.
     let ws_start = s:adjacent_whitespace_terminal(start, 0)
     let ws_end = s:adjacent_whitespace_terminal(end, 1)
 
@@ -708,17 +646,16 @@ function! s:terminals_with_whitespace(start, end, ...)
         let lmode = 'all'
     endif
     if lmode == 'all'
-        " TODO: Consider having s:adjacent_whitespace_terminal() handle
-        " this...
         if ws_start[2] == 1 && ws_start[1] > 1
+            " Include the newline preceding start.
             let ws_start = [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
         endif
         let start = ws_start
     endif
     if tmode == 'all'
         let end = ws_end
-        " If at eol, push to include eol.
         if s:offset_pos(end, 1)[1] > end[1]
+            " Include the newline following end.
             let end[2] = col([end[1], '$'])
         endif
     elseif tmode == 'some'
@@ -729,47 +666,6 @@ function! s:terminals_with_whitespace(start, end, ...)
         endif
     endif
     " Handle
-    return [start, end]
-endfunction
-
-" Replacing this one...
-function! s:terminals_with_whitespace_orig(start, end)
-    let start = a:start
-    let end = a:end
-    " Find end of any sequence of whitespace immediately following end.
-    let ws_end = s:adjacent_whitespace_terminal(end, 1)
-
-    " Get text from BOL to start (exclusive).
-    let bol_text = getline(start[1])[: start[2] - 1][: -2]
-
-    " There is trailing whitespace
-    if s:compare_pos(end, ws_end) != 0
-        " ws_end is on the same line as end, so accept it
-        if end[1] == ws_end[1]
-            let end = ws_end
-        " start begins its line or is immediately preceded by an opening
-        " bracket (possibly followed by useless whitespace), so include all of
-        " ws_end, which is on a subsequent line.  Note that the double
-        " substring slicing here is intentional in order to avoid calculating
-        " the substring index.
-        elseif bol_text =~# '\v^\s*$|[([{]\s*$'
-            let end = ws_end
-        " start does not begin its line, so just include any trailing
-        " whitespace to eol, not to ws_end, as well as any leading whitespace
-        " to previous element on same line
-        elseif getline(end[1])[end[2]] =~# '\v\s'
-            let end = s:pos_with_col_offset(end, col([end[1], '$']) - 1 - end[2])
-        endif
-    endif
-    " Include leading whitespace if just after an open bracket (possibly
-    " followed by useless whitespace), or there's a preceding element but no
-    " following one on the current line.
-    if bol_text =~# '^[([{]\s*$'
-        \ || getline(end[1])[end[2] - 1 :] =~# '.\s*$'
-        \ && bol_text =~# '\S'
-        let start = s:adjacent_whitespace_terminal(start, 0)
-    endif
-
     return [start, end]
 endfunction
 
@@ -1691,68 +1587,53 @@ function! s:select_child(mode, count, next, inner)
     call s:set_marks_around_current_element(a:mode, a:inner)
 endfunction
 
-" Logic: Visual marks can lie past eol, but cursor cannot (except on blank
-" line). To simplify matters, pull visual marks inward in such cases.
-" Assumption: called for visual commands only.
-function! s:get_normalized_cursor_and_visual_marks()
-    let cursor = getpos('.')
-    let [vs, ve] = [getpos("'<"), getpos("'>")]
-
-    " Check for visual range beginning past eol
-    if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
-        let vs = [0, vs[1] + 1, 1, 0]
-    endif
-    " Check for visual range ending past eol
-    if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
-        " Assumption: Will work even if multi-byte...
-        let ve[2] -= 1
-    endif
-    " Normalize cursor position (by placing on appropriate end of visual
-    " range).
-    " Note: When range begins past eol, exiting visual mode causes cursor to
-    " fall back to last char on line (which is not actually *within* the
-    " visual range).
-    let cursor = s:compare_pos(cursor, vs) <= 0 ? vs : ve
-    return [cursor, vs, ve]
-endfunction
-
-" Assumption: Called from command that was executed in visual mode (though
-" we're currently in normal mode).
-" TODO: Work this into current element selection.
+" Note: No point in calling if there's not visual selection, but handle
+" gracefully if we're not.
 function! s:get_cursor_and_visual_info()
     let o = {}
 
     let [vs, ve] = [getpos("'<"), getpos("'>")]
     " Save raw visual marks before possible adjustment.
     let [o.raw_vs, o.raw_ve] = [vs, ve]
-    " Check for visual range beginning past eol
-    if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
-        let vs = [0, vs[1] + 1, 1, 0]
+    " Note: Since we don't really know what the command's mode was (and don't
+    " really care), differentiate solely on whether visual sel exists; if it
+    " doesn't, we'll return cursor pos along with some innocuous sentinel
+    " values for range.
+    if vs[1] && ve[1]
+        " Check for visual range beginning past eol
+        if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
+            let vs = [0, vs[1] + 1, 1, 0]
+        endif
+        " Check for visual range ending past eol
+        if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
+            " Assumption: Will work even if multi-byte...
+            let ve[2] -= 1
+        endif
+        " Ascertain (normalized) cursor position.
+        " Note: If we're not in visual mode, we'll have to enter it to
+        " determine which end cursor was on.
+        " TODO: Does Vim provide another way?
+        let mode = mode()
+        if mode !=? 'v'
+            normal! gv
+        endif
+        " Note: When range begins past eol, exiting visual mode causes cursor to
+        " fall back to last char on line (which is not actually *within* the
+        " visual range). Note that this can happen at both start and end of range.
+        " Note: Default to at_end when '< == '>.
+        let o.at_end = s:compare_pos(getpos('.'), ve) >= 0
+        if mode !=? 'v'
+            exe "normal! \<Esc>"
+        endif
+        let o.cursor = o.at_end ? ve : vs
+    else
+        " No selection has ever been made.
+        let [o.at_end, o.cursor] = [0, getpos('.')]
     endif
-    " Check for visual range ending past eol
-    if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
-        " Assumption: Will work even if multi-byte...
-        let ve[2] -= 1
-    endif
+    " Note: Marks could be invalid sentinels (i.e., [0, 0, 0, 0])
     let [o.vs, o.ve] = [vs, ve]
-    " Normalize cursor position (by placing on appropriate end of visual
-    " range).
-    " Note: When range begins past eol, exiting visual mode causes cursor to
-    " fall back to last char on line (which is not actually *within* the
-    " visual range).
-    let mode = mode()
-    if mode !=? 'v'
-        normal! gv
-    endif
-    let o.at_end = s:compare_pos(getpos('.'), getpos("'<")) > 0
-    if mode !=? 'v'
-        exe "normal! \<Esc>"
-    endif
-
-    let o.cursor = o.at_end ? ve : vs
     return o
 endfunction
-vnoremap <F10> :<C-U>let g:vi = <SID>get_cursor_and_visual_info()<CR>:echo printf("cur=%s vs=%s ve=%s at_end=%d", string(vi.cursor), string(vi.vs), string(vi.ve), vi.at_end)<CR>
 
 " Set visual marks to the start and end of the current element. If
 " inner is 0, trailing or leading whitespace is included by way of
@@ -1767,7 +1648,7 @@ vnoremap <F10> :<C-U>let g:vi = <SID>get_cursor_and_visual_info()<CR>:echo print
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
 " Optional Args:
-"   a:1  count (implies multi-select)
+"   a:1  count (>= 0 implies multi-select)
 "   a:2  inhibit visual selection (return range only)
 function! s:set_marks_around_current_element(mode, inner, ...)
     " Extra args imply extension mode only if mode is visual.
@@ -1780,7 +1661,7 @@ function! s:set_marks_around_current_element(mode, inner, ...)
         if a:mode ==? 'v'
             " TODO: Don't like the duplication here. Perhaps get from object
             " saved in pre_op...
-            let vi = s:get_cursor_and_visual_info()
+            let vi = b:sexp_cmd_cache.cvi
             let dir = vi.at_end
             " Rationalize visual range.
             let [vs, ve] = s:constrained_range(vi.vs, vi.ve, dir)
@@ -1865,75 +1746,15 @@ function! s:set_marks_around_current_element(mode, inner, ...)
 
     " Handle surrounding whitespace if 'outer'.
     if !a:inner
-        if 0
-            " Is there a previous element?
-            call s:setcursor(start)
-            let p = s:nearest_element_terminal(0, 1)
-            " Note: Consider previous elements on same line only.
-            let pre_el = p[1] == start[1] && p[2] < start[2]
-            " Is there a next element?
-            call s:setcursor(end)
-            let post_el = s:nearest_element_terminal(1, 0) != end
-            " Get end of trailing whitespace, which may or may not be used to
-            " adjust current end, but if not, will certainly be used as end
-            " position in subsequent call to s:terminals_with_whitespace, if
-            " needed to adjust start pos.
-            " TODO: UNDER CONSTRUCTION - convert to use new
-            " terminals_with_whitespace...
-            let [_, e] = s:terminals_with_whitespace(start, end)
-            if !prefer_leading_ws || !pre_el || !post_el
-                let end = e
-            endif
-            if prefer_leading_ws || !post_el || !pre_el
-                let [start, _] = s:terminals_with_whitespace(start, e)
-            endif
-        endif
         let [start, end] = s:terminals_with_whitespace(start, end, prefer_leading_ws)
     endif
 
     call s:setcursor(cursor)
-    " TODO: Need to ensure cursor at specific side, but need additional inputs
-    " for that...
     if !no_sel
+        " TODO: Need to ensure cursor at specific side, but perhas in caller?
         call s:set_visual_marks([start, end])
     endif
     return [start, end]
-endfunction
-
-function! s:set_marks_around_current_element_orig(mode, inner)
-    let cursor = getpos('.')
-    let start = s:current_element_terminal(0)
-    let end = [0, 0, 0, 0]
-    let include_ws = !a:inner
-
-    " We are on whitespace; check for next element
-    if start[1] < 1
-        let next = s:move_to_adjacent_element(1, 0, 0)
-
-        " No next element! We are at the eof or in a blank buffer.
-        if s:compare_pos(next, cursor) == 0
-            if a:mode !=? 'v'
-                delmarks < >
-            endif
-            return
-        endif
-
-        let include_ws = 0
-        let start = a:inner ? next : cursor
-    else
-        " Search from element start to avoid errors with elements that end
-        " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
-        call s:setcursor(start)
-    endif
-
-    let end = s:current_element_terminal(1)
-
-    if include_ws
-        let [start, end] = s:terminals_with_whitespace(start, end)
-    endif
-
-    call s:setcursor(cursor)
-    call s:set_visual_marks([start, end])
 endfunction
 
 " Set visual marks to the start and end of the adjacent inner element. If no
@@ -2045,13 +1866,8 @@ function! sexp#select_current_element(mode, inner, ...)
         let cnt -= 1
     endif
     call s:set_marks_around_current_element(a:mode, a:inner, cnt)
-    return s:select_current_marks(a:mode)
-endfunction
-
-" Set visual marks around current element and enter visual mode.
-function! sexp#select_current_element_orig(mode, inner, ...)
-    call s:set_marks_around_current_element(a:mode, a:inner, 1)
-    return s:select_current_marks(a:mode)
+    " TODO: Preserve cursor position.
+    return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
 endfunction
 
 " Set visual marks around adjacent element and enter visual mode; 0 for

@@ -278,10 +278,10 @@ Defplug  xnoremap sexp_inner_string sexp#select_current_string('v', 1)
 Defplug! onoremap sexp_inner_string sexp#select_current_string('o', 1)
 
 " Current element
-Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, 1, v:count)
-Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, 1, v:count)
-Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, 1, v:count)
-Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, 1, v:count)
+Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, v:count)
+Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, v:count)
+Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, v:count)
+Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, v:count)
 
 Defplug  xnoremap sexp_outer_child_forward sexp#select_child('v', v:count, 1, 0)
 Defplug! onoremap sexp_outer_child_forward sexp#select_child('o', v:count, 1, 0)

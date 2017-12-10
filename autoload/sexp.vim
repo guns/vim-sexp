@@ -1615,6 +1615,7 @@ function! s:get_cursor_and_visual_info()
         " TODO: Does Vim provide another way?
         let mode = mode()
         if mode !=? 'v'
+            let cursor = getpos('.')
             normal! gv
         endif
         " Note: When range begins past eol, exiting visual mode causes cursor to
@@ -1624,6 +1625,7 @@ function! s:get_cursor_and_visual_info()
         let o.at_end = s:compare_pos(getpos('.'), ve) >= 0
         if mode !=? 'v'
             exe "normal! \<Esc>"
+            call s:setcursor(cursor)
         endif
         let o.cursor = o.at_end ? ve : vs
     else
@@ -1659,8 +1661,6 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     let prefer_leading_ws = 0
     if multi
         if a:mode ==? 'v'
-            " TODO: Don't like the duplication here. Perhaps get from object
-            " saved in pre_op...
             let vi = b:sexp_cmd_cache.cvi
             let dir = vi.at_end
             " Rationalize visual range.

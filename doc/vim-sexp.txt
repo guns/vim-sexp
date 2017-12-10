@@ -110,7 +110,10 @@ is                                                 *<Plug>(sexp_inner_string)*
 
 ae                                                *<Plug>(sexp_outer_element)*
 ie                                                *<Plug>(sexp_inner_element)*
-        Select the current element. An element is defined as:
+        In operator pending mode, selects the current element. In visual mode,
+        selects the contiguous range of elements either fully or partially
+        included in the current visual range. As with Vim's text motions,
+        repeated applications incorporate additional elements An element is defined as:
 
             * Current string if cursor is in a string
             * Current comment if cursor is in a comment, or in the whitespace
@@ -125,6 +128,7 @@ ie                                                *<Plug>(sexp_inner_element)*
         Inner motion does not include surrounding whitespace, but the outer
         motion includes (ordered by priority):
 
+        BPS TODO: Rework to reflect the enhanced logic...
             * Trailing whitespace up to the next element if next element is on
               the same line
             * Trailing whitespace up to the next element on a subsequent line
@@ -135,9 +139,59 @@ ie                                                *<Plug>(sexp_inner_element)*
               the same line as the current element and no trailing whitespace
               exists
 
+        Leading
+                head of sexp and not comment
+                tail of sexp
+                EOL and !BOL
+                prefer_leading and !BOL and !EOL
+
+                Note: Do we need note about pulling in newline at end of
+                preceding line? Probably not, since we need that special logic
+                only because of the way adjacent_whitespace_terminal works.
+        Trailing
+                !prefer_leading or BOL or EOL
+                Note: Don't include the final newline and any trailing
+                whitespace if any of the following conditions are true:
+                -EOL and subsequent element is comment
+                -not head/tail of sexp and !BOL
+                                
+                        
+
+
         If the cursor is on whitespace that is not in a string or between line
         comments, the motion includes the current position up to and including
         the end of the next element, if it exists.
+
+        Note: Always selects a contiguous range of one or more complete
+        elements at the level defined by the cursor position. If the original
+        visual selection extends outside the compound form containing the
+        cursor, it is pre-truncated automatically prior to command execution.
+        Similarly, if the original visual selection includes only one side of
+        a compound form, the selection is automatically pre-extended to
+        include the other end as well.
+        Examples of pre-truncation/extension~
+        >
+                     (a b (c d) e f)
+          original:        ^----- 
+          truncated:       ^--
+                     (a b (c d) e f)
+          original:     ^----
+          extended:     ^------
+<
+
+aC                                        *<Plug>(sexp_outer_child_backward)*
+ac                                         *<Plug>(sexp_outer_child_forward)*
+iC                                        *<Plug>(sexp_inner_child_backward)*
+ic                                         *<Plug>(sexp_inner_child_forward)*
+        Select the [count]th "child" element from the head (lowercase c) or
+        tail (uppercase C) of the current compound form. If cursor is not on
+        the macro chars or paired bracket of a compound form, the containing
+        form is used. If there is no containing form (cursor at toplevel), it
+        is as though a virtual form encloses the file itself (i.e., [count]th
+        toplevel element from beginning or end of file).
+
+        The meaning of the terms "inner" and "outer" are as defined for the ie
+        and ae commands. 
 
 TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 

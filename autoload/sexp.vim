@@ -575,6 +575,8 @@ function! s:terminals_with_whitespace_info(start, end)
     call s:setcursor(a:start)
     let p = s:nearest_element_terminal(0, 1)
     let o.bos = s:compare_pos(p, a:start) >= 0
+    " Do we follow a comment?
+    let o.follows_com = !o.bos ? s:is_comment(p[1], p[2]) : 0
     " Is current element a comment?
     " Make sure we're on an element.
     let p = s:current_element_terminal(0)
@@ -623,6 +625,67 @@ function! s:terminals_with_whitespace(start, end, ...)
     let end = a:end
     let prefer_leading = a:0 && !!a:1
     let [lmode, tmode] = ['none', 'all']
+    " Find end of any sequences of whitespace immediately preceding start or
+    " following end.
+    " TODO: Decide whether to let adjacent_whitespace_terminal() handle
+    " special eol positioning, which is currently handled in the
+    " leading/trailing 'all' cases below.
+    let ws_start = s:adjacent_whitespace_terminal(start, 0)
+    let ws_end = s:adjacent_whitespace_terminal(end, 1)
+
+    let o = s:terminals_with_whitespace_info(start, end)
+    " Trailing
+    " FIXME: Comment logic is wrong! Need to consider both comments that will
+    " be at head and those that will be at tail, but I think the former are
+    " actually handled naturally because of the difference in the way we treat
+    " leading whitespace.
+    if prefer_leading && !o.bol && !o.eol
+        let tmode = 'none'
+    elseif (o.precedes_com && (!o.bol || o.bos))
+        \ || (o.follows_com && o.eos)
+        \ || (!o.bol && !o.eos && !o.bos)
+        let tmode = 'some'
+    endif
+    " Leading
+    " FIXME: Also get all on leading if final is some? Or at least, be sure we
+    " don't leave trailing whitespace at preceding line end.
+    " FIXME: It's close, but need to rethink a bit...
+    if o.bos "&& !o.precedes_com
+        \ || tmode == 'some' && ws_end[1] > end[1] " TEMP DEBUG
+        \ || o.eos
+        \ || !o.bol && o.eol
+        \ || prefer_leading && !o.bol && !o.eol
+        let lmode = 'all'
+    endif
+    if lmode == 'all'
+        if ws_start[2] == 1 && ws_start[1] > 1
+            " Include the newline preceding start.
+            let ws_start = [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
+        endif
+        let start = ws_start
+    endif
+    if tmode == 'all'
+        let end = ws_end
+        if s:offset_pos(end, 1)[1] > end[1]
+            " Include the newline following end.
+            let end[2] = col([end[1], '$'])
+        endif
+    elseif tmode == 'some'
+        if ws_end[1] > end[1]
+            let end = [0, ws_end[1] - 1, col([ws_end[1] - 1, '$']) - 1, 0]
+        else
+            let end = ws_end
+        endif
+    endif
+    " Handle
+    return [start, end]
+endfunction
+
+function! s:terminals_with_whitespace_experimental(start, end, ...)
+    let start = a:start
+    let end = a:end
+    let prefer_leading = a:0 && !!a:1
+    let [lmode, tmode] = ['none', 'all']
     " Find end of any sequences of whitespace immediately preceding start or following end.
     " TODO: Decide whether to let adjacent_whitespace_terminal() handle
     " special eol positioning, which is currently handled in the
@@ -644,13 +707,21 @@ function! s:terminals_with_whitespace(start, end, ...)
         \ || !o.bol && o.eol
         \ || prefer_leading && !o.bol && !o.eol
         let lmode = 'all'
+    elseif !o.bos && o.bol
+        let lmode = 'some'
     endif
-    if lmode == 'all'
-        if ws_start[2] == 1 && ws_start[1] > 1
-            " Include the newline preceding start.
-            let ws_start = [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
+    if lmode != 'none'
+        if ws_start[2] == 1
+            if lmode == 'all' && ws_start[1] > 1
+                " Include the newline preceding start.
+                let start = [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
+            endif
+        elseif lmode == 'some'
+            " Omit leading newline and any whitespace preceding it.
+            " Note: The if handles case in which whitespace starts at BOL (in
+            " which case, there's nothing to be done).
+            let start = [0, ws_start[1] + 1, 1, 0]
         endif
-        let start = ws_start
     endif
     if tmode == 'all'
         let end = ws_end

@@ -110,10 +110,15 @@ is                                                 *<Plug>(sexp_inner_string)*
 
 ae                                                *<Plug>(sexp_outer_element)*
 ie                                                *<Plug>(sexp_inner_element)*
-        In operator pending mode, selects the current element. In visual mode,
-        selects the contiguous range of elements either fully or partially
-        included in the current visual range. As with Vim's text motions,
-        repeated applications incorporate additional elements An element is defined as:
+        In operator pending mode, selects the current element and [count]-1
+        additional elements. In visual mode, selects the contiguous range of
+        elements either fully or partially included in the current visual
+        selection (or the element after cursor if between elements) and
+        incorporates [count]-1 additional elements on the cursor side of the
+        selection. Repeated applications pull additional elements into the
+        selection.
+        
+        . An element is defined as:
 
             * Current string if cursor is in a string
             * Current comment if cursor is in a comment, or in the whitespace
@@ -126,7 +131,27 @@ ie                                                *<Plug>(sexp_inner_element)*
         An element always includes leading macro characters.
 
         Inner motion does not include surrounding whitespace, but the outer
-        motion includes (ordered by priority):
+        motion attempts to include all the whitespace you would wish to delete if
+        you were deleting the selected element(s). The following guidelines
+        are used to determine how much surrounding whitespace is included in
+        an outer element motion:
+            * Sibling elements that begin on different lines should remain on
+              different lines.
+            * A comment should never be pulled onto the same line as the open
+              bracket preceding it.
+            * 
+            * Selected leading whitespace should remain selected.
+
+
+            * Never remove a newline when doing so would bring a subsequent
+              element onto the same line as a preceding sibling.
+            * Never remove a newline separating an open bracket from a
+            * subsequent comment.
+            * Never deselect leading whitespace that was already selected.
+            * Always select leading whitespace following an open bracket.
+            * Always select trailing whitespace preceding a close bracket.
+            * Never remove all whitespace separating sibling elements.
+            *
 
         BPS TODO: Rework to reflect the enhanced logic...
             * Trailing whitespace up to the next element if next element is on
@@ -138,6 +163,41 @@ ie                                                *<Plug>(sexp_inner_element)*
             * Leading whitespace up to the previous element if it exists on
               the same line as the current element and no trailing whitespace
               exists
+
+
+                                                       *cleanup-vs-extension*
+        These commands can be used to "clean up" the current selection and/or
+        to pull additional elements into it. Cleaning up might mean toggling
+        an "inner" selection to an "outer" one (or vice versa). Or perhaps
+        you've selected elements manually using v followed by movement
+        commands, and now you wish to select the surrounding whitespace in
+        preparation for a delete or change operation. In such cases, [count]
+        includes the current element or current selection: e.g., a default
+        [count] of 1 performs cleanup only, and a count of 2 would pull in 1
+        additional element. However, if you immediately execute the same
+        command again, vim-sexp knows that the current selection is already
+        "cleaned up", so all of [count] is applied towards additional
+        elements. Vim-sexp considers a command to be a repeat application if
+        you haven't done any of the following since the previous execution:
+
+            * Changed visual selection (but ok to move cursor to other end if
+              you want next execution to pull from the other end)
+            * Changed text in the buffer
+            * Executed a different sexp command (ae and ie are different
+              commands)
+
+        Examples: (spaces in key sequences shown for readability only)~
+>
+        Select current element plus the 2 following
+          v3ae
+        Same as above...
+          vae ae ae
+        Select current element plus the 2 *preceding*
+          vie o ie ie
+          Note: By moving the cursor to the start of the selection, `o'
+          changes the direction of the expansion.
+<
+
 
         Leading
                 head of sexp and not comment
@@ -155,20 +215,19 @@ ie                                                *<Plug>(sexp_inner_element)*
                 -EOL and subsequent element is comment
                 -not head/tail of sexp and !BOL
                                 
-                        
-
 
         If the cursor is on whitespace that is not in a string or between line
         comments, the motion includes the current position up to and including
         the end of the next element, if it exists.
 
-        Note: Always selects a contiguous range of one or more complete
-        elements at the level defined by the cursor position. If the original
-        visual selection extends outside the compound form containing the
-        cursor, it is pre-truncated automatically prior to command execution.
-        Similarly, if the original visual selection includes only one side of
-        a compound form, the selection is automatically pre-extended to
-        include the other end as well.
+                                                       *selection-adjustment*
+        These commands always select a contiguous range of one or more
+        complete elements at the level defined by the cursor position. If the
+        original visual selection extends outside the compound form containing
+        the cursor, it is pre-truncated automatically prior to command
+        execution. Similarly, if the original visual selection includes only
+        one side of a compound form, the selection is automatically
+        pre-extended to include the other end as well.
         Examples of pre-truncation/extension~
         >
                      (a b (c d) e f)

@@ -569,6 +569,7 @@ function! s:terminals_with_whitespace_info(start, end)
     let bol_text = getline(a:start[1])[: a:start[2] - 1][: -2]
     let eol_text = getline(a:end[1])[a:end[2] - 1 :]
 
+    let [o.start, o.end] = [a:start, a:end]
     let o.bol = bol_text =~ '^\s*$'
     let o.eol = eol_text =~ '^.\s*$'
     " Are we at beginning of sexp?
@@ -596,8 +597,158 @@ function! s:terminals_with_whitespace_info(start, end)
         let o.precedes_com = s:is_comment(p[1], p[2])
     endif
 
+    " Find end of any sequences of whitespace immediately preceding start or
+    " following end.
+    " TODO: Decide whether to let adjacent_whitespace_terminal() handle
+    " special eol positioning, which is currently handled in the
+    " leading/trailing 'all' cases below.
+    let o['ws_s'] = s:adjacent_whitespace_terminal(start, 0)
+    let o['ws_e'] = s:adjacent_whitespace_terminal(end, 1)
+    " Set virtual start/end
+    if o.ws_s[2] == 1 && o.ws_s[1] > 1
+        " Include the newline preceding start.
+        let o.ws_vs = [0, o.ws_s[1] - 1, col([o.ws_s[1] - 1, '$']), 0]
+    else
+        let o.ws_vs = o.ws_s
+    endif
+    if s:offset_pos(o.ws_e, 1)[1] > o.ws_e[1]
+        " Include the newline following end.
+        let o.ws_ve[2] = col([o.ws_e[1], '$'])
+    else
+        let o.ws_ve = o.ws_e
+    endif
+    " TODO: Add sl/ml flags for convenience...
+    let o.ml = !o.bol && !o.eol "o.ws_vs[1] != o.ws_ve[1]
+    let o.sflags = {
+        \ 'ws': o.ws_s != a:start,
+        \ 'eol': o.ws_vs != o.ws_s,
+        \ 'real': o.ws_s != a:start && col([o.ws_s[1], '$']) > 1}
+    let o.eflags = {
+        \ 'ws': o.ws_e != a:end,
+        \ 'eol': o.ws_ve != o.ws_e,
+        \ 'real': o.ws_e != a:end && col([o.ws_e[1], '$']) > 1}
+
+
     call s:setcursor(cursor)
     return o
+endfunction
+
+" Probably rename now that I'm planning to use for single line case too.
+" Assumption: !bos and !eos but there might not be any actual, non-newline
+" whitespace between the two candidate join elements (in which case, we simply
+" take original start/end)
+" Note: Empty lines count as whitespace.
+function! s:maybe_join(twwi, prefer_leading)
+    let o = a:twwi
+    " Do we have *real* whitespace at beginning/end?
+    " Don't use blank line, only actual whitespace.
+    let sws = o.sflags.ws && !o.sflags.eol && o.sflags.real
+    let ews = o.eflags.ws && !o.eflags.eol && o.eflags.real
+    " Get first position to discard on first line and last position to discard
+    " on last line and first position to keep on last line.
+    " TODO: Handle case of leading whitespace specially.
+    let nojoin = 0
+    let ret = [[], []]
+    if ews && (!sws || !a:prefer_leading)
+        let spos = o.ws_vs
+        let eapos = o.ws_e
+        " Handle special case of a kept whitespace at bol.
+        let epos = eapos[2] == 1
+            \ ? [0, eapos[1] - 1, col([eapos[1] - 1, '$']), 0]
+            \ : s:offset_pos(eapos, -1)
+    elseif sws
+        " Handle special case of a kept whitespace at eol.
+        " Assumption: Prior logic ensures...
+        let spos = s:offset_pos(o.ws_s, 1)
+        if spos[1] > o.ws_s[1]
+            " Bring back to end of previous line
+            let spos = [0, o.ws_s[1], col([o.ws_s[1], '$']), 0]
+        endif
+        let epos = o.ws_ve
+    else
+        " No way to join completely.
+        let nojoin = 1
+        if o.eol
+            let spos = o.ws_vs
+            " Select up to but not including end of penultimate line (or final
+            " line if no leading whitespace on final line.
+            let epos = o.eflags.eol
+                \ ? o.ws_e
+                \ : s:offset_pos([0, o.ws_e[1], 1, 0])
+            let ret = [spos, epos]
+        elseif o.bol
+            " Use start as it was.
+            let ret = [twwi.start, o.ws_ve]
+        else
+            " Do the best we can do... May actually join elements spuriously,
+            " but only if user has done something weird like not putting space
+            " around lists.
+            let ret = [o.ws_s, o.ws_e]
+        endif
+    endif
+    if !nojoin
+        " Should have what I need now to determine length of joined line.
+        if spos[2] + strdisplaywidth(
+            \ getline(epos[1])[epos[2] - 1:], spos[2])
+            \ <= col([spos[1], '$'])
+            " Go ahead and join
+            let ret = [spos, epos]
+        else
+            " Can't join.
+            let ret = [o.ws_s, o.ws_e]
+        endif
+    endif
+endfunction
+
+function! s:adjust_sl_ws(start, end, prefer_leading)
+    " TODO: Add logic...
+endfunction
+
+function! s:partial_ml_join(twwi)
+    let o = a:twwi
+    if o.eol
+        " Keep only the final newline. (May be only 1.)
+        if o.eflags.eol
+            let start = o.ws_vs
+            if o.eflags.real
+                " Final whitespace is real char
+                let end = o.ws_e
+            else
+                " When blank line at end, you have to back up one to
+                " avoid a join.
+                let end = [0, o.ws_e[1] - 1, col([o.ws_e[1] - 1, '$']) - 1]
+            endif
+        else
+            " Last real ws not at end of line.
+            " Note: o.eol is relative to last selected element, not
+            " its trailing ws.
+            " Need to keep newline at start (since there's not one
+            " to keep at end); also, give back the trailing ws for
+            " reasons outlined earlier.
+            let end = s:offset_pos(end, 1)
+            if s:compare_pos(end, o.ws_e) > 1
+                " No space between el and subsequent el
+                let end = o.ws_e
+            endif
+            " Assumption: This is not first line.
+            " Leave any ws including newline on first line.
+            let start = [0, o.ws_vs[1] + 1, 1, 0]
+        endif
+    else
+        " Subsequent element on same line as last selected element:
+        " keep all trailing ws.
+        " Rationale: May be needed for separation, but if not, looks
+        " better to avoid pulling something to bol.
+        let end = s:offset_pos(end, 1)
+        if s:compare_pos(end, o.ws_e) > 1
+            " No space between el and com
+            let end = o.ws_e
+        endif
+        " Assumption: This is not first line.
+        " Leave any ws including newline on first line.
+        let start = [0, o.ws_vs[1] + 1, 1, 0]
+    endif
+    return [start, end]
 endfunction
 
 " Given start and end positions, returns new positions [start', end']:
@@ -621,6 +772,40 @@ endfunction
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
 function! s:terminals_with_whitespace(start, end, ...)
+    let [start, end] = [a:start, a:end]
+    let prefer_leading = a:0 && !!a:1
+
+    let o = s:terminals_with_whitespace_info(start, end)
+
+    if !o.ml
+        " Question: Should this handle single line only?
+        let [start, end] = s:adjust_sl_ws(start, end, prefer_leading)
+    else
+        " Multiline case
+        if o.follows_com || o.precedes_com
+            " Must leave final (and possibly only) newline.
+            let [start, end] = s:partial_ml_join(o)
+        elseif o.bos || o.eos
+            " Beginning or end of sexp and we've ruled out preceding/following
+            " comment, so just clean up.
+            let [start, end] = [o.ws_vs, o.ws_ve]
+        else
+            " Consider joining...
+            let [s, e] = s:maybe_join(o)
+            if s[1]
+                let [start, end] = [s, e]
+            else
+                " Can't do full join.
+                let [start, end] = s:partial_ml_join(o)
+            endif
+        endif
+    endif
+
+    " Handle
+    return [start, end]
+endfunction
+
+function! s:terminals_with_whitespace_good(start, end, ...)
     let start = a:start
     let end = a:end
     let prefer_leading = a:0 && !!a:1

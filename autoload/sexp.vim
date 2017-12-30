@@ -579,6 +579,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     " Do we follow a comment?
     let o.follows_com = !o.bos && s:is_comment(p[1], p[2])
     " Do we follow a list?
+    " TODO: May not need this anymore.
     let o.follows_list = !o.bos && s:is_list(p[1], p[2])
     " Is current element a comment?
     " Make sure we're on an element.
@@ -637,6 +638,34 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
+" TODO: Rename this function...
+function! s:get_optimal_whitespace(twwi)
+    let o = a:twwi
+    " TODO: Maybe use global (readonly) sentinel?
+    let ret = [[0, 0, 0, 0], [0, 0, 0, 0]]
+    " Assumption: Col pos for ecl test assumes we're deleting real ws at
+    " start.
+    let scl = o.sflags.real ? strdisplaywidth(o.sflags.chr, o.ws_s[2]) : 0
+    let ecl = o.eflags.real ? strdisplaywidth(o.eflags.chr, o.ws_s[2]) : 0
+    " Get first position to discard on first line (spos) and last position to
+    " discard on last line (epos).
+    " Note: Joining requires at least one actual (real) whitespace char.
+    " (Blank line isn't sufficient.)
+    if (ecl &&
+        \ (!scl
+        \  || (!empty(o.leading) && s:compare_pos(o.leading, o.ws_s) <= 0)
+        \  || ecl <= scl))
+        " Select all leading and all but final trailing whitespace.
+        let ret = [o.ws_vs,
+            \ s:offset_char(o.ws_e, 0, 1)]
+    elseif scl
+        " Select all trailing and all but initial leading whitespace.
+        " Note: Must handle special case of a kept whitespace at eol.
+        let ret = [s:offset_char(o.ws_s, 1, 1), o.ws_ve]
+    endif
+    return ret
+endfunction
+
 " Assumption: !bos and !eos but there might not be any actual, non-newline
 " whitespace between the two candidate join elements... Or the join might
 " create a line that's too long. In either case, we return invalid list.
@@ -644,61 +673,26 @@ endfunction
 " Note: Empty lines count as whitespace.
 function! s:ml_join(twwi)
     let o = a:twwi
-    " TODO: Maybe use global (readonly) sentinel?
-    let ret = [[0, 0, 0, 0], [0, 0, 0, 0]]
-    " FIXME: Can vary... No. It can't.
-    " Assumption: Col pos for ecl test assumes we're deleting real ws at
-    " start.
-    let scl = o.sflags.real ? strdisplaywidth(o.sflags.chr, o.ws_s[2]) : 0
-    let ecl = o.eflags.real ? strdisplaywidth(o.eflags.chr, o.ws_s[2]) : 0
-    " FIXME: 
-    " Get first position to discard on first line (spos) and last position to
-    " discard on last line (epos).
-    " Note: Joining requires at least one actual (real) whitespace char.
-    " (Blank line isn't sufficient.)
-    " Note: 
-    if (ecl &&
-        \ (!scl
-        \  || (!empty(o.leading) && s:compare_pos(o.leading, o.ws_s) <= 0)
-        \  || ecl <= scl))
-        " Select all leading and all but final trailing whitespace.
-        let [spos, epos] = [o.ws_vs,
-            \ s:offset_char(o.ws_e, 0, 1)]
-    elseif scl
-        " Handle special case of a kept whitespace at eol.
-        let [spos, epos] = [s:offset_char(o.ws_s, 1, 1), o.ws_ve]
-    elseif !o.bol && !o.eol
+    let [spos, epos] = s:get_optimal_whitespace(o)
+    if !spos[1] && !o.bol && !o.eol
         " No good way to join completely, but we have no choice.
-        " TODO: Harmonize with partial_ml_join...
         return [o.start, o.end]
     endif
-    if exists('l:spos')
+    if spos[1]
         " Get first kept char, which, for multi-line join, will always be next
         " real char past last deleted char pos.
         let eapos = s:offset_char(epos, 1)
         " Determine length of joined line.
-        " TODO: Introduce options...
-        " FIXME: jlen is wrong when o.eol because epos[1] isn't the correct line.
-        " Account for this.
         let jlen = spos[2] + strdisplaywidth(
             \ getline(eapos[1])[eapos[2] - 1:], spos[2])
 
-        " TODO: Implement options...
-        let join_logic = 'previous'
-        if join_logic == 'previous'
-            if jlen <= col([spos[1], '$'])
-                " Go ahead and join
-                let ret = [spos, epos]
-            endif
+        if jlen <= col([spos[1], '$'])
+            " Go ahead and join
+            return [spos, epos]
         endif
     endif
-    " TODO: I'm thinking it might make sense to invoke partial join from here
-    " if we weren't able to do full join. Perhaps rename this function
-    " ml_join()...
-    if !ret[0][1]
-        return s:partial_ml_join(o)
-    endif
-    return ret
+    " If here, we couldn't join...
+    return s:partial_ml_join(o)
 endfunction
 
 function! s:sl_join(twwi)
@@ -708,14 +702,14 @@ function! s:sl_join(twwi)
     " TODO: Decide whether to use leading and how... (This was written for
     " prefer_leading boolean flag.
     " Decide which whitespace to discard.
-    " Note: Range ws_s..ws_e does not necessarily include whitespace.
-    let ret = [o.ws_s, o.ws_e]
-    if o.eflags.real && (!o.sflags.real || empty(o.leading))
-        " Select all trailing and all but first (and perhaps only) leading.
-        let ret[0] = s:offset_char(ret[0], 1)
-    elseif o.sflags.real
-        " Select all leading and all but last (and perhaps only) trailing.
-        let ret[0] = s:offset_char(ret[1], 0)
+    " Note: Range ws_s..ws_e does not *necessarily* include whitespace (but
+    " almost always will).
+    " TODO: Relocate or remove the above comments...
+    " FIXME: Can't blindly use results of get_optimal_whitespace: need to
+    " consider stuff like bos/eos...
+    let ret = s:get_optimal_whitespace(o)
+    if !ret[0][1]
+        let ret = [o.start, o.end]
     endif
     return ret
 endfunction
@@ -779,26 +773,17 @@ function! s:terminals_with_whitespace(start, end, ...)
     let leading = a:0 ? a:1 : []
 
     let o = s:terminals_with_whitespace_info(start, end, leading)
-    if !o.ml
-        let [start, end] = s:sl_join(o)
+    if o.follows_com || o.precedes_com
+        " Keep a newline (ml) or whitespace (sl).
+        return o.ml ? s:partial_ml_join(o) : s:sl_join(o)
+    elseif o.bos || o.eos
+        " Beginning or end of sexp and we've ruled out preceding/following
+        " comment, so just clean up.
+        return [o.ws_vs, o.ws_ve]
     else
-        " Multiline case
-        if o.follows_com || o.precedes_com || o.follows_list
-            " Must keep a newline.
-            let [start, end] = s:partial_ml_join(o)
-        elseif o.bos || o.eos
-            " Beginning or end of sexp and we've ruled out preceding/following
-            " comment, so just clean up.
-            let [start, end] = [o.ws_vs, o.ws_ve]
-        else
-            " Perform multi-line join...
-            " Note: ml_join decides between full and partial join.
-            let [start, end] = s:ml_join(o)
-        endif
+        " Perform appropriate join.
+        return o.ml ? s:ml_join(o) : s:sl_join(o)
     endif
-
-    " Handle
-    return [start, end]
 endfunction
 
 " Extend given positions to the terminals of any partially contained elements.
@@ -920,7 +905,7 @@ function! s:offset_char(pos, dir, ...)
         if a:dir && c >= lim
             " EOL
             let [l, c] = inc_nl
-                \ ? getpos([l, '$'])
+                \ ? [l, col([l, '$'])]
                 \ : l < line('$')
                 \   ? [l + 1, 1]
                 \   : [l, c - 1]
@@ -2619,54 +2604,62 @@ function! sexp#clone(mode, count, before)
     let lines_orig = line('$')
     let cur_eol = col([cursor[1], '$'])
     if a:mode ==? 'v'
-        let [start_eol, end_eol] = [col([start[1], '$']), col([end[1], '$'])]
+        " TODO: This is needed only in multi case.
+        " FIXME: end_eol is effectively just beyond end.
+        let [start_eol, end_eol] = [col([start[1], '$']), s:offset_char(end, 1, 1)[2]]
     endif
     silent call s:put_at(copy, a:before, 0, a:before ? start : end)
     let lines_added = line('$') - lines_orig
-    if top && multi
-        " Indent range
-        " TODO: Consider whether to indent target or not.
-        let [l1, l2] = [start[1], end[1] + lines_added]
-        " How many lines were added?
-        " Design Decision: Format both cloned element and clones.
-        " Rationale: In some cases, a cloned element that was not the first
-        " element on its line will be moved to a line of its own, and in such
-        " cases, re-indenting is needed.
-        " Note: := command doesn't do what you think...
-        " TODO: Determine whether the special force_syntax logic added to
-        " sexp#indent is required in this case as well.
-        keepjumps exe 'normal! ' . l1 . 'G=' . l2 . "G"
-    else
-        " Indent parent
-        " Note: Because of the way sexp#indent works, we need to know whether
-        " cursor is on an open or close.
-        let isl = s:is_list(line('.'), col('.'))
-        " Caveat: Failure to set optional force_syntax flag in call to indent
-        " may result in incorrect indentation.
-        call sexp#indent(0, isl > 1 ? 2 : 1, 1)
-    endif
-
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong.
-    if multi && a:before
-        " Cursor has effectively moved.
-        let wsv.lnum = cursor[1] + lines_added
-        " Design Decision: Don't adjust wsv.topline.
-        " Rationale: When near start of file, it can prevent user from
-        " noticing that anything changed (since added stuff would be above
-        " view).
-        " Fixme: If end is no longer in view, scroll up to put it at bottom or
-        " start at top...
-        if a:mode ==? 'v'
-            let start[1] += lines_added
-            let end[1] += lines_added
+    if multi
+        if top
+            " Indent range
+            " TODO: Consider whether to indent target or not.
+            let [l1, l2] = [start[1], end[1] + lines_added]
+            " How many lines were added?
+            " Design Decision: Format both cloned element and clones.
+            " Rationale: In some cases, a cloned element that was not the first
+            " element on its line will be moved to a line of its own, and in such
+            " cases, re-indenting is needed.
+            " Note: := command doesn't do what you think...
+            " TODO: Determine whether the special force_syntax logic added to
+            " sexp#indent is required in this case as well.
+            keepjumps exe 'normal! ' . l1 . 'G=' . l2 . "G"
+        else
+            " Indent parent
+            " Note: Because of the way sexp#indent works, we need to know whether
+            " cursor is on an open or close.
+            let isl = s:is_list(line('.'), col('.'))
+            " Caveat: Failure to set optional force_syntax flag in call to indent
+            " may result in incorrect indentation.
+            call sexp#indent(0, isl > 1 ? 2 : 1, 1)
+        endif
+        if a:before
+            " Cursor has effectively moved.
+            let wsv.lnum = cursor[1] + lines_added
+            " Design Decision: Don't adjust wsv.topline.
+            " Rationale: When near start of file, it can prevent user from
+            " noticing that anything changed (since added stuff would be above
+            " view).
+            " Fixme: If end is no longer in view, scroll up to put it at bottom or
+            " start at top...
+            if a:mode ==? 'v'
+                let start[1] += lines_added
+                let end[1] += lines_added
+            endif
         endif
     endif
-    " Caveat: wsv.col uses zero-based index.
-    let wsv.col += col([wsv.lnum, '$']) - cur_eol
-    if a:mode ==? 'v'
-        let start[2] += col([start[1], '$']) - start_eol
-        let end[2] += col([end[1], '$']) - end_eol
+
+    if multi || a:before
+        " Caveat: wsv.col uses zero-based index.
+        let wsv.col += col([wsv.lnum, '$']) - cur_eol
+        if a:mode ==? 'v'
+            " FIXME: Visual range ends up wrong in multiline case
+            " FIXME: end[2] ends up negative!
+            let start[2] += col([start[1], '$']) - start_eol
+            let end[2] += col([end[1], '$']) - end_eol
+        endif
     endif
 
     call winrestview(wsv)
@@ -2674,6 +2667,10 @@ function! sexp#clone(mode, count, before)
     " scrolling up if so...
 
     " TODO: Handle visual selection...
+    " FIXME: *Maybe* restore original visual selection exactly... Keep in mind
+    " that it switches to *inner* to perform the clone, but there's no reason
+    " we can't switch it back... Ah... It might be complicated because of
+    " surrounding whitespace...
     if a:mode ==? 'v'
         call s:set_visual_marks([start, end])
         call s:select_current_marks('v')

@@ -609,6 +609,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
         \ o.ws_s[2] == 1 && o.ws_s[1] > 1
         \ ? [0, o.ws_s[1] - 1, col([o.ws_s[1] - 1, '$']), 0]
         \ : o.ws_s
+    " FIXME: offset_char() goes into infinite loop at EOB!
     let o.ws_ve =
         \ s:offset_char(o.ws_e, 1)[1] > o.ws_e[1]
         \ ? [0, o.ws_e[1], col([o.ws_e[1], '$']), 0]
@@ -638,13 +639,19 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
-" TODO: Rename this function...
-function! s:get_optimal_whitespace(twwi)
+" Figures out the proper whitespace to select for either multi or single line
+" join. Returns null sentinel to indicate failure. In the multi-line case,
+" success indicates the lines will be joined; in single-line case, success
+" simply means we were able to find suitable whitespace.
+" TODO: "Join" may be misnomer, given that this handles single-line case.
+function! s:get_join_whitespace(twwi)
     let o = a:twwi
     " TODO: Maybe use global (readonly) sentinel?
     let ret = [[0, 0, 0, 0], [0, 0, 0, 0]]
     " Assumption: Col pos for ecl test assumes we're deleting real ws at
     " start.
+    " Note: Range ws_s..ws_e does not *necessarily* include whitespace (but
+    " almost always will).
     let scl = o.sflags.real ? strdisplaywidth(o.sflags.chr, o.ws_s[2]) : 0
     let ecl = o.eflags.real ? strdisplaywidth(o.eflags.chr, o.ws_s[2]) : 0
     " Get first position to discard on first line (spos) and last position to
@@ -673,7 +680,7 @@ endfunction
 " Note: Empty lines count as whitespace.
 function! s:ml_join(twwi)
     let o = a:twwi
-    let [spos, epos] = s:get_optimal_whitespace(o)
+    let [spos, epos] = s:get_join_whitespace(o)
     if !spos[1] && !o.bol && !o.eol
         " No good way to join completely, but we have no choice.
         return [o.start, o.end]
@@ -695,19 +702,11 @@ function! s:ml_join(twwi)
     return s:partial_ml_join(o)
 endfunction
 
+" TODO: Join may be a bit of a misnomer in the single line case.
 function! s:sl_join(twwi)
     let o = a:twwi
-    " TODO: Decide whether we want to consider whether following element is
-    " comment (e.g., to keep all its preceding whitespace).
-    " TODO: Decide whether to use leading and how... (This was written for
-    " prefer_leading boolean flag.
-    " Decide which whitespace to discard.
-    " Note: Range ws_s..ws_e does not *necessarily* include whitespace (but
-    " almost always will).
     " TODO: Relocate or remove the above comments...
-    " FIXME: Can't blindly use results of get_optimal_whitespace: need to
-    " consider stuff like bos/eos...
-    let ret = s:get_optimal_whitespace(o)
+    let ret = s:get_join_whitespace(o)
     if !ret[0][1]
         let ret = [o.start, o.end]
     endif
@@ -893,30 +892,42 @@ endfunction
 function! s:offset_char(pos, dir, ...)
     let cursor = getpos('.')
     let inc_nl = a:0 && a:1
-    let [l0, c0] = [a:pos[1], a:pos[2]]
-    let [l, c] = [l0, c0]
-    let lim = a:dir ? col([l, '$']) : 1
+    " Ensure normalized col position (1st byte in char).
+    call cursor(a:pos[1], a:pos[2])
+    let [l0, c0] = [line('.'), col('.')]
+    let [l, c, cn] = [l0, c0, c0]
+    let lim = a:dir ? col([l0, '$']) : 1
     " Loop until we've moved off reference char.
-    " Note: BOL/EOL wrap can be detected without moving to the new position,
-    " so it's possible cursor position will never actually change.
-    while c == c0 && l == l0
-        let c += a:dir ? 1 : -1
+    " Note: Termination handled explicitly in line wrap case.
+    while c == c0
+        " Advance a byte in desired direction.
+        let cn += a:dir ? 1 : -1
         " Check for line wrap...
-        if a:dir && c >= lim
+        if a:dir && cn >= lim
             " EOL
             let [l, c] = inc_nl
                 \ ? [l, col([l, '$'])]
                 \ : l < line('$')
                 \   ? [l + 1, 1]
-                \   : [l, c - 1]
-        elseif !a:dir && c < lim
+                \   : [l, c0]
+            break
+        elseif !a:dir && cn < lim
             " BOL
-            let [l, c] = l > 1
-                \ ? [l - 1, col([l - 1, '$']) - (inc_nl ? 0 : 1)]
-                \ : [l, 1]
+            if l > 1
+                let [l, c] = [l - 1, col([l - 1, '$'])
+                if !inc_nl && c > 1
+                    " Goto first byte of final char.
+                    call cursor(l, c - 1)
+                    let [l, c] = [line('.'), col('.')]
+                endif
+            else
+                " Can't go before first char in buffer.
+                let [l, c] = [l, 1]
+            endif
+            break
         " No line wrap; see whether 1 byte movement constitutes char movement.
         else
-            call cursor(l, c)
+            call cursor(l, cn)
             let [l, c] = [line('.'), col('.')]
         endif
     endwhile
@@ -2561,7 +2572,7 @@ endfu
 function! s:get_clone_target(mode, before)
     let cursor = getpos('.')
     if a:mode ==? 'v'
-        return s:set_marks_around_current_element('v', 1, 1, 1)
+        return s:set_marks_around_current_element('v', 1, 0, 1)
     else
         " Get our bearings...
         let p = s:current_element_terminal(0)
@@ -2582,7 +2593,7 @@ endfunction
 function! sexp#clone(mode, count, before)
     let cursor = getpos('.')
     let wsv = winsaveview()
-    " Set visual marks around region to be cloned.
+    " Get region to be cloned.
     let [start, end] = s:get_clone_target(a:mode, a:before)
     if !start[1]
         " Nothing to clone. TODO: How to handle...
@@ -2598,15 +2609,17 @@ function! sexp#clone(mode, count, before)
         \ : a:before ? [copy, " "] : [" ", copy]
     let copy = join(repeat(repl, a:count ? a:count : 1), "")
 
-    " TODO: Don't rely on put_at()'s positioning...
-    " Idea: Consider taking into account the length of inserted text and
-    " attempting to maintain original position precisely.
     let lines_orig = line('$')
-    let cur_eol = col([cursor[1], '$'])
+    let cur_eol = multi && !a:before && cursor[1] == end[1]
+        \ ? s:offset_char(end, 1, 1)[2]
+        \ : col([cursor[1], '$'])
     if a:mode ==? 'v'
-        " TODO: This is needed only in multi case.
-        " FIXME: end_eol is effectively just beyond end.
-        let [start_eol, end_eol] = [col([start[1], '$']), s:offset_char(end, 1, 1)[2]]
+        let start_eol = multi && !a:before && start[1] == end[1]
+            \ ? s:offset_char(end, 1, 1)[2]
+            \ : col([start[1], '$'])
+        let end_eol = multi && !a:before
+            \ ? s:offset_char(end, 1, 1)[2]
+            \ : col([end[1], '$'])
     endif
     silent call s:put_at(copy, a:before, 0, a:before ? start : end)
     let lines_added = line('$') - lines_orig
@@ -2637,12 +2650,16 @@ function! sexp#clone(mode, count, before)
         endif
         if a:before
             " Cursor has effectively moved.
-            let wsv.lnum = cursor[1] + lines_added
+            let wsv.lnum += lines_added
+            " TODO: Decide whether it's better to keep view unchanged or to
+            " allow text to shift down (to make it obvious something's
+            " happened).
+            let wsv.topline += lines_added
             " Design Decision: Don't adjust wsv.topline.
             " Rationale: When near start of file, it can prevent user from
             " noticing that anything changed (since added stuff would be above
             " view).
-            " Fixme: If end is no longer in view, scroll up to put it at bottom or
+            " FIXME: If end is no longer in view, scroll up to put it at bottom or
             " start at top...
             if a:mode ==? 'v'
                 let start[1] += lines_added
@@ -2655,8 +2672,6 @@ function! sexp#clone(mode, count, before)
         " Caveat: wsv.col uses zero-based index.
         let wsv.col += col([wsv.lnum, '$']) - cur_eol
         if a:mode ==? 'v'
-            " FIXME: Visual range ends up wrong in multiline case
-            " FIXME: end[2] ends up negative!
             let start[2] += col([start[1], '$']) - start_eol
             let end[2] += col([end[1], '$']) - end_eol
         endif
@@ -2666,14 +2681,14 @@ function! sexp#clone(mode, count, before)
     " TODO: Consider checking whether cloned element is partly below view and
     " scrolling up if so...
 
-    " TODO: Handle visual selection...
-    " FIXME: *Maybe* restore original visual selection exactly... Keep in mind
-    " that it switches to *inner* to perform the clone, but there's no reason
-    " we can't switch it back... Ah... It might be complicated because of
-    " surrounding whitespace...
+    " Handle visual selection.
+    " Note: Restore *inner* version of original selection, since changes to
+    " surrounding whitespace can make it impossible to define, let alone
+    " restore, an outer selection.
     if a:mode ==? 'v'
         call s:set_visual_marks([start, end])
-        call s:select_current_marks('v')
+        " FIXME: Probably don't leave visual selection active.
+        "call s:select_current_marks('v')
     endif
 endfunction
 

@@ -609,7 +609,6 @@ function! s:terminals_with_whitespace_info(start, end, leading)
         \ o.ws_s[2] == 1 && o.ws_s[1] > 1
         \ ? [0, o.ws_s[1] - 1, col([o.ws_s[1] - 1, '$']), 0]
         \ : o.ws_s
-    " FIXME: offset_char() goes into infinite loop at EOB!
     let o.ws_ve =
         \ s:offset_char(o.ws_e, 1)[1] > o.ws_e[1]
         \ ? [0, o.ws_e[1], col([o.ws_e[1], '$']), 0]
@@ -661,7 +660,7 @@ function! s:get_join_whitespace(twwi)
     if (ecl &&
         \ (!scl
         \  || (!empty(o.leading) && s:compare_pos(o.leading, o.ws_s) <= 0)
-        \  || ecl <= scl))
+        \  || ecl < scl))
         " Select all leading and all but final trailing whitespace.
         let ret = [o.ws_vs,
             \ s:offset_char(o.ws_e, 0, 1)]
@@ -2423,6 +2422,116 @@ function! sexp#indent(top, count, ...)
     keepjumps exe "normal! \<Esc>" . getpos("'<")[1] . 'G=' . getpos("'>")[1] . "G"
 
     call winrestview(win)
+endfunction
+
+" TODO: Comment...
+" TODO: Probably rename...
+" TODO: Consider adding mode arg.
+function! sexp#cleanup_around_element(count)
+    let cursor = getpos('.')
+
+    " Note: Add 1 in attempt to have whitespace after final element handled as
+    " whitespace preceding its subsequent element.
+    let cnt = (a:count ? a:count : 1) + 1
+    let start = s:move_to_current_element_terminal(0)
+
+    if !start[1]
+        " Not on an element. Find next if it exists.
+        let start = s:move_to_current_element_terminal(1)
+    endif
+    let p = getpos('.')
+    let prev_end = s:nearest_element_terminal(0, 1)
+    if p == prev_end
+        " No previous element
+        let prev_end = [0, 0, 0, 0]
+        " Let open[1] signal toplevel.
+        let open = s:nearest_bracket(0)
+    endif
+
+    while cnt
+        " Note: Valid end not guaranteed.
+        if start[1]
+            let end = s:current_element_terminal(1)
+        else
+            " TODO: Does this always work?
+            let close = s:nearest_bracket(1)
+        endif
+        let del = {'tline': 0, 'join': 0, 'hline': 0, 'rrange': 0}
+        if !prev_end[1]
+            " Beginning of sexp (and possibly BOF)
+            " Note: If no current element, all will be handled with line
+            " deletions. FIXME!!!! What about case of open[1] but not
+            " start[1]?????? We still need tline!
+            let del.tline = !!open[1]
+            if start[1]
+                if open[1]
+                    if !s:is_comment(start[1], start[2])
+                        let del.join = 1
+                        let del.hline = 1
+                    endif
+                else
+                    " BOF
+                    let del.hline = 1
+                endif
+            endif
+        else
+            " There's a preceding element.
+            if prev_end[1] == start[1]
+                " prev el on same line
+                " Replace *all* ws back to prev el with single space
+                let del.rrange = 1
+            else
+                let del.tline = 1
+            endif
+        endif
+        if del.rrange
+            " FIXME!!!
+        else
+            if del.tline
+                " TODO: Consider using g_, D, etc...
+                " Strip any trailing whitespace after prev el.
+                call setline(prev_end[1], substitute(getline(prev_end[1]), '\s*$', '', ''))
+            endif
+            " Get deletion range.
+            let [l1, l2] = [
+                \ prev_end[1] ? prev_end[1] + 1 : open[1] + 1,
+                \ start[1] ? start[1] - 1 : close[1] ? close[1] - 1 : line('$')]
+            let dlines = l2 - l1 + 1
+            if dlines
+                " Delete blank lines, adjusting subsequent line numbers accordingly.
+                exec l1 . ',' . l2 . 'd'
+                if start[1]
+                    let start[1] -= dlines
+                    let end[1] -= dlines
+                endif
+            endif
+            let dchars = 0
+            if del.hline
+                " Delete whitespace from head of end line
+                let n = col([start[1], '$'])
+                call setline(start[1], substitute(getline(start[1]), '^\s*', '', ''))
+                let dchars = n - col([start[1], '$'])
+            endif
+            if del.join
+                " Assumption: prev_end[1] != 0 (since join at BOF)
+                exec prev_end[1] . 'join!'
+                let end = [0, prev_end[1], prev_end[2] + end[2] - dchars, 0]
+            else
+                let end[2] -= dchars
+            endif
+        endif
+        if !start[1] || !cnt
+            " Done, even if count not exhausted.
+            break
+        endif
+        " Attempt to advance.
+        call cursor(end[1], end[2])
+        let prev_end = end
+        let start = s:nearest_element_terminal(1, 0)
+        let cnt -= 1
+    endwhile
+
+    " TODO: Position on first element?
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

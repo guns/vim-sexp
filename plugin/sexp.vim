@@ -68,6 +68,7 @@ let s:sexp_mappings = {
     \ 'sexp_select_next_element':       ']e',
     \ 'sexp_indent':                    '==',
     \ 'sexp_indent_top':                '=-',
+    \ 'sexp_cleanup_around_element':    '<LocalLeader>c',
     \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
     \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
     \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -221,7 +222,8 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_indent',              'sexp_indent_top',
                \ 'sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
-               \ 'sexp_convolute',           'sexp_splice_list']
+               \ 'sexp_convolute',           'sexp_splice_list',
+               \ 'sexp_cleanup_around_element']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -372,8 +374,10 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 """ Commands {{{1
 
 " Indent S-Expression
-Defplug! nnoremap sexp_indent     sexp#indent(0, v:count)
-Defplug! nnoremap sexp_indent_top sexp#indent(1, v:count)
+Defplug! nnoremap sexp_indent             sexp#indent(0, v:count)
+Defplug! nnoremap sexp_indent_top         sexp#indent(1, v:count)
+" TODO: Consider supporting visual mode.
+Defplug! nnoremap sexp_cleanup_whitespace sexp#cleanup_around_element(v:count)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

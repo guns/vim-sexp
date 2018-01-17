@@ -2433,101 +2433,104 @@ function! sexp#cleanup_around_element(count)
     " Note: Add 1 in attempt to have whitespace after final element handled as
     " whitespace preceding its subsequent element.
     let cnt = (a:count ? a:count : 1) + 1
-    let start = s:move_to_current_element_terminal(0)
+    let next = s:move_to_current_element_terminal(0)
 
-    if !start[1]
+    if !next[1]
         " Not on an element. Find next if it exists.
-        let start = s:move_to_current_element_terminal(1)
+        let p = getpos('.')
+        let next = s:move_to_adjacent_element(1, 0, 0)
+        " Make sure there's a next.
+        if p == next
+            let next = [0, 0, 0, 0]
+        endif
     endif
     let p = getpos('.')
-    let prev_end = s:nearest_element_terminal(0, 1)
-    if p == prev_end
+    let prev = s:nearest_element_terminal(0, 1)
+    if p == prev
         " No previous element
-        let prev_end = [0, 0, 0, 0]
+        let prev = [0, 0, 0, 0]
         " Let open[1] signal toplevel.
         let open = s:nearest_bracket(0)
+    else
+        let open = [0, 0, 0, 0]
     endif
 
     while cnt
         " Note: Valid end not guaranteed.
-        if start[1]
-            let end = s:current_element_terminal(1)
-        else
+        " TODO: Shore up 
+        if !next[1]
             " TODO: Does this always work?
+            " Note: If we have next, there is no close.
             let close = s:nearest_bracket(1)
+        else
+            let close = [0, 0, 0, 0]
         endif
         let del = {'tline': 0, 'join': 0, 'hline': 0, 'rrange': 0}
-        if !prev_end[1]
-            " Beginning of sexp (and possibly BOF)
-            " Note: If no current element, all will be handled with line
-            " deletions. FIXME!!!! What about case of open[1] but not
-            " start[1]?????? We still need tline!
-            let del.tline = !!open[1]
-            if start[1]
-                if open[1]
-                    if !s:is_comment(start[1], start[2])
-                        let del.join = 1
-                        let del.hline = 1
-                    endif
-                else
-                    " BOF
-                    let del.hline = 1
-                endif
-            endif
-        else
-            " There's a preceding element.
-            if prev_end[1] == start[1]
-                " prev el on same line
-                " Replace *all* ws back to prev el with single space
-                let del.rrange = 1
-            else
-                let del.tline = 1
-            endif
-        endif
+        let eff_prev = prev[1] ? prev : open[1] ? open : [0, 0, 0, 0]
+        let eff_next = next[1] ? next : close[1] ? close : [0, 0, 0, 0]
+        " ARRGGHHH!!!! Occurs to me I could be using s:yankdel_range()...
+        let del.tline = eff_prev[1] && eff_next[1] > eff_prev[1]
+
+        let del.join =
+            \ open[1] && (close[1] || next[1] && !s:is_comment(next[1], next[2])) ||
+            \ close[1] && (open[1] || prev[1] && !s:is_comment(prev[1], prev[2]))
+
+        " TODO: Do it for toplevel, even if not joining.
+        let del.hline = eff_next[1] && (del.join || !eff_prev[1])
+
+        let del.rrange = eff_prev[1] && eff_prev[1] == eff_next[1]
+
         if del.rrange
             " FIXME!!!
+            echomsg "Doing rrange!"
         else
             if del.tline
                 " TODO: Consider using g_, D, etc...
                 " Strip any trailing whitespace after prev el.
-                call setline(prev_end[1], substitute(getline(prev_end[1]), '\s*$', '', ''))
+                call setline(prev[1], substitute(getline(prev[1]), '\s*$', '', ''))
             endif
             " Get deletion range.
             let [l1, l2] = [
-                \ prev_end[1] ? prev_end[1] + 1 : open[1] + 1,
-                \ start[1] ? start[1] - 1 : close[1] ? close[1] - 1 : line('$')]
+                \ prev[1] ? prev[1] + 1 : open[1] + 1,
+                \ next[1] ? next[1] - 1 : close[1] ? close[1] - 1 : line('$')]
             let dlines = l2 - l1 + 1
             if dlines
                 " Delete blank lines, adjusting subsequent line numbers accordingly.
                 exec l1 . ',' . l2 . 'd'
-                if start[1]
-                    let start[1] -= dlines
-                    let end[1] -= dlines
+                if eff_next[1]
+                    " TODO: Probably stop managing end, deferring getting it
+                    " till advancement.
+                    let eff_next[1] -= dlines
                 endif
             endif
             let dchars = 0
             if del.hline
                 " Delete whitespace from head of end line
-                let n = col([start[1], '$'])
-                call setline(start[1], substitute(getline(start[1]), '^\s*', '', ''))
-                let dchars = n - col([start[1], '$'])
+                let n = col([eff_next[1], '$'])
+                call setline(eff_next[1], substitute(getline(eff_next[1]), '^\s*', '', ''))
+                let dchars = n - col([eff_next[1], '$'])
             endif
             if del.join
-                " Assumption: prev_end[1] != 0 (since join at BOF)
-                exec prev_end[1] . 'join!'
-                let end = [0, prev_end[1], prev_end[2] + end[2] - dchars, 0]
-            else
-                let end[2] -= dchars
+                " Assumption: prev[1] != 0 (since join at BOF)
+                exec eff_prev[1] . 'join!'
+                " FIXME: Don't set next here if it wasn't set. Maybe use
+                " eff_next?
+                let eff_next = [0, eff_prev[1], col([eff_prev[1], '$']), 0]
             endif
         endif
-        if !start[1] || !cnt
+        if !next[1] || !cnt
             " Done, even if count not exhausted.
             break
         endif
         " Attempt to advance.
-        call cursor(end[1], end[2])
-        let prev_end = end
-        let start = s:nearest_element_terminal(1, 0)
+        call cursor(eff_next[1], eff_next[2])
+        let prev = s:move_to_current_element_terminal(1)
+        let next = s:nearest_element_terminal(1, 0)
+        if next == prev
+            let next = [0, 0, 0, 0]
+        else
+            call s:setcursor(next)
+        endif
         let cnt -= 1
     endwhile
 

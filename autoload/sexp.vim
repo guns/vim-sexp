@@ -166,6 +166,28 @@ function! s:nearest_bracket(closing, ...)
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
+function! s:list_open()
+    let cursor = getpos('.')
+    let ret = [0, 0, 0, 0]
+    let isl = s:is_list(cursor[1], cursor[2])
+    if !isl
+        return ret
+    elseif isl == 1
+        call s:setcursor(current_macro_character_terminal(1))
+        " Find the open.
+        let [l, c] = s:findpos('\S', 1)
+        call s:setcursor(cursor)
+        return [0, l, c, 0]
+    elseif isl == 2
+        return cursor
+    else " 3
+        return s:nearest_bracket(0)
+    endif
+    " Restore original position.
+    call s:setcursor(cursor)
+    return ret
+endfunction
+
 " Position of outermost paired bracket: 0 for opening, 1 for closing.
 " Returns [0, 0, 0, 0] if none found.
 "
@@ -1120,6 +1142,13 @@ function! s:move_to_nearest_bracket(closing)
     return pos
 endfunction
 
+" Move from list apparata to list open. Return [0, 0, 0, 0] if not on list.
+function! s:move_to_list_open()
+    let pos = s:list_open()
+    if pos[1] | call s:setcursor(pos) | endif
+    return pos
+endfunction
+
 " Tries to move cursor to outermost list's opening or closing bracket,
 " returning its position; 0 for opening, 1 for closing. Does not move cursor
 " if not in a list.
@@ -1165,6 +1194,7 @@ function! s:move_to_adjacent_element(next, tail, top)
 endfunction
 
 " Move cursor to pos, and then to the next element if in whitespace.
+" FIXME: Blank line not treated like whitespace.
 function! s:move_to_element_near_position(pos)
     call s:setcursor(a:pos)
     return getline('.')[col('.') - 1] =~# '\v\s'
@@ -2424,40 +2454,75 @@ function! sexp#indent(top, count, ...)
     call winrestview(win)
 endfunction
 
-" TODO: Comment...
-" TODO: Probably rename...
-" TODO: Consider adding mode arg.
-function! sexp#cleanup_around_element(count)
+" Return: Potentially adjusted [start, end, inc]
+"
+function! s:adjust_del_range(start, end, inc)
+endfunction
+
+" TODO: Consider using variadic args instead of ps
+" Modify ps in-place.
+" Note: inc is always 2-element list.
+" Assumption: start/end refer to actual char positions.
+function! s:adjust_positions(start, end, inc, ps)
+    let [s, e] = [a:start, a:end]
+    " TODO:
+    " eol = considers whether start can keep its position
+    " Hmm... Brainstorm...
+    for p in a:ps
+        if p[1] < s[1] || p[1] > e[1]
+            continue
+        elseif p[1] == s[1]
+            if p[2] < s[2] || (p[2] == s[2] && (!inc[0] || !eol))
+                continue
+            elseif p[2] == s[2]
+
+    endfor
+endfunction
+
+" Assumption: We're on an open (but no guarantee form contains elements).
+function! s:list_head()
     let cursor = getpos('.')
+    let close = s:current_element_terminal(1)
+    let ret = [0, 0, 0, 0]
+    " Attempt move to first non-whitespace.
+    let [l, c] = s:findpos('\S', 1)
+    if [0, l, c, 0] == close
+        " Empty form
+        return ret
+    endif
+    call cursor(l, c) 
+    " Just to be sure...
+    let ret = s:current_element_terminal(0)
+    " Restore original position.
+    call s:setcursor(cursor)
+    return ret
+endfunction
 
-    " Note: Add 1 in attempt to have whitespace after final element handled as
-    " whitespace preceding its subsequent element.
-    let cnt = (a:count ? a:count : 1) + 1
-    let next = s:move_to_current_element_terminal(0)
-
-    if !next[1]
-        " Not on an element. Find next if it exists.
-        let p = getpos('.')
-        let next = s:move_to_adjacent_element(1, 0, 0)
-        " Make sure there's a next.
-        if p == next
-            let next = [0, 0, 0, 0]
+" TODO: Change to strategy in which counts specify # of containing lists (like
+" for formatting).
+function! s:cleanup_around_element(open, cur)
+    let prev = [0, 0, 0, 0]
+    if open[1]
+        let next = s:list_head()
+        if !next[1]
+            let close = s:nearest_bracket(1)
+        endif
+    else
+        " At top-level. Find head element in buffer.
+        " FIXME: Should be able to move_to_element_near_position, but it's
+        " currently broken.
+        call cursor(1, 1)
+        let next = s:current_element_terminal(0)
+        if !next[1]
+            let next = s:nearest_element_terminal(1, 0)
+        endif
+        if !next[1]
+            " Empty buffer. FIXME: How to handle? Delete all?
+            return
         endif
     endif
-    let p = getpos('.')
-    let prev = s:nearest_element_terminal(0, 1)
-    if p == prev
-        " No previous element
-        let prev = [0, 0, 0, 0]
-        " Let open[1] signal toplevel.
-        let open = s:nearest_bracket(0)
-    else
-        let open = [0, 0, 0, 0]
-    endif
-
-    while cnt
+    while 1
         " Note: Valid end not guaranteed.
-        " TODO: Shore up 
         if !next[1]
             " TODO: Does this always work?
             " Note: If we have next, there is no close.
@@ -2465,6 +2530,7 @@ function! sexp#cleanup_around_element(count)
         else
             let close = [0, 0, 0, 0]
         endif
+        " Note: t=trailing ws of head line, h=head ws of trailing line
         let del = {'tline': 0, 'join': 0, 'hline': 0, 'rrange': 0}
         let eff_prev = prev[1] ? prev : open[1] ? open : [0, 0, 0, 0]
         let eff_next = next[1] ? next : close[1] ? close : [0, 0, 0, 0]
@@ -2476,6 +2542,8 @@ function! sexp#cleanup_around_element(count)
             \ close[1] && (open[1] || prev[1] && !s:is_comment(prev[1], prev[2]))
 
         " TODO: Do it for toplevel, even if not joining.
+        " Question: What about empty buffer? 
+        " Assumption: line numbers of 0 mean nothing in that direction.
         let del.hline = eff_next[1] && (del.join || !eff_prev[1])
 
         let del.rrange = eff_prev[1] && eff_prev[1] == eff_next[1]
@@ -2502,6 +2570,13 @@ function! sexp#cleanup_around_element(count)
                     " till advancement.
                     let eff_next[1] -= dlines
                 endif
+                if cur[1] > l2
+                    let cur[1] -= dlines
+                elseif cur[1] >= l1
+                    " Move cursor to head of line beyond deletion range.
+                    let cur[1] = l2 < line('$') ? l2 + 1 : line('$')
+                    let cur[2] = 1
+                endif
             endif
             let dchars = 0
             if del.hline
@@ -2509,6 +2584,11 @@ function! sexp#cleanup_around_element(count)
                 let n = col([eff_next[1], '$'])
                 call setline(eff_next[1], substitute(getline(eff_next[1]), '^\s*', '', ''))
                 let dchars = n - col([eff_next[1], '$'])
+                if cur[1] == eff_next[1]
+                    " Put cursor at beginning of line since the ws it was in
+                    " is gone.
+                    let cur[2] = 1
+                endif
             endif
             if del.join
                 " Assumption: prev[1] != 0 (since join at BOF)
@@ -2516,25 +2596,62 @@ function! sexp#cleanup_around_element(count)
                 " FIXME: Don't set next here if it wasn't set. Maybe use
                 " eff_next?
                 let eff_next = [0, eff_prev[1], col([eff_prev[1], '$']), 0]
+                if cur[1] >= eff_next[1]
+                    let cur[1] -= 1
+                    if cur[1] == eff_next[1]
+                        let cur[2] += col([eff_prev[1], '$']) - 1
+                    endif
+                endif
             endif
         endif
-        if !next[1] || !cnt
-            " Done, even if count not exhausted.
+        if !next[1]
             break
         endif
-        " Attempt to advance.
+        " If here, another element at this level.
+        if s:is_list(next[1], next[2])
+            let next = s:move_to_list_open()
+            " Assumption: Position of next can't be changed by recursive call.
+            call s:cleanup_around_element(next, cur)
+        endif
+        " Now that we've recursed (if possible), attempt to advance.
         call cursor(eff_next[1], eff_next[2])
         let prev = s:move_to_current_element_terminal(1)
         let next = s:nearest_element_terminal(1, 0)
         if next == prev
             let next = [0, 0, 0, 0]
+            " FIXME
+            return
         else
             call s:setcursor(next)
         endif
         let cnt -= 1
     endwhile
+endfunction
 
-    " TODO: Position on first element?
+" TODO: Comment...
+" TODO: Probably rename...
+" TODO: Consider adding mode arg.
+function! sexp#cleanup_around_element(count, mode)
+    " FIXME: Make this only normal mode, now that we're always doing whole
+    " number of forms.
+    let cursor = getpos('.')
+    " Find count'th open (including any at cursor)
+    call s:move_to_current_element_terminal(1)
+    let cnt = a:count ? a:count : 1
+    let open = [0, 0, 0, 0]
+    while cnt
+        let p = move_to_nearest_bracket(0)
+        if !p[1]
+            break
+        endif
+        let open = p
+        let cnt -= 1
+    endwhile
+    " TODO: Ensure we're on open here. If not, pass [0, 0, 0, 0] sentinel.
+    call s:cleanup_around_element(open, cursor)
+
+    call s:setcursor(cursor)
+    " TODO: Do the indent here or at higher level?
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

@@ -377,7 +377,8 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 Defplug! nnoremap sexp_indent             sexp#indent(0, v:count)
 Defplug! nnoremap sexp_indent_top         sexp#indent(1, v:count)
 " TODO: Consider supporting visual mode.
-Defplug! nnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count)
+Defplug! nnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count, 'n')
+Defplug! xnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count, 'v')
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

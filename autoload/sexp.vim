@@ -2415,7 +2415,7 @@ endfu
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in an compound form (e.g. top-level comments).
-function! sexp#indent(top, count, ...)
+function! sexp#indent(top, count, clean, ...)
     let win = winsaveview()
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
@@ -2446,6 +2446,12 @@ function! sexp#indent(top, count, ...)
         " happen in a single command). Caller should set the force_syntax flag
         " in such scenarios to force syntax recalculation prior to the =.
         '<,'>call synID(line("."), col("."), 1)
+    endif
+    if a:clean
+        " Remove excess whitespace, keeping up with position changes.
+        let ps = [getpos("'>"), cursor]
+        call s:cleanup_ws(getpos("'<"), ps)
+        let [end, cur] = ps
     endif
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
@@ -2498,9 +2504,45 @@ function! s:list_head()
     return ret
 endfunction
 
+function! s:cleanup_ws_adjust_posns1(l1, l2, ps)
+    " >>| in or past deleted lines
+    for p in a:ps
+        if p[1] > a:a:l2
+            let p[1] -= a:l2 - a:l1 + 1
+        elseif p[1] >= a:l1
+            " Move cursor to head of line beyond deletion range.
+            let p[1] = a:a:l2 < line('$') ? a:a:l2 + 1 : line('$')
+            let p[2] = 1
+        endif
+    endfor
+endfunction
+
+function! s:cleanup_ws_adjust_posns2(l2, ps)
+    for p in a:ps
+        " >>| in stripped ws at head of line
+        if p[1] == a:l2
+            " Put cursor at beginning of line since the ws it was in
+            " is gone.
+            let p[2] = 1
+        endif
+    endfor
+endfunction
+
+function! s:cleanup_ws_adjust_posns3(l1, l2, ps)
+    " >>| on or after joined line
+    for p in a:ps
+        if p[1] >= a:l2[1]
+            let p[1] -= 1
+            if p[1] == a:l2[1]
+                let p[2] += col([a:l1[1], '$']) - 1
+            endif
+        endif
+    endfor
+endfunction
+
 " TODO: Change to strategy in which counts specify # of containing lists (like
 " for formatting).
-function! s:cleanup_around_element(open, cur)
+function! s:cleanup_ws(open, ps)
     let prev = [0, 0, 0, 0]
     if open[1]
         let next = s:list_head()
@@ -2558,6 +2600,9 @@ function! s:cleanup_around_element(open, cur)
                 call setline(prev[1], substitute(getline(prev[1]), '\s*$', '', ''))
             endif
             " Get deletion range.
+            " FIXME: Can open/close be [0, 0, 0, 0]? If so, handle; also, this
+            " expression seems mostly duplicate with eff_prev/next. Eliminate
+            " duplication.
             let [l1, l2] = [
                 \ prev[1] ? prev[1] + 1 : open[1] + 1,
                 \ next[1] ? next[1] - 1 : close[1] ? close[1] - 1 : line('$')]
@@ -2570,13 +2615,8 @@ function! s:cleanup_around_element(open, cur)
                     " till advancement.
                     let eff_next[1] -= dlines
                 endif
-                if cur[1] > l2
-                    let cur[1] -= dlines
-                elseif cur[1] >= l1
-                    " Move cursor to head of line beyond deletion range.
-                    let cur[1] = l2 < line('$') ? l2 + 1 : line('$')
-                    let cur[2] = 1
-                endif
+                " >>| in or past deleted lines
+                call s:cleanup_ws_adjust_posns1(l1, l2, a:ps)
             endif
             let dchars = 0
             if del.hline
@@ -2584,11 +2624,8 @@ function! s:cleanup_around_element(open, cur)
                 let n = col([eff_next[1], '$'])
                 call setline(eff_next[1], substitute(getline(eff_next[1]), '^\s*', '', ''))
                 let dchars = n - col([eff_next[1], '$'])
-                if cur[1] == eff_next[1]
-                    " Put cursor at beginning of line since the ws it was in
-                    " is gone.
-                    let cur[2] = 1
-                endif
+                " >>| in stripped ws at head of line
+                call s:cleanup_ws_adjust_posns2(eff_next[1], a:ps)
             endif
             if del.join
                 " Assumption: prev[1] != 0 (since join at BOF)
@@ -2596,12 +2633,8 @@ function! s:cleanup_around_element(open, cur)
                 " FIXME: Don't set next here if it wasn't set. Maybe use
                 " eff_next?
                 let eff_next = [0, eff_prev[1], col([eff_prev[1], '$']), 0]
-                if cur[1] >= eff_next[1]
-                    let cur[1] -= 1
-                    if cur[1] == eff_next[1]
-                        let cur[2] += col([eff_prev[1], '$']) - 1
-                    endif
-                endif
+                " >>| on or after joined line
+                call s:cleanup_ws_adjust_posns3(eff_prev[1], eff_next[1], a:ps)
             endif
         endif
         if !next[1]
@@ -2611,7 +2644,7 @@ function! s:cleanup_around_element(open, cur)
         if s:is_list(next[1], next[2])
             let next = s:move_to_list_open()
             " Assumption: Position of next can't be changed by recursive call.
-            call s:cleanup_around_element(next, cur)
+            call s:cleanup_ws(next, cur)
         endif
         " Now that we've recursed (if possible), attempt to advance.
         call cursor(eff_next[1], eff_next[2])
@@ -2631,6 +2664,7 @@ endfunction
 " TODO: Comment...
 " TODO: Probably rename...
 " TODO: Consider adding mode arg.
+" FIXME: May not need this anymore, now that I'm moving into sexp#indent.
 function! sexp#cleanup_around_element(count, mode)
     " FIXME: Make this only normal mode, now that we're always doing whole
     " number of forms.

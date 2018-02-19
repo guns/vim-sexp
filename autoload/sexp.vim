@@ -2417,6 +2417,7 @@ endfu
 " elements not contained in an compound form (e.g. top-level comments).
 function! sexp#indent(top, count, clean, ...)
     let win = winsaveview()
+    let cursor = getpos('.')
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
 
@@ -2450,12 +2451,14 @@ function! sexp#indent(top, count, clean, ...)
     if a:clean
         " Remove excess whitespace, keeping up with position changes.
         let ps = [getpos("'>"), cursor]
+        "echomsg "Running @ " . string(ps[0])
         call s:cleanup_ws(getpos("'<"), ps)
         let [end, cur] = ps
+        echo "end=" . string(end) . " cur=" . string(cur)
     endif
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
-    keepjumps exe "normal! \<Esc>" . getpos("'<")[1] . 'G=' . getpos("'>")[1] . "G"
+    silent keepjumps exe "normal! \<Esc>" . getpos("'<")[1] . 'G=' . getpos("'>")[1] . "G"
 
     call winrestview(win)
 endfunction
@@ -2507,35 +2510,34 @@ endfunction
 function! s:cleanup_ws_adjust_posns1(l1, l2, ps)
     " >>| in or past deleted lines
     for p in a:ps
-        if p[1] > a:a:l2
+        if p[1] > a:l2
             let p[1] -= a:l2 - a:l1 + 1
         elseif p[1] >= a:l1
             " Move cursor to head of line beyond deletion range.
-            let p[1] = a:a:l2 < line('$') ? a:a:l2 + 1 : line('$')
+            let p[1] = a:l2 < line('$') ? a:l2 + 1 : line('$')
             let p[2] = 1
         endif
     endfor
 endfunction
 
-function! s:cleanup_ws_adjust_posns2(l2, ps)
+function! s:cleanup_ws_adjust_posns2(l2, dbytes, ps)
     for p in a:ps
-        " >>| in stripped ws at head of line
+        " >>| in or after stripped ws at head of line
         if p[1] == a:l2
-            " Put cursor at beginning of line since the ws it was in
-            " is gone.
-            let p[2] = 1
+            " Move cursor leftward by deleted chars (limit BOL)
+            let p[2] = p[2] > a:dbytes ? p[2] - a:dbytes : 1
         endif
     endfor
 endfunction
 
-function! s:cleanup_ws_adjust_posns3(l1, l2, ps)
+function! s:cleanup_ws_adjust_posns3(l1, ps)
     " >>| on or after joined line
     for p in a:ps
-        if p[1] >= a:l2[1]
-            let p[1] -= 1
-            if p[1] == a:l2[1]
-                let p[2] += col([a:l1[1], '$']) - 1
+        if p[1] > a:l1
+            if p[1] == a:l1 + 1
+                let p[2] += col([a:l1, '$']) - 1
             endif
+            let p[1] -= 1
         endif
     endfor
 endfunction
@@ -2544,7 +2546,9 @@ endfunction
 " for formatting).
 function! s:cleanup_ws(open, ps)
     let prev = [0, 0, 0, 0]
+    let open = a:open[:]
     if open[1]
+        call s:setcursor(open)
         let next = s:list_head()
         if !next[1]
             let close = s:nearest_bracket(1)
@@ -2580,8 +2584,10 @@ function! s:cleanup_ws(open, ps)
         let del.tline = eff_prev[1] && eff_next[1] > eff_prev[1]
 
         let del.join =
-            \ open[1] && (close[1] || next[1] && !s:is_comment(next[1], next[2])) ||
-            \ close[1] && (open[1] || prev[1] && !s:is_comment(prev[1], prev[2]))
+            \ (open[1] && open == eff_prev)
+            \ && (close[1] || next[1] && !s:is_comment(next[1], next[2])) ||
+            \ (close[1] && close == eff_next)
+            \ && (open[1] || prev[1] && !s:is_comment(prev[1], prev[2]))
 
         " TODO: Do it for toplevel, even if not joining.
         " Question: What about empty buffer? 
@@ -2592,7 +2598,7 @@ function! s:cleanup_ws(open, ps)
 
         if del.rrange
             " FIXME!!!
-            echomsg "Doing rrange!"
+            "echomsg "Doing rrange!"
         else
             if del.tline
                 " TODO: Consider using g_, D, etc...
@@ -2618,23 +2624,29 @@ function! s:cleanup_ws(open, ps)
                 " >>| in or past deleted lines
                 call s:cleanup_ws_adjust_posns1(l1, l2, a:ps)
             endif
-            let dchars = 0
+            let dbytes = 0
             if del.hline
                 " Delete whitespace from head of end line
                 let n = col([eff_next[1], '$'])
                 call setline(eff_next[1], substitute(getline(eff_next[1]), '^\s*', '', ''))
-                let dchars = n - col([eff_next[1], '$'])
-                " >>| in stripped ws at head of line
-                call s:cleanup_ws_adjust_posns2(eff_next[1], a:ps)
+                " FIXME: Don't like keeping up with eff_next changes manually:
+                " that was the point of the cleanup_ws_adjust<...> functions.
+                let eff_next[2] = 1
+                let dbytes = n - col([eff_next[1], '$'])
+                " >>| in or after stripped ws at head of line
+                call s:cleanup_ws_adjust_posns2(eff_next[1], dbytes, a:ps)
             endif
             if del.join
-                " Assumption: prev[1] != 0 (since join at BOF)
-                exec eff_prev[1] . 'join!'
                 " FIXME: Don't set next here if it wasn't set. Maybe use
                 " eff_next?
                 let eff_next = [0, eff_prev[1], col([eff_prev[1], '$']), 0]
                 " >>| on or after joined line
-                call s:cleanup_ws_adjust_posns3(eff_prev[1], eff_next[1], a:ps)
+                " FIXME: Not accounting for rightward shift due to join.
+                call s:cleanup_ws_adjust_posns3(eff_prev[1], a:ps)
+                " FIXME: Ugly! This has to come after call to
+                " s:cleanup_ws_adjust_posns3. Rework completely...
+                " Assumption: prev[1] != 0 (since join at BOF)
+                exec eff_prev[1] . 'join!'
             endif
         endif
         if !next[1]
@@ -2644,20 +2656,18 @@ function! s:cleanup_ws(open, ps)
         if s:is_list(next[1], next[2])
             let next = s:move_to_list_open()
             " Assumption: Position of next can't be changed by recursive call.
-            call s:cleanup_ws(next, cur)
+            call s:cleanup_ws(next, a:ps)
         endif
         " Now that we've recursed (if possible), attempt to advance.
         call cursor(eff_next[1], eff_next[2])
         let prev = s:move_to_current_element_terminal(1)
         let next = s:nearest_element_terminal(1, 0)
         if next == prev
+            " Note: We'll go through loop once more.
             let next = [0, 0, 0, 0]
-            " FIXME
-            return
         else
             call s:setcursor(next)
         endif
-        let cnt -= 1
     endwhile
 endfunction
 

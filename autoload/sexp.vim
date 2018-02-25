@@ -908,8 +908,9 @@ function! s:count_elements(start, end)
     return n
 endfunction
 
-" Return pos offset by 1 char in requested direction.
-" Note: If optional flag is set, newlines between lines count.
+" Return pos offset by 1 char in requested direction
+" Note: If optional flag is set, newlines between lines count, and we will
+" never advance past a newline (even if we start on it).
 function! s:offset_char(pos, dir, ...)
     let cursor = getpos('.')
     let inc_nl = a:0 && a:1
@@ -2271,6 +2272,25 @@ function! s:swap_current_selection(mode, next, pairwise)
     return 1
 endfunction
 
+function! s:yankdel_preadjust_range(start, end, inc)
+    " TODO: Consider using cursor movements with search rather than this
+    " programmatic approach.
+    if a:inc[0] == 2 &&
+        \ getline(a:start[1])[a:start[2] - 1:] =~ '^.\?\s*$'
+        " Convert to start of next line inclusive.
+        let a:inc[0] = 1
+        let a:start[1] += 1
+        let a:start[2] = 1
+    endif
+    if a:inc[1] == 2 &&
+        \ getline(a:end[1])[:a:end[2] - 1] =~ '^\s*.\?$'
+        " Convert to end of prev line inclusive.
+        let a:inc[1] = 1
+        let a:end[1] -= 1
+        let a:end[2] = col([a:end[1], '$']) - 1
+    endif
+endfunction
+
 " Yank (del=0) or delete (del=1) text in range defined by start/end. Optional
 " 'inc' arg allows inclusivity of range to be specified independently for
 " start and end.
@@ -2278,14 +2298,23 @@ endfunction
 " assumed to apply only to end (with start being included by default). If inc
 " arg is omitted, defaults to [1, 0]: i.e., start=inclusive, end=exclusive.
 " Cursor Note: If we move cursor, we'll leave it at start of operated range.
+" TODO: Add another value for inc/exc (2 or -1), which indicates that not only
+" the char, but also an adjacent newline, should be excluded.
+" Question: What if whitespace separates the endpoint of the range and an
+" otherwise adjacent newline? I'm thinking that for the intended use case, it
+" would make sense to treat it the same way. In fact, this change would
+" probably not be very useful if we didn't do it this way.
 function! s:yankdel_range(start, end, del, ...)
     let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
+    " Consider special case.
+    call s:yankdel_preadjust_range(a:start, a:end, inc)
     " Make sure there's a point in continuing.
     let cmp = s:compare_pos(a:start, a:end)
-    if cmp > 1 || cmp == 0 && inc != [1, 1]
+    if cmp > 1 || cmp == 0 && (!inc[0] || !inc[1])
         " Nothing to do!
         return ''
     endif
+
     let cursor = getpos('.')
     " Nomenclature: 's'=start, 'e'=end, 'l'=line, 'c'=col, 't'=text
     " Cache line/col positions in more convenient form, converting 1-based col
@@ -2468,23 +2497,47 @@ endfunction
 function! s:adjust_del_range(start, end, inc)
 endfunction
 
+function! s:concat_positions(ps)
+    let ret = []
+    for p in a:ps
+        let ret += type(p[0]) == 0 ? [p] : p
+    endfor
+    return ret
+endfunction
+
 " TODO: Consider using variadic args instead of ps
 " Modify ps in-place.
 " Note: inc is always 2-element list.
 " Assumption: start/end refer to actual char positions.
-function! s:adjust_positions(start, end, inc, ps)
+function! s:adjust_positions(start, end, inc, ...)
     let [s, e] = [a:start, a:end]
-    " TODO:
-    " eol = considers whether start can keep its position
-    " Hmm... Brainstorm...
-    for p in a:ps
-        if p[1] < s[1] || p[1] > e[1]
+    " Adjust s/e to get first deleted pos at start and first kept pos at end
+    if !a:inc[0]
+        let s = s:offset_char(s, 1, 1)
+    endif
+    if a:inc[1]
+        let e = s:offset_char(e, 1, 1)
+    endif
+    " Create a flat list encompassing all input positions.
+    " Note: The flat list is used only for iteration: the positions it
+    " contains are modifed in-place.
+    let ps = s:concat_positions(a:000)
+    for p in ps
+        if s:compare_pos(p, s) < 0
+            " position unaffected
             continue
-        elseif p[1] == s[1]
-            if p[2] < s[2] || (p[2] == s[2] && (!inc[0] || !eol))
-                continue
-            elseif p[2] == s[2]
-
+        elseif s:compare_pos(p, e) <= 0
+            " Collapse to start of deleted region.
+            let [_, p[1], p[2], _] = s "s:offset_char(s, 1, 1)
+        else
+            " past deleted region
+            let p[1] -= e[1] - s[1]
+            if p[1] == e[1]
+                " Collinear with end of deleted region: must account for
+                " col shift due to combination with start line.
+                let p[2] -= e[2] - s[2]
+            endif
+        endif
     endfor
 endfunction
 
@@ -2505,6 +2558,77 @@ function! s:list_head()
     " Restore original position.
     call s:setcursor(cursor)
     return ret
+endfunction
+
+" FIXME: Convert this version to use yankdel_range.
+function! s:cleanup_ws(open, ps)
+    let open = a:open[:]
+    let [close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0]]
+    if open[1]
+        call s:setcursor(open)
+        " Descend into list.
+        let next = s:list_head()
+    else
+        " At top-level. Find head element in buffer.
+        " FIXME: Should be able to move_to_element_near_position, but it's
+        " currently broken.
+        call cursor(1, 1)
+        let next = s:current_element_terminal(0)
+        if !next[1]
+            let next = s:nearest_element_terminal(1, 0)
+        endif
+    endif
+    while 1
+        " Note: next and close are mutually exclusive.
+        if !next[1]
+            let close = s:nearest_bracket(1)
+        else
+            let close = [0, 0, 0, 0]
+        endif
+        " TODO: Consider handling eff_prev in post-update (or some other way).
+        " Rationale: After first iteration, it will always be prev (not open).
+        let eff_prev = prev[1] ? prev : open
+        if !eff_prev[1] | let eff_prev = [0, 1, 1, 0] | endif
+        let eff_next = next[1] ? next : close
+        if !eff_next[1] | let eff_next = getpos([line('$'), '$']) | endif
+
+        " Note: Probably don't need bof/eof flags any more.
+        let do_join = eff_next[1] - eff_prev[1] > 1
+            \ && (!next[1] || !prev[1]
+                \ || next[1] && !s:is_comment(next[1], next[2])
+                \ || prev[1] && !s:is_comment(prev[1], prev[2]))
+
+        if do_join
+            " We're joining and/or removing empty lines.
+            call s:yankdel_range(eff_prev, eff_next, 1,
+                \ do_join ? 0 : [0, 2], a:ps, eff_next)
+        endif
+        " FIXME: If we process in forwards direction, next needs to be
+        " adjusted by yankdel_range; processing backwards would obviate need.
+        " Note: Only zero/nonzero status of next is safe to use at this point
+        " (since it wasn't adjusted by yankdel_range).
+        if !next[1] | break | endif
+        " If here, there's another element at this level.
+        " Assumption: eff_next and next are the same except that the former
+        " has been adjusted.
+        call cursor(eff_next[1], eff_next[2])
+        if s:is_list(eff_next[1], eff_next[2])
+            let next = s:move_to_list_open()
+            call s:cleanup_ws(next, a:ps)
+            " Assumption: Restore cursor pos (potentially changed by
+            " recursion) to next (which can't be invalidated by recursion).
+            call s:setcursor(next)
+        endif
+        " Now that we've recursed (if possible), attempt to advance.
+        let prev = s:move_to_current_element_terminal(1)
+        let next = s:nearest_element_terminal(1, 0)
+        if next == prev
+            " Note: We'll go through loop once more.
+            let next = [0, 0, 0, 0]
+        else
+            call s:setcursor(next)
+        endif
+    endwhile
 endfunction
 
 function! s:cleanup_ws_adjust_posns1(l1, l2, ps)
@@ -2544,7 +2668,7 @@ endfunction
 
 " TODO: Change to strategy in which counts specify # of containing lists (like
 " for formatting).
-function! s:cleanup_ws(open, ps)
+function! s:cleanup_ws_working(open, ps)
     let prev = [0, 0, 0, 0]
     let open = a:open[:]
     if open[1]

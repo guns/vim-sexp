@@ -173,7 +173,7 @@ function! s:list_open()
     if !isl
         return ret
     elseif isl == 1
-        call s:setcursor(current_macro_character_terminal(1))
+        call s:setcursor(s:current_macro_character_terminal(1))
         " Find the open.
         let [l, c] = s:findpos('\S', 1)
         call s:setcursor(cursor)
@@ -2387,6 +2387,11 @@ function! s:yankdel_range(start, end, del, ...)
     endif
     " Restore cursor
     call s:setcursor(cursor)
+    if a:del && a:0 > 1
+        " FIXME: We're currently adding extra layer of list wrapping...
+        call s:adjust_positions(a:start, a:end, inc, a:2)
+    endif
+
     return ret
 endfu
 
@@ -2497,9 +2502,12 @@ endfunction
 function! s:adjust_del_range(start, end, inc)
 endfunction
 
-function! s:concat_positions(ps)
+" Create a flat list encompassing all input positions.
+" Note: The flat list is intended to facilitate iteration: the positions it
+" contains are generally modifed in-place.
+function! s:concat_positions(...)
     let ret = []
-    for p in a:ps
+    for p in a:000
         let ret += type(p[0]) == 0 ? [p] : p
     endfor
     return ret
@@ -2509,7 +2517,7 @@ endfunction
 " Modify ps in-place.
 " Note: inc is always 2-element list.
 " Assumption: start/end refer to actual char positions.
-function! s:adjust_positions(start, end, inc, ...)
+function! s:adjust_positions(start, end, inc, ps)
     let [s, e] = [a:start, a:end]
     " Adjust s/e to get first deleted pos at start and first kept pos at end
     if !a:inc[0]
@@ -2518,11 +2526,7 @@ function! s:adjust_positions(start, end, inc, ...)
     if a:inc[1]
         let e = s:offset_char(e, 1, 1)
     endif
-    " Create a flat list encompassing all input positions.
-    " Note: The flat list is used only for iteration: the positions it
-    " contains are modifed in-place.
-    let ps = s:concat_positions(a:000)
-    for p in ps
+    for p in a:ps
         if s:compare_pos(p, s) < 0
             " position unaffected
             continue
@@ -2563,6 +2567,8 @@ endfunction
 " FIXME: Convert this version to use yankdel_range.
 function! s:cleanup_ws(open, ps)
     let open = a:open[:]
+    " FIXME: open is getting passed in as [0, 0, 0, 0] in toplevel case.
+    " Toplevel case is actually being handled incorrectly.
     let [close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0]]
     if open[1]
         call s:setcursor(open)
@@ -2592,16 +2598,15 @@ function! s:cleanup_ws(open, ps)
         let eff_next = next[1] ? next : close
         if !eff_next[1] | let eff_next = getpos([line('$'), '$']) | endif
 
-        " Note: Probably don't need bof/eof flags any more.
-        let do_join = eff_next[1] - eff_prev[1] > 1
-            \ && (!next[1] || !prev[1]
-                \ || next[1] && !s:is_comment(next[1], next[2])
-                \ || prev[1] && !s:is_comment(prev[1], prev[2]))
+        let do_join = eff_next[1] > eff_prev[1]
+            \ && (!next[1] && !prev[1]
+                \ || !next[1] && (!close[1] || !s:is_comment(prev[1], prev[2]))
+                \ || !prev[1] && (!open[1] || !s:is_comment(next[1], next[2])))
 
-        if do_join
+        if do_join || eff_next[1] - eff_prev[1] > 1
             " We're joining and/or removing empty lines.
             call s:yankdel_range(eff_prev, eff_next, 1,
-                \ do_join ? 0 : [0, 2], a:ps, eff_next)
+                \ do_join ? [0, 0] : [0, 2], s:concat_positions(a:ps, eff_next))
         endif
         " FIXME: If we process in forwards direction, next needs to be
         " adjusted by yankdel_range; processing backwards would obviate need.

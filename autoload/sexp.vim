@@ -911,6 +911,8 @@ endfunction
 " Return pos offset by 1 char in requested direction
 " Note: If optional flag is set, newlines between lines count, and we will
 " never advance past a newline (even if we start on it).
+" FIXME: This function is too complex for what it does. (Recall that offset
+" used to be arbitrary, but now is limited to single char).
 function! s:offset_char(pos, dir, ...)
     let cursor = getpos('.')
     let inc_nl = a:0 && a:1
@@ -2387,8 +2389,10 @@ function! s:yankdel_range(start, end, del, ...)
     endif
     " Restore cursor
     call s:setcursor(cursor)
+    " TODO: Adjustment algorithm is simpler if run before buffer changes
+    " (since a:end may no longer correspond to buffer text). Consider whether
+    " it would be better to move this up and simplify s:adjust_positions.
     if a:del && a:0 > 1
-        " FIXME: We're currently adding extra layer of list wrapping...
         call s:adjust_positions(a:start, a:end, inc, a:2)
     endif
 
@@ -2446,6 +2450,22 @@ fu! s:put_at(text, before, cursor_after, ...)
     endif
 endfu
 
+" Adjust the input view to ensure that, if possible, the cursor line doesn't
+" change its screen line. (Won't be possible if desired cursor line exceeds
+" buffer size.)
+function! s:adjust_saved_view(view, cursor)
+    " TODO: Do we need to apply constraints?
+    let a:view.topline -= max([1, a:view.lnum - a:cursor[1]])
+    let a:view.lnum = a:cursor[1]
+    let a:view.col = a:cursor[2] - 1
+    " Note: Because of the lack of one-to-one correspondence between chars and
+    " screen columns, preserving horizontal shift would require an iterative
+    " approach, whose overhead is probably not warranted, especially
+    " considering it's *extremely* rare for a view on code to be shifted
+    " horizontally. Thus, for now, simply rely on Vim to ensure the cursor
+    " column is visible.
+endfunction
+
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in an compound form (e.g. top-level comments).
@@ -2465,10 +2485,14 @@ function! sexp#indent(top, count, clean, ...)
 
     normal! v
     if pos[1] < 1
+        " At top-level. If current (or next) element is list, select it.
+        " Note: When not within list, 'inner' includes brackets.
         keepjumps call sexp#select_current_element('v', 1)
     elseif a:top
+        " Inside list. Select topmost list.
         keepjumps call sexp#select_current_top_list('v', 0)
     else
+        " Inside list. Select [count]th containing list.
         keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
     endif
     if force_syntax
@@ -2482,24 +2506,32 @@ function! sexp#indent(top, count, clean, ...)
         " in such scenarios to force syntax recalculation prior to the =.
         '<,'>call synID(line("."), col("."), 1)
     endif
+    let cur = cursor[:]
+    let [beg, end] = [getpos("'<"), getpos("'>")]
     if a:clean
-        " Remove excess whitespace, keeping up with position changes.
-        let ps = [getpos("'>"), cursor]
-        "echomsg "Running @ " . string(ps[0])
-        call s:cleanup_ws(getpos("'<"), ps)
-        let [end, cur] = ps
-        echo "end=" . string(end) . " cur=" . string(cur)
+        " Be sure we've selected a list: algorithm not intended for top-level
+        " non-list element.
+        let vs = getpos("'<")
+        if s:is_list(vs[1], vs[2]) == 2
+            "echomsg "Running @ " . string(ps[0])
+            " Remove excess whitespace, keeping up with position changes.
+            call s:cleanup_ws(beg, [end, cur])
+            if cur != cursor
+                " Note: To avoid visual jarring, try to keep cursor on same
+                " screen line.
+            endif
+        endif
     endif
+    " Record initial distance from cursor to end of line.
+    let cur_edist = col([cur[1], '$']) - cur[2]
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
-    silent keepjumps exe "normal! \<Esc>" . getpos("'<")[1] . 'G=' . getpos("'>")[1] . "G"
+    silent keepjumps exe "normal! \<Esc>" . beg[1] . 'G=' . end[1] . "G"
+    " Adjust cursor pos to account for leading whitespace changes.
+    let cur[2] = col([cur[1], '$']) - cur_edist
+    call s:adjust_saved_view(win, cur)
 
     call winrestview(win)
-endfunction
-
-" Return: Potentially adjusted [start, end, inc]
-"
-function! s:adjust_del_range(start, end, inc)
 endfunction
 
 " Create a flat list encompassing all input positions.
@@ -2518,29 +2550,35 @@ endfunction
 " Note: inc is always 2-element list.
 " Assumption: start/end refer to actual char positions.
 function! s:adjust_positions(start, end, inc, ps)
-    let [s, e] = [a:start, a:end]
+    let [s, e] = [a:start[:], a:end[:]]
     " Adjust s/e to get first deleted pos at start and first kept pos at end
     if !a:inc[0]
+        " Assumption: Unlike e[], s[] can't be changed by delete. Even if char
+        " after s[] differs from what it was prior to delete, the col offset
+        " will be correct.
         let s = s:offset_char(s, 1, 1)
-    endif
-    if a:inc[1]
-        let e = s:offset_char(e, 1, 1)
     endif
     for p in a:ps
         if s:compare_pos(p, s) < 0
-            " position unaffected
+            " Position unaffected
             continue
         elseif s:compare_pos(p, e) <= 0
             " Collapse to start of deleted region.
+            " FIXME: Sometimes collapsing back to start is not the right
+            " thing: e.g., when p is on a later line, would be better to
+            " collapse it to first kept pos *after* start.
+            " Note: No need to differentiate between last char deleted and the
+            " one just after it. (This is why we can ignore inc[1].)
             let [_, p[1], p[2], _] = s "s:offset_char(s, 1, 1)
         else
-            " past deleted region
-            let p[1] -= e[1] - s[1]
+            " Past deleted region
+            " Caveat: Order of col/line adjustment significant.
             if p[1] == e[1]
                 " Collinear with end of deleted region: must account for
                 " col shift due to combination with start line.
                 let p[2] -= e[2] - s[2]
             endif
+            let p[1] -= e[1] - s[1]
         endif
     endfor
 endfunction

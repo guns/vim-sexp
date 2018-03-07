@@ -2308,10 +2308,13 @@ endfunction
 " probably not be very useful if we didn't do it this way.
 function! s:yankdel_range(start, end, del, ...)
     let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
+    " Caveat: TODO: yankdel_preadjust_range() currently modifies by reference;
+    " consider having it return adjustments.
+    let [start, end] = [a:start[:], a:end[:]]
     " Consider special case.
-    call s:yankdel_preadjust_range(a:start, a:end, inc)
+    call s:yankdel_preadjust_range(start, end, inc)
     " Make sure there's a point in continuing.
-    let cmp = s:compare_pos(a:start, a:end)
+    let cmp = s:compare_pos(start, end)
     if cmp > 1 || cmp == 0 && (!inc[0] || !inc[1])
         " Nothing to do!
         return ''
@@ -2321,8 +2324,8 @@ function! s:yankdel_range(start, end, del, ...)
     " Nomenclature: 's'=start, 'e'=end, 'l'=line, 'c'=col, 't'=text
     " Cache line/col positions in more convenient form, converting 1-based col
     " positions to 0-based equivalents.
-    let [sl, el] = [a:start[1], a:end[1]]
-    let [sc, ec] = [a:start[2] - 1, a:end[2] - 1]
+    let [sl, el] = [start[1], end[1]]
+    let [sc, ec] = [start[2] - 1, end[2] - 1]
 
     " Allow easy differentiation between collinear and non-collinear case.
     let co = sl == el
@@ -2336,6 +2339,14 @@ function! s:yankdel_range(start, end, del, ...)
     endif
     if inc[1]
         let ec = matchend(co ? slt : elt, '.', ec)
+    endif
+
+    " TODO: Adjustment algorithm is simpler if run before buffer changes
+    " (since end may no longer correspond to buffer text). Consider whether
+    " it would be better to move this up and simplify s:adjust_positions.
+    if a:del && a:0 > 1
+        "echomsg "s=" . string(start) . " e=" . string(end) . " ps=" . string(a:2)
+        call s:adjust_positions(start, end, inc, a:2)
     endif
 
     " Get text from 'start' to either 'end' (collinear) or EOL
@@ -2389,12 +2400,6 @@ function! s:yankdel_range(start, end, del, ...)
     endif
     " Restore cursor
     call s:setcursor(cursor)
-    " TODO: Adjustment algorithm is simpler if run before buffer changes
-    " (since a:end may no longer correspond to buffer text). Consider whether
-    " it would be better to move this up and simplify s:adjust_positions.
-    if a:del && a:0 > 1
-        call s:adjust_positions(a:start, a:end, inc, a:2)
-    endif
 
     return ret
 endfu
@@ -2551,35 +2556,38 @@ endfunction
 " Assumption: start/end refer to actual char positions.
 function! s:adjust_positions(start, end, inc, ps)
     let [s, e] = [a:start[:], a:end[:]]
-    " Adjust s/e to get first deleted pos at start and first kept pos at end
+    " Adjust s/e to get first deleted pos at start and first real (non-eol)
+    " kept pos at end.
+    " Rationale: In a multi-byte context, these are the choices that precisely
+    " delineate the deletion; moreover, using real (non-eol) pos at end
+    " ensures that a deleted position collapses onto an actual position past
+    " deletion, which yields more natural behavior than the alternative.
     if !a:inc[0]
-        " Assumption: Unlike e[], s[] can't be changed by delete. Even if char
-        " after s[] differs from what it was prior to delete, the col offset
-        " will be correct.
         let s = s:offset_char(s, 1, 1)
     endif
+    if a:inc[1]
+        let e_real = s:offset_char(e, 1)
+        let e = s:offset_char(e, 1, 1)
+    else
+        let e_real = e
+    endif
     for p in a:ps
-        if s:compare_pos(p, s) < 0
+        if s:compare_pos(p, s) <= 0
             " Position unaffected
             continue
         elseif s:compare_pos(p, e) <= 0
-            " Collapse to start of deleted region.
-            " FIXME: Sometimes collapsing back to start is not the right
-            " thing: e.g., when p is on a later line, would be better to
-            " collapse it to first kept pos *after* start.
-            " Note: No need to differentiate between last char deleted and the
-            " one just after it. (This is why we can ignore inc[1].)
-            let [_, p[1], p[2], _] = s "s:offset_char(s, 1, 1)
-        else
-            " Past deleted region
-            " Caveat: Order of col/line adjustment significant.
-            if p[1] == e[1]
-                " Collinear with end of deleted region: must account for
-                " col shift due to combination with start line.
-                let p[2] -= e[2] - s[2]
-            endif
-            let p[1] -= e[1] - s[1]
+            " Colocate with real pos just past deletion to permit the
+            " adjustment to be handled with same logic as p > e case.
+            let [_, p[1], p[2], _] = e_real
         endif
+        " In or past deleted region
+        " Caveat: Order of col/line adjustment significant.
+        if p[1] == e[1]
+            " Collinear with end of deleted region: must account for
+            " col shift due to combination with start line.
+            let p[2] -= e[2] - s[2]
+        endif
+        let p[1] -= e[1] - s[1]
     endfor
 endfunction
 
@@ -2643,6 +2651,7 @@ function! s:cleanup_ws(open, ps)
 
         if do_join || eff_next[1] - eff_prev[1] > 1
             " We're joining and/or removing empty lines.
+            " TODO: Problem to have eff_next passed by ref in both spots?
             call s:yankdel_range(eff_prev, eff_next, 1,
                 \ do_join ? [0, 0] : [0, 2], s:concat_positions(a:ps, eff_next))
         endif

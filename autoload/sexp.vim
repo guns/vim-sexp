@@ -938,7 +938,7 @@ function! s:offset_char(pos, dir, ...)
         elseif !a:dir && cn < lim
             " BOL
             if l > 1
-                let [l, c] = [l - 1, col([l - 1, '$'])
+                let [l, c] = [l - 1, col([l - 1, '$'])]
                 if !inc_nl && c > 1
                     " Goto first byte of final char.
                     call cursor(l, c - 1)
@@ -2274,235 +2274,169 @@ function! s:swap_current_selection(mode, next, pairwise)
     return 1
 endfunction
 
-" Handle special inc values.
-function! s:yankdel_preadjust_range(start, end, inc)
+" Adjust range start/end/inc to make range entirely inclusive, taking special
+" inc value into account.
+"   0 = exclusive
+"   1 = inclusive
+"   2 = exclusive of whitespace up to and including newline at EOL (start of
+"       range) or BOL (end of range)
+function! s:yankdel_range__preadjust_range(start, end, inc)
+    let [start, end] = [a:start[:], a:end[:]]
     " TODO: Consider using cursor movements with search rather than this
     " programmatic approach.
     if a:inc[0] == 2 &&
-        \ getline(a:start[1])[a:start[2] - 1:] =~ '^.\?\s*$'
+        \ getline(start[1])[start[2] - 1:] =~ '^.\?\s*$'
         " Convert to start of next line inclusive.
-        let a:inc[0] = 1
-        let a:start[1] += 1
-        let a:start[2] = 1
-    endif
-    if a:inc[1] == 2 &&
-        \ getline(a:end[1])[:a:end[2] - 1] =~ '^\s*.\?$'
-        " Convert to end of prev line inclusive.
-        let a:inc[1] = 1
-        let a:end[1] -= 1
-        let a:end[2] = col([a:end[1], '$']) - 1
-    endif
-endfunction
-
-" Yank (del=0) or delete (del=1) text in range defined by start/end. Optional
-" 'inc' arg allows inclusivity of range to be specified independently for
-" start and end.
-" BIG CHANGE!!!! del can be either a boolean flag *or* splice text.
-" Note: Allow caller to specify 'inc' either as list or bool, with a bool
-" assumed to apply only to end (with start being included by default). If inc
-" arg is omitted, defaults to [1, 0]: i.e., start=inclusive, end=exclusive.
-" Cursor Note: If we move cursor, we'll leave it at start of operated range.
-" TODO: Add another value for inc/exc (2 or -1), which indicates that not only
-" the char, but also an adjacent newline, should be excluded.
-" Question: What if whitespace separates the endpoint of the range and an
-" otherwise adjacent newline? I'm thinking that for the intended use case, it
-" would make sense to treat it the same way. In fact, this change would
-" probably not be very useful if we didn't do it this way.
-function! s:yankdel_range(start, end, del, ...)
-    " FIXME: Need to protect save/restore in try block.
-    let ve_save = &ve
-    set ve=onemore
-    let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
-    " Caveat: TODO: yankdel_preadjust_range() currently modifies by reference;
-    " consider having it return adjustments.
-    let [start, end] = [a:start[:], a:end[:]]
-    let [del, splice, spl] = type(a:del) == 1 ? [1, 1, a:del] : [!!a:del, 0, '']
-    " Consider special case.
-    call s:yankdel_preadjust_range(start, end, inc)
-    " Make sure there's a point in continuing.
-    let cmp = s:compare_pos(start, end)
-    if cmp > 1 || cmp == 0 && (!inc[0] || !inc[1])
-        " Nothing to do!
-        return ''
-    endif
-
-    let cursor = getpos('.')
-    " Adjustment: Make start point to first affected pos, end past last
-    " affected pos.
-    if !inc[0]
+        let start[1] += 1
+        let start[2] = 1
+    elseif !a:inc[0]
+        " Adjustment: Make start/end reflect the operable region.
         let start = s:offset_char(start, 1, 1)
     endif
-    if inc[1]
-        let end = s:offset_char(end, 1, 1)
+    if a:inc[1] == 2 &&
+        \ getline(end[1])[:end[2] - 1] =~ '^\s*.\?$'
+        " Convert to end of prev line inclusive.
+        let end[1] -= 1
+        " Special Case: 
+        if end[1] > 1 && col([end[1], '$']) <= 1
+            " Empty line. Move back just past end of previous line.
+            let end[1] -= 1
+            let end[2] = col([end[1], '$'])
+        else
+            let end[2] = col([end[1], '$']) - 1
+        endif
+    elseif !a:inc[1]
+        let end = s:offset_char(end, 0, 1)
     endif
+    return [start, end]
+endfunction
 
-    if del
-        " Total number of bytes in file will be used to calculate delta later.
-        " TODO: Better way?
-        let bytes = line2byte('$') + col([line('$'), '$'])
-        " How about this?
-        let offs = []
-        let s_byte = s:pos2byte(start)
-        let e_off = s:pos2byte(end) - s_byte
-        let ps = a:0 > 1 ? s:concat_positions(a:2, cursor) : [cursor]
-        for p in ps
-            call add(offs, s:pos2byte(p) - s_byte)
-        endfor
-    endif
-    " Select text to be yanked/deleted
-    call s:set_visual_marks([start, end])
-    call s:select_current_marks('v')
-    let reg_save = @a
-    if splice
-        let @a = spl
-        normal! "ap
-        let ret = @"
-    elseif del
-        normal! "ad
-    else
-        normal! "ay
-    endif
-    let @a = reg_save
+function! s:yankdel_range__preadjust_positions(start, end, ps)
+    " Pre-op position adjustment
+    let ret = {'ps': a:ps, 'byte_offs': [], 'start': a:start}
+    " Total # of bytes in file used to calculate delta later.
+    let ret.bytes_in_file = s:total_bytes_in_file()
+    " Calculate byte offset of start wrt BOF and end wrt start.
+    let ret.start_byte = s:pos2byte(a:start)
+    let ret.end_off = s:pos2byte(a:end) - ret.start_byte
+    " Calculate and store offsets of positions of interest wrt start of range.
+    for p in a:ps
+        call add(ret.byte_offs, s:pos2byte(p) - ret.start_byte)
+    endfor
+    return ret
+endfunction
 
-    if del
-        " Net byte count (added (+) / deleted (-))
-        let delta = line2byte('$') + col([line('$'), '$']) - bytes
-        for i in range(len(offs))
-            let [o, p] = [offs[i], ps[i]]
-            if o > 0
-                if o < e_off && splice
-                    " Put at head
-                    let [p[1], p[2]] = start[1:2]
+function! s:yankdel_range__postadjust_positions(adj, splice)
+    " Post-op position adjustment
+    " Calculate net byte delta (added (+) / deleted (-))
+    let delta = s:total_bytes_in_file() - a:adj.bytes_in_file
+    let [ps, offs] = [a:adj.ps, a:adj.byte_offs]
+    let [s, s_byte, e_off] = [a:adj.start, a:adj.start_byte, a:adj.end_off]
+    " Iterate parallel lists ps and offs.
+    for i in range(len(offs))
+        let [o, p] = [offs[i], ps[i]]
+        if o > 0
+            " Adjustment required.
+            if o < e_off && a:splice
+                " Move to start
+                " Caveat: Considered using byte offsets to calculate start
+                " (rather than saving in adjustment struct), but this could
+                " cause undesirable shift to subsequent line when end is at
+                " EOL. In such cases, it's better to set position to point
+                " just past EOL and rely on subsequent cursor positioning to
+                " pull it back.
+                let [p[1], p[2]] = s[1:2]
+            else
+                " Use either adjusted original pos or adjusted original
+                " end (if original pos is in deleted range).
+                let [p[1], p[2]] = s:byte2pos(s_byte + max([o, e_off]) + delta)[1:2]
+            endif
+        endif
+    endfor
+endfunction
+
+" Yank, delete or splice text in range defined by start/end, returning any
+" deleted text.
+" Splice Note: If a string (rather than a boolean flag) is supplied for
+" del_or_spl, the range will be *replaced* by the provided text and the
+" deleted text will be returned.
+" Range Inclusivity: Defaults to inclusive start, exclusive end, but may be
+" overridden by first optional arg (a:1), which may be either a boolean that
+" sets end inclusivity (1=inclusive), or a 2-element list setting inclusivity
+" of start and end independently.
+" Position Adjustment: If caller provides a 2nd optional arg (a:2), it is
+" assumed to be a list of positions that will be modified in-place to account
+" for any deletions. The goal is to preserve position in an intelligent
+" manner: i.e., wherever possible, a position should point to the same
+" character before and after the operation. If this is not possible, we should
+" do the next best thing, which typically means adjusting the position to a
+" deterministic location near the head or tail of the operated region.
+function! s:yankdel_range(start, end, del_or_spl, ...)
+    let ret = ''
+    let cursor = getpos('.')
+    " Temporarily set 'virtualedit' to onemore.
+    " Rationale: Need to be able to select (visually) past EOL in certain
+    " cases (e.g., non-inclusive start at EOL).
+    let ve_save = &ve
+    set ve=onemore
+    let reg_save = [@a, @"]
+    try
+        let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
+        let [start, end] = s:yankdel_range__preadjust_range(a:start, a:end, inc)
+        let cmp = s:compare_pos(start, end)
+        " Special Case: Treat splice of null replacement region as a put.
+        " Design Decision: Only *just empty* regions will be treated this way:
+        " e.g., start == end and either end (but not both) exclusive. Though
+        " there are simpler ways to accomplish it, you could use such null
+        " regions to perform a simple put, whose direction is determined by
+        " which end is inclusive (inclusive start => put before).
+        let spl_put = cmp > 0 && s:offset_char(end, 1, 1) == start
+        if cmp <= 0 || spl_put
+            " Note: Since splice also deletes, del will be set for either.
+            let [del, spl, spl_text] = type(a:del_or_spl) == 1
+                \ ? [1, 1, a:del_or_spl]
+                \ : [!!a:del_or_spl, 0, '']
+
+            if del
+                " Pre-op position adjustment
+                let adj = s:yankdel_range__preadjust_positions(start, end,
+                    \ a:0 > 1 ? s:concat_positions(a:2, cursor) : [cursor])
+            endif
+
+            " FIXME: This *could* be combined with the non-spl_put case.
+            " Should it be??
+            if spl_put
+                call s:setcursor(end)
+                let @a = spl_text
+                normal! "ap
+            else
+                " Select text to be yanked/deleted
+                call s:set_visual_marks([start, end])
+                call s:select_current_marks('v')
+                if spl
+                    let @a = spl_text
+                    normal! "ap
+                    let ret = @"
                 else
-                    let [p[1], p[2]] = s:byte2pos(s_byte + max([o, e_off]) + delta)[1:2]
+                    exe 'normal! ' . '"a' . (del ? 'd' : 'y')
+                    let ret = @a
                 endif
             endif
-        endfor
-        "call s:adjust_positions(start, end, splice, delta, s:concat_positions(a:2, cursor))
-    endif
+            if del
+                " Post-op position adjustment
+                call s:yankdel_range__postadjust_positions(adj, spl)
+            endif
+        endif
+    finally
+        " Restore some things...
+        let [@a, @"] = reg_save
+        let &ve = ve_save
+        call s:setcursor(cursor)
+    endtry
 
-    " Restore cursor
-    call s:setcursor(cursor)
-
-    let &ve = ve_save
     return ret
 endfu
 let Ydr = function('s:yankdel_range')
-
-function! s:yankdel_range_old_mod(start, end, del, ...)
-    let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
-    " Caveat: TODO: yankdel_preadjust_range() currently modifies by reference;
-    " consider having it return adjustments.
-    let [start, end] = [a:start[:], a:end[:]]
-    let [del, splice, spl] = type(a:del) == 1 ? [1, 1, a:del] : [!!a:del, 0, '']
-    " Consider special case.
-    call s:yankdel_preadjust_range(start, end, inc)
-    " Make sure there's a point in continuing.
-    let cmp = s:compare_pos(start, end)
-    if cmp > 1 || cmp == 0 && (!inc[0] || !inc[1])
-        " Nothing to do!
-        return ''
-    endif
-
-    let cursor = getpos('.')
-    " Nomenclature: 's'=start, 'e'=end, 'l'=line, 'c'=col, 't'=text
-    " Cache line/col positions in more convenient form, converting 1-based col
-    " positions to 0-based equivalents.
-    let [sl, el] = [start[1], end[1]]
-    let [sc, ec] = [start[2] - 1, end[2] - 1]
-
-    " Allow easy differentiation between collinear and non-collinear case.
-    let co = sl == el
-    " Cache the partial line(s).
-    let slt = getline(sl)
-    if !co | let elt = getline(el) | endif
-    " Shift start/end by one char position, as indicated by corresponding inc
-    " flag, taking care to allow for multi-byte chars.
-    if !inc[0]
-        let sc = matchend(slt, '.', sc)
-    endif
-    if inc[1]
-        let ec = matchend(co ? slt : elt, '.', ec)
-    endif
-
-    if splice
-        let lines = split(spl, "\n")
-        let spl = {'lines': lines,
-                \ 'first': !empty(lines) && lines[0] !~ "^\n" ? remove(lines, 0) : '',
-                \ 'last': !empty(lines) && lines[-1] !~ "\n$" ? remove(lines, -1) : ''}
-    endif
-    " TODO: Adjustment algorithm is simpler if run before buffer changes
-    " (since end may no longer correspond to buffer text). Consider whether
-    " it would be better to move this up and simplify s:adjust_positions.
-    if a:del && a:0 > 1
-        "echomsg "s=" . string(start) . " e=" . string(end) . " ps=" . string(a:2)
-        call s:adjust_positions(start, end, inc, spl_lines, a:2)
-    endif
-
-    " Get text from 'start' to either 'end' (collinear) or EOL
-    let ret = slt[sc : (co ? ec - 1 : -1)]
-    if del
-        if splice
-            if !empty(spl.first)
-                call setline(sl, strpart(slt, 0, sc) . spl.first)
-            endif
-            call append(sl, spl.lines)
-            if !empty(spl.last)
-                call setline(sl + len(spl.lines), spl.last . strpart(co ? slt : elt, ec))
-            endif
-        else
-            " Combine undeleted text (possibly empty) from initial and final lines
-            " (which could be the same line).
-            call setline(sl, strpart(slt, 0, sc) . strpart(co ? slt : elt, ec))
-        endif
-    endif
-    if !co
-        if del
-            " Before its line number is invalidated, delete final line, part
-            " of which may already have been appended to what remains of first
-            " line in range.
-            exe el "d _"
-        endif
-        " Handle multi-line case, omitting the final line, which is handled
-        " specially.
-        if sl < el - 1
-            let reg_save = @a
-            exe sl + 1 "," el - 1 del ? "d" : "y" "a"
-            let ret .= "\n" . @a
-            let @a = reg_save
-        else
-            " No linewise :y/:d cmd means we have to add NL before final line
-            " manually.
-            let ret .= "\n"
-        endif
-        " Accumulate in-range portion of final line.
-        let ret .= strpart(elt, 0, ec)
-    endif
-    " Fix cursor position if it was invalidated by delete.
-    if del
-        " Reposition cursor if necessary.
-        let p1 = [0, sl, sc + 1, 0]
-        if s:compare_pos(cursor,  p1) > 0
-            let p2 = [0, el, ec + 1, 0]
-            if s:compare_pos(cursor, p2) <= 0
-                " Move back to head of deletion.
-                let cursor = p1
-            else
-                " Adjust for lines deleted and, if cursor was on final
-                " line of range, account for col shift engendered by deletion.
-                let cursor[1] -= el - sl
-                if cursor[1] == el
-                    " Collinearity determines shift direction.
-                    let cursor[2] += co ? sc - ec : sc
-                endif
-            endif
-        endif
-    endif
-    " Restore cursor
-    call s:setcursor(cursor)
-
-    return ret
-endfu
 
 " Put input text at specified position, with input flags determining whether
 " paste works like p, P, gp or gP.
@@ -2650,17 +2584,22 @@ function! s:concat_positions(...)
     return ret
 endfunction
 
+" Convert position to corresponding file byte offset.
 function! s:pos2byte(p)
     return line2byte(a:p[1]) + a:p[2] - 1
 endfunction
-let P2b = function('s:pos2byte')
 
+" Convert file byte offset to corresponding position.
 function! s:byte2pos(b)
     let l = byte2line(a:b)
     let c = a:b - line2byte(l) + 1
     return [0, l, c, 0]
 endfunction
-let B2p = function('s:byte2pos')
+
+" Return total # of bytes in file.
+function! s:total_bytes_in_file()
+    return line2byte('$') + col([line('$'), '$'])
+endfunction
 
 " Modify ps in-place.
 " Note: inc is always 2-element list.
@@ -2687,42 +2626,6 @@ function! s:adjust_positions(start, end, splice, delta, ps)
             " Past deleted/replaced region.
             let [p[1], p[2]] = s:byte2pos(s:pos2byte(p) + a:delta)[1:2]
         endif
-    endfor
-endfunction
-function! s:adjust_positions_old(start, end, inc, ps)
-    let [s, e] = [a:start[:], a:end[:]]
-    " Adjust s/e to get first deleted pos at start and first real (non-eol)
-    " kept pos at end.
-    " Rationale: In a multi-byte context, these are the choices that precisely
-    " delineate the deletion; moreover, using real (non-eol) pos at end
-    " ensures that a deleted position collapses onto an actual position past
-    " deletion, which yields more natural behavior than the alternative.
-    if !a:inc[0]
-        let s = s:offset_char(s, 1, 1)
-    endif
-    if a:inc[1]
-        let e_real = s:offset_char(e, 1)
-        let e = s:offset_char(e, 1, 1)
-    else
-        let e_real = e
-    endif
-    for p in a:ps
-        if s:compare_pos(p, s) <= 0
-            " Position unaffected
-            continue
-        elseif s:compare_pos(p, e) <= 0
-            " Colocate with real pos just past deletion to permit the
-            " adjustment to be handled with same logic as p > e case.
-            let [_, p[1], p[2], _] = e_real
-        endif
-        " In or past deleted region
-        " Caveat: Order of col/line adjustment significant.
-        if p[1] == e[1]
-            " Collinear with end of deleted region: must account for
-            " col shift due to combination with start line.
-            let p[2] -= e[2] - s[2]
-        endif
-        let p[1] -= e[1] - s[1]
     endfor
 endfunction
 

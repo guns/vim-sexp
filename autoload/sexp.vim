@@ -1748,6 +1748,12 @@ function! s:select_child(mode, count, next, inner)
     call s:set_marks_around_current_element(a:mode, a:inner)
 endfunction
 
+" Return dict representing the most recent visual selection.
+" Keys:
+"   vs, ve
+"   cursor
+"   at_end  TODO: If this is redundant with cursor and there's no compelling
+"           reason for the de-normalization, remove one or the other.
 " Note: No point in calling if there's not visual selection, but handle
 " gracefully if we're not.
 function! s:get_cursor_and_visual_info()
@@ -1776,7 +1782,11 @@ function! s:get_cursor_and_visual_info()
         " TODO: Does Vim provide another way?
         let mode = mode()
         if mode !=? 'v'
-            let cursor = getpos('.')
+            "let cursor = getpos('.')
+            " Caveat: Entering visual mode can alter the viewport, which is a
+            " problem for commands that expect to be able to preserve the
+            " pre-command view; use winsaveview/winrestview to save/restore.
+            let wsv = winsaveview()
             normal! gv
         endif
         " Note: When range begins past eol, exiting visual mode causes cursor to
@@ -1786,7 +1796,8 @@ function! s:get_cursor_and_visual_info()
         let o.at_end = s:compare_pos(getpos('.'), ve) >= 0
         if mode !=? 'v'
             exe "normal! \<Esc>"
-            call s:setcursor(cursor)
+            call winrestview(wsv)
+            "call s:setcursor(cursor)
         endif
         let o.cursor = o.at_end ? ve : vs
     else
@@ -2402,25 +2413,23 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 let adj = s:yankdel_range__preadjust_positions(start, end,
                     \ a:0 > 1 ? s:concat_positions(a:2, cursor) : [cursor])
             endif
-
-            " FIXME: This *could* be combined with the non-spl_put case.
-            " Should it be??
+            " Perform the yank/del/splice.
             if spl_put
                 call s:setcursor(end)
-                let @a = spl_text
-                normal! "ap
             else
                 " Select text to be yanked/deleted
                 call s:set_visual_marks([start, end])
                 call s:select_current_marks('v')
-                if spl
-                    let @a = spl_text
-                    normal! "ap
+            endif
+            if spl
+                let @a = spl_text
+                normal! "ap
+                if !spl_put
                     let ret = @"
-                else
-                    exe 'normal! ' . '"a' . (del ? 'd' : 'y')
-                    let ret = @a
                 endif
+            else
+                exe 'normal! ' . '"a' . (del ? 'd' : 'y')
+                let ret = @a
             endif
             if del
                 " Post-op position adjustment
@@ -2428,7 +2437,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
             endif
         endif
     finally
-        " Restore some things...
+        " Restore options/regs/cursor...
         let [@a, @"] = reg_save
         let &ve = ve_save
         call s:setcursor(cursor)
@@ -2490,11 +2499,10 @@ fu! s:put_at(text, before, cursor_after, ...)
 endfu
 
 " Adjust the input view to ensure that, if possible, the cursor line doesn't
-" change its screen line. (Won't be possible if desired cursor line exceeds
+" change its screen line. (Won't be possible if desired screen line exceeds
 " buffer size.)
 function! s:adjust_saved_view(view, cursor)
-    " TODO: Do we need to apply constraints?
-    let a:view.topline -= max([1, a:view.lnum - a:cursor[1]])
+    let a:view.topline = max([1, a:view.topline - (a:view.lnum - a:cursor[1])])
     let a:view.lnum = a:cursor[1]
     let a:view.col = a:cursor[2] - 1
     " Note: Because of the lack of one-to-one correspondence between chars and
@@ -2570,6 +2578,7 @@ function! sexp#indent(top, count, clean, ...)
     let cur[2] = col([cur[1], '$']) - cur_edist
     call s:adjust_saved_view(win, cur)
 
+    redraw
     call winrestview(win)
 endfunction
 
@@ -2648,7 +2657,6 @@ function! s:list_head()
     return ret
 endfunction
 
-" FIXME: Convert this version to use yankdel_range.
 function! s:cleanup_ws(open, ps)
     let open = a:open[:]
     " FIXME: open is getting passed in as [0, 0, 0, 0] in toplevel case.
@@ -2719,197 +2727,6 @@ function! s:cleanup_ws(open, ps)
             call s:setcursor(next)
         endif
     endwhile
-endfunction
-
-function! s:cleanup_ws_adjust_posns1(l1, l2, ps)
-    " >>| in or past deleted lines
-    for p in a:ps
-        if p[1] > a:l2
-            let p[1] -= a:l2 - a:l1 + 1
-        elseif p[1] >= a:l1
-            " Move cursor to head of line beyond deletion range.
-            let p[1] = a:l2 < line('$') ? a:l2 + 1 : line('$')
-            let p[2] = 1
-        endif
-    endfor
-endfunction
-
-function! s:cleanup_ws_adjust_posns2(l2, dbytes, ps)
-    for p in a:ps
-        " >>| in or after stripped ws at head of line
-        if p[1] == a:l2
-            " Move cursor leftward by deleted chars (limit BOL)
-            let p[2] = p[2] > a:dbytes ? p[2] - a:dbytes : 1
-        endif
-    endfor
-endfunction
-
-function! s:cleanup_ws_adjust_posns3(l1, ps)
-    " >>| on or after joined line
-    for p in a:ps
-        if p[1] > a:l1
-            if p[1] == a:l1 + 1
-                let p[2] += col([a:l1, '$']) - 1
-            endif
-            let p[1] -= 1
-        endif
-    endfor
-endfunction
-
-" TODO: Change to strategy in which counts specify # of containing lists (like
-" for formatting).
-function! s:cleanup_ws_working(open, ps)
-    let prev = [0, 0, 0, 0]
-    let open = a:open[:]
-    if open[1]
-        call s:setcursor(open)
-        let next = s:list_head()
-        if !next[1]
-            let close = s:nearest_bracket(1)
-        endif
-    else
-        " At top-level. Find head element in buffer.
-        " FIXME: Should be able to move_to_element_near_position, but it's
-        " currently broken.
-        call cursor(1, 1)
-        let next = s:current_element_terminal(0)
-        if !next[1]
-            let next = s:nearest_element_terminal(1, 0)
-        endif
-        if !next[1]
-            " Empty buffer. FIXME: How to handle? Delete all?
-            return
-        endif
-    endif
-    while 1
-        " Note: Valid end not guaranteed.
-        if !next[1]
-            " TODO: Does this always work?
-            " Note: If we have next, there is no close.
-            let close = s:nearest_bracket(1)
-        else
-            let close = [0, 0, 0, 0]
-        endif
-        " Note: t=trailing ws of head line, h=head ws of trailing line
-        let del = {'tline': 0, 'join': 0, 'hline': 0, 'rrange': 0}
-        let eff_prev = prev[1] ? prev : open[1] ? open : [0, 0, 0, 0]
-        let eff_next = next[1] ? next : close[1] ? close : [0, 0, 0, 0]
-        " ARRGGHHH!!!! Occurs to me I could be using s:yankdel_range()...
-        let del.tline = eff_prev[1] && eff_next[1] > eff_prev[1]
-
-        let del.join =
-            \ (open[1] && open == eff_prev)
-            \ && (close[1] || next[1] && !s:is_comment(next[1], next[2])) ||
-            \ (close[1] && close == eff_next)
-            \ && (open[1] || prev[1] && !s:is_comment(prev[1], prev[2]))
-
-        " TODO: Do it for toplevel, even if not joining.
-        " Question: What about empty buffer? 
-        " Assumption: line numbers of 0 mean nothing in that direction.
-        let del.hline = eff_next[1] && (del.join || !eff_prev[1])
-
-        let del.rrange = eff_prev[1] && eff_prev[1] == eff_next[1]
-
-        if del.rrange
-            " FIXME!!!
-            "echomsg "Doing rrange!"
-        else
-            if del.tline
-                " TODO: Consider using g_, D, etc...
-                " Strip any trailing whitespace after prev el.
-                call setline(prev[1], substitute(getline(prev[1]), '\s*$', '', ''))
-            endif
-            " Get deletion range.
-            " FIXME: Can open/close be [0, 0, 0, 0]? If so, handle; also, this
-            " expression seems mostly duplicate with eff_prev/next. Eliminate
-            " duplication.
-            let [l1, l2] = [
-                \ prev[1] ? prev[1] + 1 : open[1] + 1,
-                \ next[1] ? next[1] - 1 : close[1] ? close[1] - 1 : line('$')]
-            let dlines = l2 - l1 + 1
-            if dlines
-                " Delete blank lines, adjusting subsequent line numbers accordingly.
-                exec l1 . ',' . l2 . 'd'
-                if eff_next[1]
-                    " TODO: Probably stop managing end, deferring getting it
-                    " till advancement.
-                    let eff_next[1] -= dlines
-                endif
-                " >>| in or past deleted lines
-                call s:cleanup_ws_adjust_posns1(l1, l2, a:ps)
-            endif
-            let dbytes = 0
-            if del.hline
-                " Delete whitespace from head of end line
-                let n = col([eff_next[1], '$'])
-                call setline(eff_next[1], substitute(getline(eff_next[1]), '^\s*', '', ''))
-                " FIXME: Don't like keeping up with eff_next changes manually:
-                " that was the point of the cleanup_ws_adjust<...> functions.
-                let eff_next[2] = 1
-                let dbytes = n - col([eff_next[1], '$'])
-                " >>| in or after stripped ws at head of line
-                call s:cleanup_ws_adjust_posns2(eff_next[1], dbytes, a:ps)
-            endif
-            if del.join
-                " FIXME: Don't set next here if it wasn't set. Maybe use
-                " eff_next?
-                let eff_next = [0, eff_prev[1], col([eff_prev[1], '$']), 0]
-                " >>| on or after joined line
-                " FIXME: Not accounting for rightward shift due to join.
-                call s:cleanup_ws_adjust_posns3(eff_prev[1], a:ps)
-                " FIXME: Ugly! This has to come after call to
-                " s:cleanup_ws_adjust_posns3. Rework completely...
-                " Assumption: prev[1] != 0 (since join at BOF)
-                exec eff_prev[1] . 'join!'
-            endif
-        endif
-        if !next[1]
-            break
-        endif
-        " If here, another element at this level.
-        if s:is_list(next[1], next[2])
-            let next = s:move_to_list_open()
-            " Assumption: Position of next can't be changed by recursive call.
-            call s:cleanup_ws(next, a:ps)
-        endif
-        " Now that we've recursed (if possible), attempt to advance.
-        call cursor(eff_next[1], eff_next[2])
-        let prev = s:move_to_current_element_terminal(1)
-        let next = s:nearest_element_terminal(1, 0)
-        if next == prev
-            " Note: We'll go through loop once more.
-            let next = [0, 0, 0, 0]
-        else
-            call s:setcursor(next)
-        endif
-    endwhile
-endfunction
-
-" TODO: Comment...
-" TODO: Probably rename...
-" TODO: Consider adding mode arg.
-" FIXME: May not need this anymore, now that I'm moving into sexp#indent.
-function! sexp#cleanup_around_element(count, mode)
-    " FIXME: Make this only normal mode, now that we're always doing whole
-    " number of forms.
-    let cursor = getpos('.')
-    " Find count'th open (including any at cursor)
-    call s:move_to_current_element_terminal(1)
-    let cnt = a:count ? a:count : 1
-    let open = [0, 0, 0, 0]
-    while cnt
-        let p = move_to_nearest_bracket(0)
-        if !p[1]
-            break
-        endif
-        let open = p
-        let cnt -= 1
-    endwhile
-    " TODO: Ensure we're on open here. If not, pass [0, 0, 0, 0] sentinel.
-    call s:cleanup_around_element(open, cursor)
-
-    call s:setcursor(cursor)
-    " TODO: Do the indent here or at higher level?
 endfunction
 
 " Place brackets around scope, then place cursor at head or tail, finally

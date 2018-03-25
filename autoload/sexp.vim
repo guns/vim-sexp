@@ -959,6 +959,7 @@ function! s:offset_char(pos, dir, ...)
     call s:setcursor(cursor)
     return [0, l, c, 0]
 endfunction
+let Oc = function('s:offset_char')
 
 " Return a constrained range.
 function! s:constrained_range(start, end, keep_end)
@@ -2285,41 +2286,64 @@ function! s:swap_current_selection(mode, next, pairwise)
     return 1
 endfunction
 
-" Adjust range start/end/inc to make range entirely inclusive, taking special
-" inc value into account.
+" Adjust range start pos to make range entirely inclusive, taking special inc
+" value into account.
 "   0 = exclusive
-"   1 = inclusive
-"   2 = exclusive of whitespace up to and including newline at EOL (start of
+"   1 = inclusive (nop)
+"   2 = exclusive of whitespace up to and including newline at EOL
 "       range) or BOL (end of range)
-function! s:yankdel_range__preadjust_range(start, end, inc)
-    let [start, end] = [a:start[:], a:end[:]]
-    " TODO: Consider using cursor movements with search rather than this
-    " programmatic approach.
-    if a:inc[0] == 2 &&
-        \ getline(start[1])[start[2] - 1:] =~ '^.\?\s*$'
-        " Convert to start of next line inclusive.
-        let start[1] += 1
-        let start[2] = 1
-    elseif !a:inc[0]
-        " Adjustment: Make start/end reflect the operable region.
-        let start = s:offset_char(start, 1, 1)
-    endif
-    if a:inc[1] == 2 &&
-        \ getline(end[1])[:end[2] - 1] =~ '^\s*.\?$'
-        " Convert to end of prev line inclusive.
-        let end[1] -= 1
-        " Special Case: 
-        if end[1] > 1 && col([end[1], '$']) <= 1
-            " Empty line. Move back just past end of previous line.
-            let end[1] -= 1
-            let end[2] = col([end[1], '$'])
+"       Note: Equivalent to inc==0 if not in whitespace at EOL
+function! s:yankdel_range__preadjust_range_start(start, inc)
+    let ret = a:start[:]
+    if a:inc == 2 && getline(ret[1])[ret[2] - 1:] =~ '^.\?\s*$'
+        " Move to start of next line (if it exists).
+        if ret[1] < line('$')
+            let ret[1] += 1
+            let ret[2] = 1
         else
-            let end[2] = col([end[1], '$']) - 1
+            " EOF
+            let ret = getpos([line('$'), '$'])
         endif
-    elseif !a:inc[1]
-        let end = s:offset_char(end, 0, 1)
+    elseif a:inc != 1 " 0 or 2
+        " Move to next position, including newline.
+        let ret = s:offset_char(ret, 1, 1)
     endif
-    return [start, end]
+    return ret
+endfunction
+
+" Adjust range start pos to make range entirely inclusive, taking special inc
+" value into account.
+"   0 = exclusive
+"   1 = inclusive (nop)
+"   2 = exclusive of whitespace back to and including newline at BOL
+"       Note: Equivalent to inc==0 if not in whitespace at BOL
+function! s:yankdel_range__preadjust_range_end(end, inc)
+    let ret = a:end[:]
+    if a:inc == 2 && getline(ret[1])[:ret[2] - 1] =~ '^\s*.\?$'
+        " Move to end of prev line, excluding newline.
+        if ret[1] > 1
+            let ret[1] -= 1
+            let ret[2] = col([ret[1], '$']) - 1
+            if !ret[2]
+                " Empty line is special.
+                let ret[2] = 1
+                if ret[1] > 1
+                    " Special Case: We want to exclude the newline preceding end, but
+                    " col==1 on an empty line would include it; thus, back up one
+                    " additional line, including its newline.
+                    let ret[1] -= 1
+                    let ret[2] = col([ret[1], '$'])
+                endif
+            endif
+        else
+            " BOF
+            let ret[1:2] = [1, 1]
+        endif
+    elseif a:inc != 1 " 0 or 2
+        " Move to prev position, including newline.
+        let ret = s:offset_char(ret, 0, 1)
+    endif
+    return ret
 endfunction
 
 function! s:yankdel_range__preadjust_positions(start, end, ps)
@@ -2393,7 +2417,8 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
     let reg_save = [@a, @"]
     try
         let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
-        let [start, end] = s:yankdel_range__preadjust_range(a:start, a:end, inc)
+        let start = s:yankdel_range__preadjust_range_start(a:start, inc[0])
+        let end = s:yankdel_range__preadjust_range_end(a:end, inc[1])
         let cmp = s:compare_pos(start, end)
         " Special Case: Treat splice of null replacement region as a put.
         " Design Decision: Only *just empty* regions will be treated this way:
@@ -2410,7 +2435,15 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
 
             if del
                 " Pre-op position adjustment
-                let adj = s:yankdel_range__preadjust_positions(start, end,
+                " Special Case: If inc[1]==2, use inc[1]==1 end position to
+                " calculate offset.
+                " Rationale: When positions to be adjusted lie within deleted
+                " lines, using the later of the 2 end positions yields more
+                " intuitive results: namely, position will seem not to move,
+                " whereas using the earlier end position will make it appear
+                " to move backwards to end of a preceding line.
+                let adj = s:yankdel_range__preadjust_positions(start,
+                    \ inc[1] == 2 ? s:yankdel_range__preadjust_range_end(a:end, 1) : end,
                     \ a:0 > 1 ? s:concat_positions(a:2, cursor) : [cursor])
             endif
             " Perform the yank/del/splice.
@@ -2428,7 +2461,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                     let ret = @"
                 endif
             else
-                exe 'normal! ' . '"a' . (del ? 'd' : 'y')
+                silent! exe 'normal! ' . '"a' . (del ? 'd' : 'y')
                 let ret = @a
             endif
             if del
@@ -2553,32 +2586,31 @@ function! sexp#indent(top, count, clean, ...)
         " in such scenarios to force syntax recalculation prior to the =.
         '<,'>call synID(line("."), col("."), 1)
     endif
-    let cur = cursor[:]
-    let [beg, end] = [getpos("'<"), getpos("'>")]
+    " Cache visual start/end; end can actually be changed by s:cleanup_ws().
+    let [start, end] = [getpos("'<"), getpos("'>")]
     if a:clean
         " Be sure we've selected a list: algorithm not intended for top-level
         " non-list element.
-        let vs = getpos("'<")
-        if s:is_list(vs[1], vs[2]) == 2
-            "echomsg "Running @ " . string(ps[0])
+        if s:is_list(start[1], start[2]) == 2
             " Remove excess whitespace, keeping up with position changes.
-            call s:cleanup_ws(beg, [end, cur])
-            if cur != cursor
-                " Note: To avoid visual jarring, try to keep cursor on same
-                " screen line.
-            endif
+            " Leave visual mode to prevent range on function call.
+            exe "normal! \<Esc>"
+            call s:cleanup_ws(start, [end, cursor])
         endif
     endif
     " Record initial distance from cursor to end of line.
-    let cur_edist = col([cur[1], '$']) - cur[2]
+    let cur_edist = col([cursor[1], '$']) - cursor[2]
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
-    silent keepjumps exe "normal! \<Esc>" . beg[1] . 'G=' . end[1] . "G"
+    silent keepjumps exe "normal! \<Esc>" . start[1] . 'G=' . end[1] . "G"
     " Adjust cursor pos to account for leading whitespace changes.
-    let cur[2] = col([cur[1], '$']) - cur_edist
-    call s:adjust_saved_view(win, cur)
+    " Note: If cleanup was performed, s:cleanup_ws() may also have performed
+    " adjustments.
+    let cursor[2] = col([cursor[1], '$']) - cur_edist
+    "echomsg "calling adjust_saved_view win=" . string(win)
+    "call s:adjust_saved_view(win, cursor)
 
-    redraw
+    "echomsg "calling winrestview win=" . string(win)
     call winrestview(win)
 endfunction
 
@@ -2588,7 +2620,9 @@ endfunction
 function! s:concat_positions(...)
     let ret = []
     for p in a:000
-        let ret += type(p[0]) == 0 ? [p] : p
+        " p will be one of the following:
+        "   1) empty list 2) position, 3) position list
+        let ret += !empty(p) && type(p[0]) == 0 ? [p] : p
     endfor
     return ret
 endfunction
@@ -2728,6 +2762,7 @@ function! s:cleanup_ws(open, ps)
         endif
     endwhile
 endfunction
+let Cws = function('s:cleanup_ws')
 
 " Place brackets around scope, then place cursor at head or tail, finally
 " leaving off in insert mode if specified. Insert also sets the headspace

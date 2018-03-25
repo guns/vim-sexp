@@ -403,6 +403,7 @@ Leaf flow commands~
 
 
 CLONE COMMANDS (normal, visual)~
+
 <M-C>                                              *<Plug>(sexp_clone_before)*
 <M-c>                                               *<Plug>(sexp_clone_after)*
         Clone current or visually selected elements [count] times before or
@@ -419,6 +420,13 @@ INDENT COMMANDS (normal)~
 
         == shadows the builtin |==| mapping. If you wish to remap this
         command, see |g:sexp_mappings| for more information.
+
+<M-=>                                          *<Plug>(sexp_indent_and_clean)*
+<M-->                                      *<Plug>(sexp_indent_and_clean_top)*
+        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but also removes
+        blank lines and extra whitespace within the indented region.
+        TODO: Add description of whitespace cleanup.
+
 
 WRAP COMMANDS (normal, visual)~
 

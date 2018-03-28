@@ -767,7 +767,11 @@ function! s:partial_ml_join(twwi)
     return [start, end]
 endfunction
 
-" Given start and end positions, returns new positions [start', end']:
+" FIXME: Rework this comment completely to reflect changed logic!!!!!!!!!
+" Given start and end positions, returns new positions [start', end'],
+" according to logic described below.
+" !!!!!TODO: Pick up here... Question: Do we consider whitespace *under*
+" cursor?
 "
 "   * If trailing whitespace after end, end' is set to include the trailing
 "     whitespace up to the next element, unless start is preceded on its line
@@ -1810,6 +1814,7 @@ function! s:get_cursor_and_visual_info()
     return o
 endfunction
 
+" TODO: Update this comment.
 " Set visual marks to the start and end of the current element. If
 " inner is 0, trailing or leading whitespace is included by way of
 " s:terminals_with_whitespace().
@@ -2729,6 +2734,8 @@ function! s:cleanup_ws(open, ps)
                 \ || !next[1] && (!close[1] || !s:is_comment(prev[1], prev[2]))
                 \ || !prev[1] && (!open[1] || !s:is_comment(next[1], next[2])))
 
+        " FIXME: Need to handle whitespace collapse on single line. Currently
+        " handles only when next and prev are on different lines.
         if do_join || eff_next[1] - eff_prev[1] > 1
             " We're joining and/or removing empty lines.
             " TODO: Problem to have eff_next passed by ref in both spots?

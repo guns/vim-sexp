@@ -130,21 +130,28 @@ ie                                                *<Plug>(sexp_inner_element)*
 
         An element always includes leading macro characters.
 
+                                               *surrounding-whitespace-rules*
         Inner motion does not include surrounding whitespace, but the outer
         motion attempts to include all the whitespace you would wish to delete if
-        you were using the text object to delete element. The algorithm is
+        you were using the text object to delete element(s). The algorithm is
         complex, but can be expressed roughly as follows: select as many
-        surrounding whitespace characters (including newlines) as possible
-        without doing any of the following:
+        surrounding whitespace characters (including newlines) as possible,
+        while ensuring that a subsequent deletion will not do any of the
+        following...
 
-            * increasing the length of the line before the selection (by
-              combining it with the line after the selection)
-            * bringing a comment following the selection onto the end of an
+            * increase the length of the line preceding the selection
+              (by combining it with a later line whose length exceeds the
+              length of the deleted portion of the earlier line)
+            * pull a comment following the selection onto the end of the line
+              preceding the selection
               earlier line
-            * bringing the element following the selection onto a line that
+            * pull the element following the selection onto a line that
               ends in a comment
-            * joining siblings (by removing all separating whitespace)
-            * de-selecting selected leading whitespace
+            * join siblings (by removing all separating whitespace)
+            * de-select initially selected whitespace preceding the first
+              selected element
+        Note: The rules may sound complex, but they mostly follow the
+        "principle of least surprise".
 
 
                                                        *cleanup-vs-extension*
@@ -424,8 +431,10 @@ INDENT COMMANDS (normal)~
 <M-=>                                          *<Plug>(sexp_indent_and_clean)*
 <M-->                                      *<Plug>(sexp_indent_and_clean_top)*
         Like == (|sexp_indent)| and =- (|sexp_indent_top|), but also removes
-        blank lines and extra whitespace within the indented region.
-        TODO: Add description of whitespace cleanup.
+        blank lines and extra whitespace within the indented region. The rules
+        for determining whether whitespace is "extra" obey the principle of
+        least surprise mentioned under |whitespace-cleanup-rules| in the
+        documentation for sexp_outer_element.
 
 
 WRAP COMMANDS (normal, visual)~

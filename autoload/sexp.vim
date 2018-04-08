@@ -2358,6 +2358,9 @@ function! s:yankdel_range__preadjust_positions(start, end, ps)
     let ret.bytes_in_file = s:total_bytes_in_file()
     " Calculate byte offset of start wrt BOF and end wrt start.
     let ret.start_byte = s:pos2byte(a:start)
+    " FIXME: Consider whether e_off should reflect position just *past* end.
+    " Rationale: When position is deleted, it looks best when it falls forward
+    " *out of* the deleted range (i.e., into first non-deleted text).
     let ret.end_off = s:pos2byte(a:end) - ret.start_byte
     " Calculate and store offsets of positions of interest wrt start of range.
     for p in a:ps
@@ -2377,7 +2380,9 @@ function! s:yankdel_range__postadjust_positions(adj, splice)
         let [o, p] = [offs[i], ps[i]]
         if o > 0
             " Adjustment required.
-            if o < e_off && a:splice
+            " TODO: Decide whether I don't want to use end pos for splice as
+            " well.
+            if o < e_off && 0 "a:splice
                 " Move to start
                 " Caveat: Considered using byte offsets to calculate start
                 " (rather than saving in adjustment struct), but this could
@@ -2385,12 +2390,18 @@ function! s:yankdel_range__postadjust_positions(adj, splice)
                 " EOL. In such cases, it's better to set position to point
                 " just past EOL and rely on subsequent cursor positioning to
                 " pull it back.
+                echomsg "Shouldn't get here!"
                 let [p[1], p[2]] = s[1:2]
             else
                 " Use either adjusted original pos or adjusted original
                 " end (if original pos is in deleted range).
                 let [p[1], p[2]] = s:byte2pos(s_byte + max([o, e_off]) + delta)[1:2]
             endif
+            "echomsg "p=" . string(p)
+            if p[2] >= col([p[1], '$']) && p[1] < line('$')
+                let p[1:2] = [p[1] + 1, 1]
+            endif
+
         endif
     endfor
 endfunction
@@ -2449,8 +2460,17 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 " intuitive results: namely, position will seem not to move,
                 " whereas using the earlier end position will make it appear
                 " to move backwards to end of a preceding line.
+                " Actually: I really need to use position just *past* end.
+                " TODO: Think this through, especially the inc arg to
+                " preadjust function... I.e., why am I even calling this
+                " function with the nop (1) inc arg? I think I can just use
+                " a:end.
+                " Brainstorming: In both inc[1]==2 && 0 cases, a:end is
+                " exclusive, so we can just use it; else, apply offset_char()
+                " to end.
+                " TODO!!!!!!: Analyze these changes...
                 let adj = s:yankdel_range__preadjust_positions(start,
-                    \ inc[1] == 2 ? s:yankdel_range__preadjust_range_end(a:end, 1) : end,
+                    \ inc[1] != 1 ? a:end : s:offset_char(end, 1),
                     \ a:0 > 1 ? s:concat_positions(a:2, cursor) : [cursor])
             endif
             " Perform the yank/del/splice.
@@ -2471,7 +2491,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                     let @a .= ' '
                 endif
                 " Replace selection with splice text.
-                normal! "ap
+                silent! normal! "ap
                 if linewise
                     " Cleanup the space that was appended to inhibit linewise put.
                     normal! `]x
@@ -2595,6 +2615,33 @@ function! sexp#indent(top, count, clean, ...)
         " Inside list. Select [count]th containing list.
         keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
     endif
+    " Cache visual start/end; end can actually be changed by s:cleanup_ws().
+    let [start, end] = [getpos("'<"), getpos("'>")]
+    " We're done with visual mode. Leave it to avoid problems below (eg, with
+    " function calls).
+    exe "normal! \<Esc>"
+    if a:clean
+        " Always force syntax update when we're modifying the buffer.
+        let force_syntax = 1
+        " Be sure we've selected a list: algorithm not intended for top-level
+        " non-list element.
+        " FIXME: Consider using select_current_element() to select whitespace
+        " surrounding a top-level element - can cleanup_ws handle this? Hmm...
+        " It's currently expects that null start means at top-level, and tries
+        " to cleanup entire file; TODO: Change to make it select surrounding
+        " ws *or* do it here and just have it use whatever position we pass.
+        if s:is_list(start[1], start[2]) == 2
+            " Remove excess whitespace, keeping up with position changes.
+            call s:cleanup_ws(start, [end, cursor])
+        else
+            let [start, end] = [[0, 1, 1, 0], getpos([line('$'), '$'])]
+            call s:cleanup_ws([0, 0, 0, 0], [end, cursor])
+        endif
+    endif
+    " Record initial distance from cursor to end of line.
+    let cur_edist = col([cursor[1], '$']) - cursor[2]
+    " Caveat: Attempting to apply = operator in visual mode does not work
+    " consistently.
     if force_syntax
         " Force syntax update on visual lines before running indent.
         " Rationale: Certain indent functions rely on syntax attributes to
@@ -2604,25 +2651,8 @@ function! sexp#indent(top, count, clean, ...)
         " syntax recalculated (e.g., because the paste and subsequent indent
         " happen in a single command). Caller should set the force_syntax flag
         " in such scenarios to force syntax recalculation prior to the =.
-        '<,'>call synID(line("."), col("."), 1)
+        exe start[1] . ',' . end[1] . 'call synID(line("."), col("."), 1)'
     endif
-    " Cache visual start/end; end can actually be changed by s:cleanup_ws().
-    let [start, end] = [getpos("'<"), getpos("'>")]
-    " We're done with visual mode. Leave it to avoid problems below (eg, with
-    " function calls).
-    exe "normal! \<Esc>"
-    if a:clean
-        " Be sure we've selected a list: algorithm not intended for top-level
-        " non-list element.
-        if s:is_list(start[1], start[2]) == 2
-            " Remove excess whitespace, keeping up with position changes.
-            call s:cleanup_ws(start, [end, cursor])
-        endif
-    endif
-    " Record initial distance from cursor to end of line.
-    let cur_edist = col([cursor[1], '$']) - cursor[2]
-    " Caveat: Attempting to apply = operator in visual mode does not work
-    " consistently.
     silent keepjumps exe "normal! " . start[1] . 'G=' . end[1] . "G"
     " Adjust cursor pos to account for leading whitespace changes.
     " Note: If cleanup was performed, s:cleanup_ws() may also have performed
@@ -2718,8 +2748,7 @@ function! s:cleanup_ws(open, ps)
         let next = s:list_head()
     else
         " At top-level. Find head element in buffer.
-        " FIXME: Should be able to move_to_element_near_position, but it's
-        " currently broken.
+        " FIXME: No! Don't do whole buffer - just ws around current element.
         call cursor(1, 1)
         let next = s:current_element_terminal(0)
         if !next[1]
@@ -2744,17 +2773,15 @@ function! s:cleanup_ws(open, ps)
 
         " Determine whether join is in order.
         " Note: A join removes *all* whitespace between eff_prev and eff_next.
-        let full_join = (!next[1] && !prev[1]
+        let full_join =
+                \ !next[1] && !prev[1]
                 \ || !next[1] && (!close[1] || !s:is_comment(prev[1], prev[2]))
-                \ || !prev[1] && (!open[1] || !s:is_comment(next[1], next[2])))
+                \ || !prev[1] && (!open[1] || !s:is_comment(next[1], next[2]))
 
         " Note: A single call to yankdel_range with 'splice' arg will be used
         " to perform any required whitespace contraction: calculate the
         " 'splice' arg, which can be either 1 (delete) for a full join, or
         " actual splice text consisting of a single space or newline(s).
-        " FIXME: Don't like the way cursor falls back to EOL when in
-        " contracted whitespace. Look at how splicing whitespace handles
-        " cursor adjustment.
         let gap = eff_next[1] - eff_prev[1]
         let spl = 0
         if full_join
@@ -2763,6 +2790,10 @@ function! s:cleanup_ws(open, ps)
         elseif gap
             " Multi-line
             let trailing_ws = getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
+            " FIXME: I'm thinking precedes_com would make more sense, as it's
+            " more common to put space *before* a block comment.
+            " FIXME: Don't treat EOL comment like comment with only ws
+            " preceding it.
             let follows_com = gap > 1 && prev[1] && s:is_comment(prev[1], prev[2])
             if gap > 2 || gap > 1 && !follows_com || trailing_ws
                 " Contract whitespace down to either 1 or 2 newlines,
@@ -2772,20 +2803,30 @@ function! s:cleanup_ws(open, ps)
                 " (but never adds one if it doesn't already exist).
                 let spl = follows_com ? "\n\n" : "\n"
             endif
-        " Single-line
+        " Single-line (whitespace between collinear elements)
+        " FIXME: Consider whether cursor within single-line whitespace is
+        " handled properly.
+        " Current Behavior: If it's not on *first* whitespace in the range, it
+        " will go *past* the single remaining space; otherwise, it will end up
+        " on it. Do we need to treat the single line splice case specially???
+        " FIXME: Make sure full_join handles collinear whitespace at BOF or
+        " EOF (see earlier note)!!!!
         " If multiple whitespace and next isn't a comment, contract to single
         " space.
         " Rationale: Only before a comment does extra (non-leading) whitespace
         " make sense.
-        elseif getline(eff_prev[1])[eff_prev[2] - 1 : eff_next[2] - 1] =~ '...'
+        elseif getline(eff_prev[1])[eff_prev[2] - 1 : eff_next[2] - 1] =~ '....'
             \ && next[1] && !s:is_comment(next[1], next[2])
             " Replace multiple whitespace on single line with single space.
+            " Assumption: BOF and EOF are always handled as full join
             let spl = ' '
         endif
         if !empty(spl)
+            " Adjust inc as necessary.
+            let inc = [eff_prev[1] ? 0 : 1, eff_next[1] ? 0 : 1]
             " Perform the indicated whitespace contraction.
             call s:yankdel_range(eff_prev, eff_next, spl,
-                \ [0, 0], s:concat_positions(a:ps, eff_next))
+                \ inc, s:concat_positions(a:ps, eff_next))
         endif
 
         " TODO: Consider processing backwards to obviate need for 'next'

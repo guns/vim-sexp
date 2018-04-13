@@ -222,11 +222,8 @@ function! s:sexp_create_mappings()
         endif
     endfor
 
-    for plug in ['sexp_indent',              'sexp_indent_top',
-               \ 'sexp_indent_and_clean',    'sexp_indent_and_clean_top',
-               \ 'sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
-               \ 'sexp_convolute',           'sexp_splice_list',
-               \ 'sexp_cleanup_around_element']
+    for plug in ['sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
+               \ 'sexp_convolute',           'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -248,7 +245,9 @@ function! s:sexp_create_mappings()
                \ 'sexp_flow_to_prev_open',        'sexp_flow_to_next_close',
                \ 'sexp_flow_to_prev_leaf_head',   'sexp_flow_to_next_leaf_head',
                \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
-               \ 'sexp_clone_before',             'sexp_clone_after']
+               \ 'sexp_clone_before',             'sexp_clone_after',
+               \ 'sexp_indent',                   'sexp_indent_top',
+               \ 'sexp_indent_and_clean',         'sexp_indent_and_clean_top']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -377,10 +376,17 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 """ Commands {{{1
 
 " Indent S-Expression
-Defplug! nnoremap sexp_indent                sexp#indent(0, v:count, 0)
-Defplug! nnoremap sexp_indent_top            sexp#indent(1, v:count, 0)
-Defplug! nnoremap sexp_indent_and_clean      sexp#indent(0, v:count, 1)
-Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent(1, v:count, 1)
+" TODO: Check the added visual versions - eg, correct version of Defplug?
+Defplug! nnoremap sexp_indent                sexp#indent('n', 0, v:count, 0)
+Defplug! xnoremap sexp_indent                sexp#indent('x', 0, v:count, 0)
+Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, 0)
+Defplug! xnoremap sexp_indent_top            sexp#indent('x', 1, v:count, 0)
+Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
+Defplug! xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
+Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
+Defplug! xnoremap sexp_indent_and_clean_top  sexp#indent('x', 1, v:count, 1)
+
+
 " TODO: Consider supporting visual mode.
 Defplug! nnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count, 'n')
 Defplug! xnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count, 'v')

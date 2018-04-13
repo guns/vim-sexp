@@ -1764,7 +1764,10 @@ endfunction
 function! s:get_cursor_and_visual_info()
     let o = {}
 
-    let [vs, ve] = [getpos("'<"), getpos("'>")]
+    let vs = getpos("'<")
+    " Idiosyncrasy: In linewise visual mode, Vim returns large number for
+    " getpos("'>")[2].
+    let ve = [0, line("'>"), col("'>"), 0]
     " Save raw visual marks before possible adjustment.
     let [o.raw_vs, o.raw_ve] = [vs, ve]
     " Note: Since we don't really know what the command's mode was (and don't
@@ -2589,37 +2592,45 @@ endfunction
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in an compound form (e.g. top-level comments).
-function! sexp#indent(top, count, clean, ...)
+function! sexp#indent(mode, top, count, clean, ...)
     let win = winsaveview()
     let cursor = getpos('.')
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
 
-    " Move to current list tail since the expansion step of
-    " s:set_marks_around_current_list() happens at the tail.
-    if getline(line)[col - 1] =~ s:closing_bracket && !s:syntax_match(s:ignored_region, line, col)
-        let pos = [0, line, col, 0]
-    else
-        let pos = s:move_to_nearest_bracket(1)
-    endif
+    if a:mode ==? 'n'
+        " Move to current list tail since the expansion step of
+        " s:set_marks_around_current_list() happens at the tail.
+        if getline(line)[col - 1] =~ s:closing_bracket && !s:syntax_match(s:ignored_region, line, col)
+            let pos = [0, line, col, 0]
+        else
+            let pos = s:move_to_nearest_bracket(1)
+        endif
 
-    normal! v
-    if pos[1] < 1
-        " At top-level. If current (or next) element is list, select it.
-        " Note: When not within list, 'inner' includes brackets.
-        keepjumps call sexp#select_current_element('v', 1)
-    elseif a:top
-        " Inside list. Select topmost list.
-        keepjumps call sexp#select_current_top_list('v', 0)
+        normal! v
+        if pos[1] < 1
+            " At top-level. If current (or next) element is list, select it.
+            " Note: When not within list, 'inner' includes brackets.
+            keepjumps call sexp#select_current_element('v', 1)
+        elseif a:top
+            " Inside list. Select topmost list.
+            keepjumps call sexp#select_current_top_list('v', 0)
+        else
+            " Inside list. Select [count]th containing list.
+            keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+        endif
+        " Cache visual start/end; end can actually be changed by s:cleanup_ws().
+        let [start, end] = [getpos("'<"), getpos("'>")]
+        " We're done with visual mode. Leave it to avoid problems below (eg, with
+        " function calls).
+        exe "normal! \<Esc>"
     else
-        " Inside list. Select [count]th containing list.
-        keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+        " Treat visual mode specially.
+        let vi = b:sexp_cmd_cache.cvi
+        let dir = vi.at_end
+        " Rationalize visual range.
+        let [start, end] = s:constrained_range(vi.vs, vi.ve, dir)
     endif
-    " Cache visual start/end; end can actually be changed by s:cleanup_ws().
-    let [start, end] = [getpos("'<"), getpos("'>")]
-    " We're done with visual mode. Leave it to avoid problems below (eg, with
-    " function calls).
-    exe "normal! \<Esc>"
     if a:clean
         " Always force syntax update when we're modifying the buffer.
         let force_syntax = 1
@@ -2630,12 +2641,17 @@ function! sexp#indent(top, count, clean, ...)
         " It's currently expects that null start means at top-level, and tries
         " to cleanup entire file; TODO: Change to make it select surrounding
         " ws *or* do it here and just have it use whatever position we pass.
-        if s:is_list(start[1], start[2]) == 2
-            " Remove excess whitespace, keeping up with position changes.
-            call s:cleanup_ws(start, [end, cursor])
+
+        if a:mode ==? 'n'
+            if s:is_list(start[1], start[2]) == 2
+                " Remove excess whitespace, keeping up with position changes.
+                call s:cleanup_ws(start, [end, cursor])
+            endif
         else
-            let [start, end] = [[0, 1, 1, 0], getpos([line('$'), '$'])]
-            call s:cleanup_ws([0, 0, 0, 0], [end, cursor])
+            "let [start, end] = [[0, 1, 1, 0], getpos([line('$'), '$'])]
+            " Note: Adding optional end arg.
+            " FIXME!!: end is getting messed up in the adjustment...
+            call s:cleanup_ws(start, [end, cursor], end)
         endif
     endif
     " Record initial distance from cursor to end of line.
@@ -2739,22 +2755,29 @@ function! s:list_head()
     return ret
 endfunction
 
-function! s:cleanup_ws(open, ps)
-    let open = a:open[:]
-    let [close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0]]
-    if open[1]
+" FIXME: When function called with optional end argument, we don't assume that
+" start is an open; rather, start and (optional) close demarcate the cleanup
+" as follows: start at element *before* start and end with element past close.
+function! s:cleanup_ws(start, ps, ...)
+    let end = a:0 ? a:1 : [0, 0, 0, 0]
+    let [open, close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    if !end[1]
+        let open = a:start[:]
+        " Cleanup a list.
         call s:setcursor(open)
         " Descend into list.
         let next = s:list_head()
     else
-        " At top-level. Find head element in buffer.
-        " FIXME: No! Don't do whole buffer - just ws around current element.
-        call cursor(1, 1)
-        let next = s:current_element_terminal(0)
-        if !next[1]
-            let next = s:nearest_element_terminal(1, 0)
-        endif
+        " Cleanup specified range. Can't assume start is a list.
+        " TODO: Need to set things up as though loop processing is already in
+        " progress: e.g., open, prev, etc... (eff_* will be set in loop
+        " pre-update, so no need to set here).
+        " !!!! UNDER CONSTRUCTION !!!!
+        let next = a:start[:]
+        " TODO: Need to set open and next
+        let prev = s:nearest_element_terminal(0, 1)
     endif
+    let done = 0
     while 1
         " Note: next and close are mutually exclusive.
         if !next[1]
@@ -2834,8 +2857,10 @@ function! s:cleanup_ws(open, ps)
         " position adjustment is handled by yankdel_range.)
         " Note: Only zero/nonzero status of next is safe to use at this point
         " (since it wasn't adjusted by yankdel_range).
-        if !next[1] | break | endif
+        if done || !next[1] | break | endif
         " If here, there's another element at this level.
+        " FIXME!!!!: Handle case in which we're called for range, rather
+        " than list. I.e., if next is past end, we execute once more only...
         " Assumption: eff_next and next are the same except that the former
         " has been adjusted.
         call cursor(eff_next[1], eff_next[2])
@@ -2852,6 +2877,9 @@ function! s:cleanup_ws(open, ps)
         if next == prev
             " Note: We'll go through loop once more.
             let next = [0, 0, 0, 0]
+        elseif end[1] && s:compare_pos(next, end) > 1
+            " Next element is past range.
+            let done = 1
         else
             call s:setcursor(next)
         endif
@@ -2992,7 +3020,7 @@ fu! sexp#convolute(count, ...)
     endif
 
     " Indent the outer list *and* the one that contains it.
-    call sexp#indent(0, 2)
+    call sexp#indent('n', 0, 2)
 
     " Re-calculate pos for final cursor positioning.
     " Note: When outer list ends on a different line from inner list, the
@@ -3080,7 +3108,7 @@ function! sexp#clone(mode, count, before)
             let isl = s:is_list(line('.'), col('.'))
             " Caveat: Failure to set optional force_syntax flag in call to indent
             " may result in incorrect indentation.
-            call sexp#indent(0, isl > 1 ? 2 : 1, 1)
+            call sexp#indent('n', 0, isl > 1 ? 2 : 1, 1)
         endif
         if a:before
             " Cursor has effectively moved.

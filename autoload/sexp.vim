@@ -2598,6 +2598,7 @@ function! sexp#indent(mode, top, count, clean, ...)
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
 
+    " FIXME!!!!: Currently, not indenting top-level non-list elements in normal mode, but should probably treat them as though the top-level non-list element had been selected and the indent run from visual mode...
     if a:mode ==? 'n'
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
@@ -2636,11 +2637,15 @@ function! sexp#indent(mode, top, count, clean, ...)
         let force_syntax = 1
         " Be sure we've selected a list: algorithm not intended for top-level
         " non-list element.
-        " FIXME: Consider using select_current_element() to select whitespace
-        " surrounding a top-level element - can cleanup_ws handle this? Hmm...
-        " It's currently expects that null start means at top-level, and tries
-        " to cleanup entire file; TODO: Change to make it select surrounding
-        " ws *or* do it here and just have it use whatever position we pass.
+        " FIXME!!!!!: Currently, if we're on non-list element at top level and
+        " mode is normal, we do nothing; a better approach would be to do the
+        " same sort of cleanup we do for non-list elements at top-level in
+        " visual mode (see the else).
+        " TODO: Need to brainstorm the logic, but I think it makes sense to
+        " handle both non-list and list elements identically at top-level,
+        " though I haven't yet decided whether cursor *on* top list bracket
+        " should affect whitespace *outside* the top-level form (as it would
+        " affect whitespace surrounding a non-list element at top-level).
 
         if a:mode ==? 'n'
             if s:is_list(start[1], start[2]) == 2
@@ -2648,10 +2653,8 @@ function! sexp#indent(mode, top, count, clean, ...)
                 call s:cleanup_ws(start, [end, cursor])
             endif
         else
-            "let [start, end] = [[0, 1, 1, 0], getpos([line('$'), '$'])]
             " Note: Adding optional end arg.
-            " FIXME!!: end is getting messed up in the adjustment...
-            call s:cleanup_ws(start, [end, cursor], end)
+            call s:cleanup_ws(start, [start, end, cursor], end)
         endif
     endif
     " Record initial distance from cursor to end of line.
@@ -2769,13 +2772,18 @@ function! s:cleanup_ws(start, ps, ...)
         let next = s:list_head()
     else
         " Cleanup specified range. Can't assume start is a list.
-        " TODO: Need to set things up as though loop processing is already in
-        " progress: e.g., open, prev, etc... (eff_* will be set in loop
-        " pre-update, so no need to set here).
-        " !!!! UNDER CONSTRUCTION !!!!
+        " Set things up as though loop processing is already in progress:
+        " e.g., open, prev and next (eff_* will be set in loop pre-update, so
+        " no need to set here).
         let next = a:start[:]
-        " TODO: Need to set open and next
         let prev = s:nearest_element_terminal(0, 1)
+        if !s:compare_pos(prev, getpos("."))
+            " no previous element
+            let prev = [0, 0, 0, 0]
+        endif
+        if !prev[1]
+            let open = s:nearest_bracket(0)
+        endif
     endif
     let done = 0
     while 1
@@ -2812,28 +2820,26 @@ function! s:cleanup_ws(start, ps, ...)
             let spl = 1
         elseif gap
             " Multi-line
-            let trailing_ws = getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
-            " FIXME: I'm thinking precedes_com would make more sense, as it's
-            " more common to put space *before* a block comment.
-            " FIXME: Don't treat EOL comment like comment with only ws
-            " preceding it.
-            let follows_com = gap > 1 && prev[1] && s:is_comment(prev[1], prev[2])
-            if gap > 2 || gap > 1 && !follows_com || trailing_ws
-                " Contract whitespace down to either 1 or 2 newlines,
-                " depending on whether comment followed by blank line
-                " precedes.
-                " Rationale: Preserves a single blank line following comment
-                " (but never adds one if it doesn't already exist).
-                let spl = follows_com ? "\n\n" : "\n"
+            " Contract whitespace between prev and next if any of the
+            " following conditions holds true for the gap between prev and
+            " next:
+            " 1. more than 1 blank line
+            " 2. exactly 1 blank and next not comment
+            " 3. trailing whitespace on prev line
+            let precedes_com = next[1] && s:is_comment(next[1], next[2])
+            if gap > 2 || gap > 1
+                \ && !precedes_com
+                \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
+                " Replace gap with either 1 or 2 newlines: the goal generally
+                " is to remove blank lines, but if a comment is preceded by
+                " one or more blank lines, keep one.
+                let spl = precedes_com && gap > 2 ? "\n\n" : "\n"
             endif
         " Single-line (whitespace between collinear elements)
-        " FIXME: Consider whether cursor within single-line whitespace is
-        " handled properly.
-        " Current Behavior: If it's not on *first* whitespace in the range, it
-        " will go *past* the single remaining space; otherwise, it will end up
-        " on it. Do we need to treat the single line splice case specially???
-        " FIXME: Make sure full_join handles collinear whitespace at BOF or
-        " EOF (see earlier note)!!!!
+        " Cursor Logic: If cursor is in whitespace to be contracted, but not
+        " on *first* whitespace in the range, we want it to end up *past* the
+        " single remaining space; otherwise, on it.
+        " FIXME: Not currently handling collinear whitespace at EOF!!!
         " If multiple whitespace and next isn't a comment, contract to single
         " space.
         " Rationale: Only before a comment does extra (non-leading) whitespace
@@ -2849,7 +2855,7 @@ function! s:cleanup_ws(start, ps, ...)
             let inc = [eff_prev[1] ? 0 : 1, eff_next[1] ? 0 : 1]
             " Perform the indicated whitespace contraction.
             call s:yankdel_range(eff_prev, eff_next, spl,
-                \ inc, s:concat_positions(a:ps, eff_next))
+                    \ inc, s:concat_positions(a:ps, eff_next, end))
         endif
 
         " TODO: Consider processing backwards to obviate need for 'next'
@@ -2859,8 +2865,6 @@ function! s:cleanup_ws(start, ps, ...)
         " (since it wasn't adjusted by yankdel_range).
         if done || !next[1] | break | endif
         " If here, there's another element at this level.
-        " FIXME!!!!: Handle case in which we're called for range, rather
-        " than list. I.e., if next is past end, we execute once more only...
         " Assumption: eff_next and next are the same except that the former
         " has been adjusted.
         call cursor(eff_next[1], eff_next[2])
@@ -2877,7 +2881,7 @@ function! s:cleanup_ws(start, ps, ...)
         if next == prev
             " Note: We'll go through loop once more.
             let next = [0, 0, 0, 0]
-        elseif end[1] && s:compare_pos(next, end) > 1
+        elseif end[1] && s:compare_pos(next, end) > 0
             " Next element is past range.
             let done = 1
         else

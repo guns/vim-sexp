@@ -2630,35 +2630,38 @@ function! sexp#indent(mode, top, count, clean, ...)
         let vi = b:sexp_cmd_cache.cvi
         let dir = vi.at_end
         " Rationalize visual range.
-        let [start, end] = s:constrained_range(vi.vs, vi.ve, dir)
+        " TODO: Decide how to restore visual selection: should it be
+        " [start,end] (constrained) or original selection (adjusted by
+        " cleanup_ws).
+        " FIXME: s:constrained_range isn't right for this: it constrains based
+        " on the cursor position, and what I really want is a super region
+        " that includes all elements even partly selected.
+        " Example:
+        " ( ( a b (c d (e f))))
+        "     >---------<
+        " I think I'd want to select from a through the end of the list
+        " containing c and d. Note that s:constrained_range would give me this
+        " iff the keep_end arg were 0. What I really want is an inner element
+        " selection with cursor at the end of visual selection that's higher.
+        " Question: Is it possible that this would make sense for inner/outer
+        " element selections as well? In that case, I tend to think that it
+        " makes more sense to consider the cursor position, but that's just
+        " intuition at this point...
+        let [start, end] = s:constrained_range(vi.vs, vi.ve, vi.at_end)
     endif
     if a:clean
         " Always force syntax update when we're modifying the buffer.
         let force_syntax = 1
-        " Be sure we've selected a list: algorithm not intended for top-level
-        " non-list element.
-        " FIXME!!!!!: Currently, if we're on non-list element at top level and
-        " mode is normal, we do nothing; a better approach would be to do the
-        " same sort of cleanup we do for non-list elements at top-level in
-        " visual mode (see the else).
-        " TODO: Need to brainstorm the logic, but I think it makes sense to
-        " handle both non-list and list elements identically at top-level,
-        " though I haven't yet decided whether cursor *on* top list bracket
-        " should affect whitespace *outside* the top-level form (as it would
-        " affect whitespace surrounding a non-list element at top-level).
+        " Design Decision: Handle both non-list and list elements identically:
+        " cleanup back to prev, but indent starting with current.
 
-        if a:mode ==? 'n'
-            if s:is_list(start[1], start[2]) == 2
-                " Remove excess whitespace, keeping up with position changes.
-                call s:cleanup_ws(start, [end, cursor])
-            endif
-        else
-            " Note: Adding optional end arg.
-            call s:cleanup_ws(start, [start, end, cursor], end)
-        endif
+        " Note: Adding optional end arg.
+        call s:cleanup_ws(start, [start, end, cursor], end)
     endif
     " Record initial distance from cursor to end of line.
     let cur_edist = col([cursor[1], '$']) - cursor[2]
+    let s_edist = col([start[1], '$']) - start[2]
+    let e_edist = col([end[1], '$']) - end[2]
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
     if force_syntax
@@ -2678,6 +2681,10 @@ function! sexp#indent(mode, top, count, clean, ...)
     " adjustments.
     let win.lnum = cursor[1]
     let win.col = col([cursor[1], '$']) - cur_edist - 1
+    " Restore (potentially adjusted) visual selection.
+    let start[2] = col([start[1], '$']) - s_edist - 1
+    let end[2] = col([end[1], '$']) - e_edist - 1
+    call s:set_visual_marks([start, end])
     call winrestview(win)
 endfunction
 

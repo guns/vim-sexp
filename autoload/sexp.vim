@@ -2771,11 +2771,21 @@ function! s:cleanup_ws(start, ps, ...)
         " Descend into list.
         let next = s:list_head()
     else
-        " Cleanup specified range. Can't assume start is a list.
+        " Cleanup specified range without assuming anything about start.
         " Set things up as though loop processing is already in progress:
-        " e.g., open, prev and next (eff_* will be set in loop pre-update, so
-        " no need to set here).
-        let next = a:start[:]
+        " e.g., set open, prev and next (if non-null).
+        " Note: eff_* will be set in loop pre-update, so no need to set here.
+        call s:setcursor(a:start)
+        let next = s:current_element_terminal(0)
+        if !next[1]
+            " Not in element.
+            let next = s:nearest_element_terminal(1, 0)
+            if !s:compare_pos(next, getpos("."))
+                " No element on or after start. Null next so that close will
+                " be set in loop...
+                let next = [0, 0, 0, 0]
+            endif
+        endif
         let prev = s:nearest_element_terminal(0, 1)
         if !s:compare_pos(prev, getpos("."))
             " no previous element

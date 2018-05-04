@@ -50,6 +50,14 @@ let s:sexp_mappings = {
     \ 'sexp_move_to_next_element_head': '<M-w>',
     \ 'sexp_move_to_prev_element_tail': 'g<M-e>',
     \ 'sexp_move_to_next_element_tail': '<M-e>',
+    \ 'sexp_flow_to_prev_close':        '<M-[>',
+    \ 'sexp_flow_to_next_open':         '<M-]>',
+    \ 'sexp_flow_to_prev_open':         '<M-{>',
+    \ 'sexp_flow_to_next_close':        '<M-}>',
+    \ 'sexp_flow_to_prev_leaf_head':    '<M-S-b>',
+    \ 'sexp_flow_to_next_leaf_head':    '<M-S-w>',
+    \ 'sexp_flow_to_prev_leaf_tail':    '<M-S-g>',
+    \ 'sexp_flow_to_next_leaf_tail':    '<M-S-e>',
     \ 'sexp_move_to_prev_top_element':  '[[',
     \ 'sexp_move_to_next_top_element':  ']]',
     \ 'sexp_select_prev_element':       '[e',
@@ -71,6 +79,7 @@ let s:sexp_mappings = {
     \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
     \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
     \ 'sexp_splice_list':               '<LocalLeader>@',
+    \ 'sexp_convolute':                 '<LocalLeader>?',
     \ 'sexp_raise_list':                '<LocalLeader>o',
     \ 'sexp_raise_element':             '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
@@ -83,12 +92,12 @@ let s:sexp_mappings = {
     \ 'sexp_capture_next_element':      '<M-S-l>',
     \ }
 
-augroup sexp_filetypes
-    autocmd!
-    if !empty(g:sexp_filetypes)
+if !empty(g:sexp_filetypes)
+    augroup sexp_filetypes
+        autocmd!
         execute 'autocmd FileType ' . g:sexp_filetypes . ' call s:sexp_create_mappings()'
-    endif
-augroup END
+    augroup END
+endif
 
 " Autoload and detect repeat.vim
 silent! call repeat#set('')
@@ -195,7 +204,7 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_indent',              'sexp_indent_top',
                \ 'sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
-               \ 'sexp_splice_list']
+	       \ 'sexp_convolute',           'sexp_splice_list']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -212,7 +221,11 @@ function! s:sexp_create_mappings()
                \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
                \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
                \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
-               \ 'sexp_capture_prev_element',     'sexp_capture_next_element']
+               \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
+               \ 'sexp_flow_to_prev_close',       'sexp_flow_to_next_open',
+               \ 'sexp_flow_to_prev_open',        'sexp_flow_to_next_close',
+               \ 'sexp_flow_to_prev_leaf_head',   'sexp_flow_to_next_leaf_head',
+               \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -290,6 +303,26 @@ DefplugN  nnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element(
 DEFPLUG   xnoremap sexp_move_to_next_element_tail <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 1, 1, 0)<CR>
 DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('o', v:count, 1, 1, 0)
 
+" List flow commands
+Defplug   nnoremap sexp_flow_to_prev_close sexp#list_flow('n', v:count, 0, 1)
+DEFPLUG   xnoremap sexp_flow_to_prev_close <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 0, 1)<CR>
+Defplug   nnoremap sexp_flow_to_prev_open sexp#list_flow('n', v:count, 0, 0)
+DEFPLUG   xnoremap sexp_flow_to_prev_open <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 0, 0)<CR>
+Defplug   nnoremap sexp_flow_to_next_open sexp#list_flow('n', v:count, 1, 0)
+DEFPLUG   xnoremap sexp_flow_to_next_open <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 1, 0)<CR>
+Defplug   nnoremap sexp_flow_to_next_close sexp#list_flow('n', v:count, 1, 1)
+DEFPLUG   xnoremap sexp_flow_to_next_close <Esc>:<C-u>call sexp#list_flow('v', v:prevcount, 1, 1)<CR>
+
+" Leaf flow commands
+DefplugN  nnoremap sexp_flow_to_prev_leaf_head sexp#leaf_flow('n', v:count, 0, 0)
+DEFPLUG   xnoremap sexp_flow_to_prev_leaf_head <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 0, 0)<CR>
+DefplugN  nnoremap sexp_flow_to_next_leaf_head sexp#leaf_flow('n', v:count, 1, 0)
+DEFPLUG   xnoremap sexp_flow_to_next_leaf_head <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 1, 0)<CR>
+DefplugN  nnoremap sexp_flow_to_prev_leaf_tail sexp#leaf_flow('n', v:count, 0, 1)
+DEFPLUG   xnoremap sexp_flow_to_prev_leaf_tail <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 0, 1)<CR>
+DefplugN  nnoremap sexp_flow_to_next_leaf_tail sexp#leaf_flow('n', v:count, 1, 1)
+DEFPLUG   xnoremap sexp_flow_to_next_leaf_tail <Esc>:<C-u>call sexp#leaf_flow('v', v:prevcount, 1, 1)<CR>
+
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)
 DEFPLUG  xnoremap sexp_move_to_prev_top_element <Esc>:<C-u>call sexp#move_to_adjacent_element('v', v:prevcount, 0, 0, 1)<CR>
@@ -352,6 +385,10 @@ Defplug! nnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'n', 's
 Defplug  xnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'v', '')
 Defplug! nnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
 Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', '')
+
+" Convolute
+" Note: convolute takes pains to preserve cursor position: hence, 'nojump'.
+DefplugN! nnoremap sexp_convolute sexp#convolute(v:count, 'n')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)

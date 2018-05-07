@@ -965,6 +965,62 @@ function! s:offset_char(pos, dir, ...)
 endfunction
 let Oc = function('s:offset_char')
 
+" Return a superset range by adjusting one or both sides upward till both
+" sides are at same leve.
+function! s:super_range(start, end)
+    let cursor = getpos('.')
+    let ret = [a:start[:], a:end[:]]
+
+    " Find close bracket (if one exists) that contains both start and end
+    " Note: In this context, a bracket "contains" collocated position.
+    call s:setcursor(ret[0])
+    while 1
+        " Find parent
+        let sp = s:move_to_nearest_bracket(0)
+        if sp[1]
+            let shared_close = s:nearest_bracket(1)
+            let cmp = s:compare_pos(shared_close, ret[1])
+            if cmp >= 0
+                " Found shared close
+                if !cmp
+                    " End pos *is* shared close.
+                    let ret[0] = sp
+                endif
+                break
+            endif
+        else
+            " Top level is shared close
+            let shared_close = [0, 0, 0, 0]
+            break
+        endif
+        let ret[0] = sp
+    endwhile
+    " Assumptions:
+    " (shared_close == null)   => shared close is top-level
+    " (shared_close == ret[1]) => ret[1] requires no adjustment
+    " Note: Loop designed to prevent initial entry if ret[1] requires no
+    " adjustment.
+    let ep = ret[1]
+    call s:setcursor(ep)
+    while ep != so
+        " Update position before attempting move to parent.
+        " Rationale: If parent is common ancestor, we've already found desired
+        " position.
+        let ret[1] = ep
+        let ep = s:move_to_nearest_bracket(1)
+        if !ep[1]
+            " Top level is common ancestor
+            break
+        endif
+    endwhile
+
+    call s:setcursor(cursor)
+    return ret
+endfunction
+let Sr = function('s:super_range')
+hi Foo guifg=green guibg=red gui=bold,underline
+xmap <silent> <F8> :<C-u>silent! let rng = <SID>super_range(getpos("'<"), getpos("'>")) \| silent! let m1 = 'silent! match Foo /\%' . rng[0][1] . 'l\%' . rng[0][2] . 'c./' \| silent! let m2 = 'silent! 2match Foo /\%' . rng[1][1] . 'l\%' . rng[1][2] . 'c./' \| silent! exe m1 \| silent! exe m2 <CR>
+
 " Return a constrained range.
 function! s:constrained_range(start, end, keep_end)
     let cursor = getpos('.')

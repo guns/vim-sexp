@@ -966,25 +966,25 @@ endfunction
 let Oc = function('s:offset_char')
 
 " Return a superset range by adjusting one or both sides upward till both
-" sides are at same leve.
+" sides are at same level and no elements are partially included in the range.
 function! s:super_range(start, end)
     let cursor = getpos('.')
-    let ret = [a:start[:], a:end[:]]
+    let [start, end] = [a:start[:], a:end[:]]
 
     " Find close bracket (if one exists) that contains both start and end
     " Note: In this context, a bracket "contains" collocated position.
-    call s:setcursor(ret[0])
+    call s:setcursor(start)
     while 1
         " Find parent
-        let sp = s:move_to_nearest_bracket(0)
-        if sp[1]
+        let p = s:move_to_nearest_bracket(0)
+        if p[1]
             let shared_close = s:nearest_bracket(1)
-            let cmp = s:compare_pos(shared_close, ret[1])
+            let cmp = s:compare_pos(shared_close, end)
             if cmp >= 0
                 " Found shared close
                 if !cmp
                     " End pos *is* shared close.
-                    let ret[0] = sp
+                    let start = p
                 endif
                 break
             endif
@@ -993,29 +993,53 @@ function! s:super_range(start, end)
             let shared_close = [0, 0, 0, 0]
             break
         endif
-        let ret[0] = sp
+        let start = p
     endwhile
-    " Assumptions:
-    " (shared_close == null)   => shared close is top-level
-    " (shared_close == ret[1]) => ret[1] requires no adjustment
-    " Note: Loop designed to prevent initial entry if ret[1] requires no
-    " adjustment.
-    let ep = ret[1]
-    call s:setcursor(ep)
-    while ep != so
-        " Update position before attempting move to parent.
-        " Rationale: If parent is common ancestor, we've already found desired
-        " position.
-        let ret[1] = ep
-        let ep = s:move_to_nearest_bracket(1)
-        if !ep[1]
-            " Top level is common ancestor
-            break
+    " If on element, find its start.
+    " Rationale: Prefer start of macro chars to open bracket.
+    call s:setcursor(start)
+    let p = s:current_element_terminal(0)
+    if p[1]
+        let start = p
+    endif
+
+    " Special Conditions:
+    "   (shared_close == null)   => shared close is top-level
+    "   (shared_close == end)    => end requires no adjustment
+    " TODO: Consider reworking loop to remove this outer 'if'. IOW, let the
+    " condition be part of loop condition...
+    if shared_close != end
+        call s:setcursor(end)
+        " Note: A non-top level shared_close always corresponds to a closing
+        " bracket. As long as a form always ends with its closing bracket, we
+        " could just as well use the following simpler test: ep != shared_close
+        " If the end of a form were like the start, however, where bracket can
+        " have attached macro chars, we'd need 
+        " FIXME!!!!!! Logic is broken!!!!!!
+        while 1
+            let ep = s:move_to_nearest_bracket(1)
+            if !ep[1]
+                " Top level is common ancestor
+                break
+            elseif shared_close[1] && s:compare_pos(ep, shared_close) >= 0
+                break
+            endif
+            " Found close bracket that isn't common ancestor. Adjust and and keep
+            " going...
+            let end = ep
+        endwhile
+        if end == a:end
+            call s:setcursor(end)
+            " Ensure adjusted position is terminal.
+            let ep = s:current_element_terminal(1)
+            if ep[1]
+                let end = ep
+            endif
         endif
-    endwhile
+    endif
 
     call s:setcursor(cursor)
-    return ret
+    return [start, end]
 endfunction
 let Sr = function('s:super_range')
 hi Foo guifg=green guibg=red gui=bold,underline

@@ -2720,7 +2720,8 @@ function! sexp#indent(mode, top, count, clean, ...)
         " element selections as well? In that case, I tend to think that it
         " makes more sense to consider the cursor position, but that's just
         " intuition at this point...
-        let [start, end] = s:constrained_range(vi.vs, vi.ve, vi.at_end)
+        "let [start, end] = s:constrained_range(vi.vs, vi.ve, vi.at_end)
+        let [start, end] = s:super_range(vi.vs, vi.ve)
     endif
     if a:clean
         " Always force syntax update when we're modifying the buffer.
@@ -2755,8 +2756,10 @@ function! sexp#indent(mode, top, count, clean, ...)
     let win.lnum = cursor[1]
     let win.col = col([cursor[1], '$']) - cur_edist - 1
     " Restore (potentially adjusted) visual selection.
-    let start[2] = col([start[1], '$']) - s_edist - 1
-    let end[2] = col([end[1], '$']) - e_edist - 1
+    " Caveat: Unlike winrestview object members, start/end use normal
+    " (1-based) col numbers.
+    let start[2] = col([start[1], '$']) - s_edist
+    let end[2] = col([end[1], '$']) - e_edist
     call s:set_visual_marks([start, end])
     call winrestview(win)
 endfunction

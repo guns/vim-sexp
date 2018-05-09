@@ -1006,35 +1006,28 @@ function! s:super_range(start, end)
     " Special Conditions:
     "   (shared_close == null)   => shared close is top-level
     "   (shared_close == end)    => end requires no adjustment
-    " TODO: Consider reworking loop to remove this outer 'if'. IOW, let the
-    " condition be part of loop condition...
-    if shared_close != end
+    call s:setcursor(end)
+    " Seed prev position var.
+    let p = end
+    " Note: compare_pos() < 0 could be simplified to p != shared_close.
+    " Rationale: A non-top level shared_close is always a close bracket.
+    while !shared_close[1] || s:compare_pos(p, shared_close) < 0
+        let end = p
+        let p = s:move_to_nearest_bracket(1)
+        if !p[1]
+            " Top level is common ancestor
+            break
+        endif
+    endwhile
+    " As long as a form always ends with its closing bracket (e.g., no macro
+    " chars following close), we can skip looking for terminal whenever any
+    " adjustment was made in loop.
+    if end == a:end
         call s:setcursor(end)
-        " Note: A non-top level shared_close always corresponds to a closing
-        " bracket. As long as a form always ends with its closing bracket, we
-        " could just as well use the following simpler test: ep != shared_close
-        " If the end of a form were like the start, however, where bracket can
-        " have attached macro chars, we'd need 
-        " FIXME!!!!!! Logic is broken!!!!!!
-        while 1
-            let ep = s:move_to_nearest_bracket(1)
-            if !ep[1]
-                " Top level is common ancestor
-                break
-            elseif shared_close[1] && s:compare_pos(ep, shared_close) >= 0
-                break
-            endif
-            " Found close bracket that isn't common ancestor. Adjust and and keep
-            " going...
-            let end = ep
-        endwhile
-        if end == a:end
-            call s:setcursor(end)
-            " Ensure adjusted position is terminal.
-            let ep = s:current_element_terminal(1)
-            if ep[1]
-                let end = ep
-            endif
+        " Ensure adjusted position is terminal.
+        let p = s:current_element_terminal(1)
+        if p[1]
+            let end = p
         endif
     endif
 

@@ -136,38 +136,39 @@ ie                                                *<Plug>(sexp_inner_element)*
         you were using the text object to delete element(s). The algorithm is
         complex, but can be expressed roughly as follows: select as many
         surrounding whitespace characters (including newlines) as possible,
-        while ensuring that a subsequent deletion will not do any of the
-        following...
+        while ensuring that a subsequent deletion of the selection will not do
+        any of the following:
 
             * increase the length of the line preceding the selection
               (by combining it with a later line whose length exceeds the
               length of the deleted portion of the earlier line)
             * pull a comment following the selection onto the end of the line
               preceding the selection
-              earlier line
-            * pull the element following the selection onto a line that
-              ends in a comment
+            * pull the element following the selection into an end of line
+              comment
+              Rationale: End of line comments are generally line-specific.
             * join siblings (by removing all separating whitespace)
-            * de-select initially selected whitespace preceding the first
-              selected element
+            * keep initially selected whitespace preceding the first
+              selected element (unless removing the whitespace would violate
+              one of the other constraints)
         Note: The rules may sound complex, but they mostly follow the
         "principle of least surprise".
 
 
                                                        *cleanup-vs-extension*
         These commands can be used to "clean up" the current selection and/or
-        to pull additional elements into it. Cleaning up might mean toggling
-        an "inner" selection to an "outer" one (or vice versa). Or perhaps
-        you've selected elements manually using v followed by movement
-        commands, and now you wish to select the surrounding whitespace in
-        preparation for a delete or change operation. In such cases, [count]
-        includes the current element or current selection: e.g., a default
-        [count] of 1 performs cleanup only, and a count of 2 would pull in 1
-        additional element. However, if you immediately execute the same
-        command again, vim-sexp knows that the current selection is already
-        "cleaned up", so all of [count] is applied towards additional
-        elements. Vim-sexp considers a command to be a repeat application if
-        you haven't done any of the following since the previous execution:
+        pull additional elements into it. Cleaning up might mean toggling an
+        "inner" selection to an "outer" one (or vice versa). Or perhaps you've
+        selected elements manually using v followed by movement commands, and
+        now you wish to select the surrounding whitespace in preparation for a
+        delete or change operation. In such cases, [count] includes the
+        current element or current selection: e.g., a default [count] of 1
+        performs cleanup only, and a count of 2 would pull in 1 additional
+        element. However, if you immediately execute the same command again,
+        vim-sexp knows that the current selection is already "cleaned up", so
+        all of [count] is applied towards additional elements. Vim-sexp
+        considers a command to be a repeat application if you haven't done any
+        of the following since the previous execution:
 
             * Changed visual selection (but ok to move cursor to other end if
               you want next execution to pull from the other end)
@@ -206,14 +207,14 @@ ie                                                *<Plug>(sexp_inner_element)*
           original:        ^----- 
           truncated:       ^--
                      (a b (c d) e f)
-          original:     ^----
+          original:     ^---
           extended:     ^------
 <
 
-aC                                        *<Plug>(sexp_outer_child_backward)*
-ac                                         *<Plug>(sexp_outer_child_forward)*
-iC                                        *<Plug>(sexp_inner_child_backward)*
-ic                                         *<Plug>(sexp_inner_child_forward)*
+aC                                             *<Plug>(sexp_outer_child_tail)*
+ac                                             *<Plug>(sexp_outer_child_head)*
+iC                                             *<Plug>(sexp_inner_child_tail)*
+ic                                             *<Plug>(sexp_inner_child_head)*
         Select the [count]th "child" element from the head (lowercase c) or
         tail (uppercase C) of the current compound form. If cursor is not on
         the macro chars or paired bracket of a compound form, the containing
@@ -222,7 +223,7 @@ ic                                         *<Plug>(sexp_inner_child_forward)*
         toplevel element from beginning or end of file).
 
         The meaning of the terms "inner" and "outer" are as defined for the ie
-        and ae commands. 
+        and ae text objects. 
 
 TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
@@ -415,7 +416,18 @@ CLONE COMMANDS (normal, visual)~
 <M-c>                                               *<Plug>(sexp_clone_after)*
         Clone current or visually selected elements [count] times before or
         after the cloned element(s).
-        TODO: Figure out better way to state this...
+
+        In normal mode, the element under or after the cursor is cloned. In
+        visual mode, the range of elements fully or partially selected are
+        cloned.
+
+        If option |g:sexp_indent_after_clone| is set, indent both original and
+        cloned elements. If an indent is required, |g:sexp_indent_does_clean|
+        determines whether extra whitespace is cleaned up. (See |clean-indent|
+        for details.)
+
+        TODO: Flesh this out... Document the auto-indent and decide whether to
+        make it optional...
 
 INDENT COMMANDS (normal)~
 
@@ -428,13 +440,31 @@ INDENT COMMANDS (normal)~
         == shadows the builtin |==| mapping. If you wish to remap this
         command, see |g:sexp_mappings| for more information.
 
+                                                                *clean-indent*
+        If option |g:sexp_indent_does_clean| is set (unset by default),
+        vim-sexp will attempt to cleanup the indented region by removing extra
+        whitespace. The rules for determining whether whitespace is "extra"
+        obey the principle of least surprise mentioned under
+        |whitespace-cleanup-rules| in the section on sexp_outer_element.
+        Note: Blank lines are generally removed; however, if a comment is
+        preceded by one or more blank lines, a single blank line will be kept.
+
 <M-=>                                          *<Plug>(sexp_indent_and_clean)*
 <M-->                                      *<Plug>(sexp_indent_and_clean_top)*
-        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but also removes
-        blank lines and extra whitespace within the indented region. The rules
-        for determining whether whitespace is "extra" obey the principle of
-        least surprise mentioned under |whitespace-cleanup-rules| in the
-        documentation for sexp_outer_element.
+        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but ALWAYS removes
+        extra whitespace, ignoring option |g:sexp_indent_does_clean|.
+
+                                                *<Plug>(sexp_indent_no_clean)*
+                                            *<Plug>(sexp_indent_no_clean_top)*
+        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but NEVER removes
+        extra whitespace, ignoring option |g:sexp_indent_does_clean|.
+        Note: Unbound by default.
+
+
+        *Tip:* Users who wish to use only one of the two forms of indent
+        (cleaning or non-cleaning) can unbind the clean and no_clean command
+        variants and use |g:sexp_indent_does_clean| to select the desired
+        behavior.
 
 
 WRAP COMMANDS (normal, visual)~
@@ -659,6 +689,10 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_inner_string':              'is',
             \ 'sexp_outer_element':             'ae',
             \ 'sexp_inner_element':             'ie',
+            \ 'sexp_outer_child_tail':          'aC',
+            \ 'sexp_outer_child_head':          'ac',
+            \ 'sexp_inner_child_tail':          'iC',
+            \ 'sexp_inner_child_head':          'ic',
             \ 'sexp_move_to_prev_bracket':      '(',
             \ 'sexp_move_to_next_bracket':      ')',
             \ 'sexp_move_to_prev_element_head': '<M-b>',
@@ -679,6 +713,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_select_next_element':       ']e',
             \ 'sexp_indent':                    '==',
             \ 'sexp_indent_top':                '=-',
+            \ 'sexp_indent_and_clean':          '<M-=>',
+            \ 'sexp_indent_and_clean_top':      '<M-->',
             \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
             \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
             \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -695,6 +731,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ 'sexp_splice_list':               '<LocalLeader>@',
             \ 'sexp_convolute':                 '<LocalLeader>?',
+            \ 'sexp_clone_before':              '<M-C>',
+            \ 'sexp_clone_after':               '<M-c>',
             \ 'sexp_raise_list':                '<LocalLeader>o',
             \ 'sexp_raise_element':             '<LocalLeader>O',
             \ 'sexp_swap_list_backward':        '<M-k>',

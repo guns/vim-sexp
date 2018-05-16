@@ -44,10 +44,10 @@ let s:sexp_mappings = {
     \ 'sexp_inner_string':              'is',
     \ 'sexp_outer_element':             'ae',
     \ 'sexp_inner_element':             'ie',
-    \ 'sexp_outer_child_backward':      'aC',
-    \ 'sexp_outer_child_forward':       'ac',
-    \ 'sexp_inner_child_backward':      'iC',
-    \ 'sexp_inner_child_forward':       'ic',
+    \ 'sexp_outer_child_tail':          'aC',
+    \ 'sexp_outer_child_head':          'ac',
+    \ 'sexp_inner_child_tail':          'iC',
+    \ 'sexp_inner_child_head':          'ic',
     \ 'sexp_move_to_prev_bracket':      '(',
     \ 'sexp_move_to_next_bracket':      ')',
     \ 'sexp_move_to_prev_element_head': '<M-b>',
@@ -70,7 +70,6 @@ let s:sexp_mappings = {
     \ 'sexp_indent_top':                '=-',
     \ 'sexp_indent_and_clean':          '<M-=>',
     \ 'sexp_indent_and_clean_top':      '<M-->',
-    \ 'sexp_cleanup_around_element':    '<LocalLeader>c',
     \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
     \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
     \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -200,8 +199,8 @@ function! s:sexp_create_mappings()
                \ 'sexp_outer_top_list',       'sexp_inner_top_list',
                \ 'sexp_outer_string',         'sexp_inner_string',
                \ 'sexp_outer_element',        'sexp_inner_element',
-               \ 'sexp_outer_child_backward', 'sexp_outer_child_forward',
-               \ 'sexp_inner_child_backward', 'sexp_inner_child_forward']
+               \ 'sexp_outer_child_tail',     'sexp_outer_child_head',
+               \ 'sexp_inner_child_tail',     'sexp_inner_child_head']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -293,15 +292,15 @@ Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, v:count
 Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, v:count)
 Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, v:count)
 
-Defplug  xnoremap sexp_outer_child_forward sexp#select_child('v', v:count, 1, 0)
-Defplug! onoremap sexp_outer_child_forward sexp#select_child('o', v:count, 1, 0)
-Defplug  xnoremap sexp_inner_child_forward sexp#select_child('v', v:count, 1, 1)
-Defplug! onoremap sexp_inner_child_forward sexp#select_child('o', v:count, 1, 1)
+Defplug  xnoremap sexp_outer_child_head sexp#select_child('v', v:count, 1, 0)
+Defplug! onoremap sexp_outer_child_head sexp#select_child('o', v:count, 1, 0)
+Defplug  xnoremap sexp_inner_child_head sexp#select_child('v', v:count, 1, 1)
+Defplug! onoremap sexp_inner_child_head sexp#select_child('o', v:count, 1, 1)
 
-Defplug  xnoremap sexp_outer_child_backward sexp#select_child('v', v:count, 0, 0)
-Defplug! onoremap sexp_outer_child_backward sexp#select_child('o', v:count, 0, 0)
-Defplug  xnoremap sexp_inner_child_backward sexp#select_child('v', v:count, 0, 1)
-Defplug! onoremap sexp_inner_child_backward sexp#select_child('o', v:count, 0, 1)
+Defplug  xnoremap sexp_outer_child_tail sexp#select_child('v', v:count, 0, 0)
+Defplug! onoremap sexp_outer_child_tail sexp#select_child('o', v:count, 0, 0)
+Defplug  xnoremap sexp_inner_child_tail sexp#select_child('v', v:count, 0, 1)
+Defplug! onoremap sexp_inner_child_tail sexp#select_child('o', v:count, 0, 1)
 """ Text Object Motions {{{1
 
 " Nearest bracket
@@ -385,11 +384,6 @@ Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
 Defplug! xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
 Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
 Defplug! xnoremap sexp_indent_and_clean_top  sexp#indent('x', 1, v:count, 1)
-
-
-" TODO: Consider supporting visual mode.
-Defplug! nnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count, 'n')
-Defplug! xnoremap sexp_cleanup_around_element sexp#cleanup_around_element(v:count, 'v')
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

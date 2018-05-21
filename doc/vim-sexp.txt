@@ -144,11 +144,11 @@ ie                                                *<Plug>(sexp_inner_element)*
               length of the deleted portion of the earlier line)
             * pull a comment following the selection onto the end of the line
               preceding the selection
+              Rationale: End of line comments are generally line-specific.
             * pull the element following the selection into an end of line
               comment
-              Rationale: End of line comments are generally line-specific.
             * join siblings (by removing all separating whitespace)
-            * keep initially selected whitespace preceding the first
+            * spare initially selected whitespace preceding the first
               selected element (unless removing the whitespace would violate
               one of the other constraints)
         Note: The rules may sound complex, but they mostly follow the
@@ -156,19 +156,20 @@ ie                                                *<Plug>(sexp_inner_element)*
 
 
                                                        *cleanup-vs-extension*
-        These commands can be used to "clean up" the current selection and/or
-        pull additional elements into it. Cleaning up might mean toggling an
-        "inner" selection to an "outer" one (or vice versa). Or perhaps you've
-        selected elements manually using v followed by movement commands, and
-        now you wish to select the surrounding whitespace in preparation for a
-        delete or change operation. In such cases, [count] includes the
-        current element or current selection: e.g., a default [count] of 1
-        performs cleanup only, and a count of 2 would pull in 1 additional
-        element. However, if you immediately execute the same command again,
-        vim-sexp knows that the current selection is already "cleaned up", so
-        all of [count] is applied towards additional elements. Vim-sexp
-        considers a command to be a repeat application if you haven't done any
-        of the following since the previous execution:
+        These text objects can be used to "clean up" the current selection
+        and/or pull additional elements into it. Cleaning up might mean
+        toggling an "inner" selection to an "outer" one (or vice versa). Or
+        perhaps you've selected elements manually using 'v' followed by
+        movement commands, and now you wish to select the surrounding
+        whitespace in preparation for a delete or change operation. In such
+        cases, [count] includes the current element or current selection:
+        e.g., a default [count] of 1 performs cleanup only, and a count of 2
+        would pull in 1 additional element. However, if you immediately
+        execute the same command again, vim-sexp knows that the current
+        selection is already "cleaned up", so all of [count] is applied
+        towards additional elements. Vim-sexp considers a command to be a
+        repeat application if you haven't done any of the following since the
+        previous execution:
 
             * Changed visual selection (but ok to move cursor to other end if
               you want next execution to pull from the other end)
@@ -192,7 +193,7 @@ ie                                                *<Plug>(sexp_inner_element)*
         comments, the motion targets the subsequent element, if it exists.
 
                                                        *selection-adjustment*
-        These commands always select a contiguous range of one or more
+        These text objects always select a contiguous range of one or more
         complete elements at the level defined by the cursor position. If the
         original visual selection extends outside the compound form containing
         the cursor, it is pre-truncated automatically prior to command
@@ -202,6 +203,7 @@ ie                                                *<Plug>(sexp_inner_element)*
 
         Examples of pre-truncation/extension~
         Note: ^ indicates original cursor position
+              - indicates visual range.
         >
                      (a b (c d) e f)
           original:        ^----- 
@@ -414,20 +416,20 @@ CLONE COMMANDS (normal, visual)~
 
 <M-C>                                              *<Plug>(sexp_clone_before)*
 <M-c>                                               *<Plug>(sexp_clone_after)*
-        Clone current or visually selected elements [count] times before or
-        after the cloned element(s).
+        Insert [count] clones of one or more elements before or after the
+        originals.
 
         In normal mode, the element under or after the cursor is cloned. In
-        visual mode, the range of elements fully or partially selected are
-        cloned.
+        visual mode, the range of elements either fully or partially selected
+        are cloned.
 
-        If option |g:sexp_indent_after_clone| is set, indent both original and
-        cloned elements. If an indent is required, |g:sexp_indent_does_clean|
-        determines whether extra whitespace is cleaned up. (See |clean-indent|
-        for details.)
+                                                          *indent-after-clone*
+        If |g:sexp_clone_does_indent| is set (set by default), indent the
+        compound form (or range of lines at toplevel) containing the cloned
+        elements. If indent is required, |g:sexp_indent_does_clean| determines
+        whether extra whitespace is cleaned up. (See |clean-indent| for
+        details.)
 
-        TODO: Flesh this out... Document the auto-indent and decide whether to
-        make it optional...
 
 INDENT COMMANDS (normal)~
 
@@ -441,11 +443,11 @@ INDENT COMMANDS (normal)~
         command, see |g:sexp_mappings| for more information.
 
                                                                 *clean-indent*
-        If option |g:sexp_indent_does_clean| is set (unset by default),
-        vim-sexp will attempt to cleanup the indented region by removing extra
-        whitespace. The rules for determining whether whitespace is "extra"
-        obey the principle of least surprise mentioned under
-        |whitespace-cleanup-rules| in the section on sexp_outer_element.
+        If |g:sexp_indent_does_clean| is set (unset by default), attempt to
+        cleanup the indented region by removing extra whitespace. The rules
+        for determining whether whitespace is "extra" obey the principle of
+        least surprise mentioned under |whitespace-cleanup-rules| in the
+        section on sexp_outer_element.
         Note: Blank lines are generally removed; however, if a comment is
         preceded by one or more blank lines, a single blank line will be kept.
 
@@ -461,10 +463,10 @@ INDENT COMMANDS (normal)~
         Note: Unbound by default.
 
 
-        *Tip:* Users who wish to use only one of the two forms of indent
-        (cleaning or non-cleaning) can unbind the clean and no_clean command
-        variants and use |g:sexp_indent_does_clean| to select the desired
-        behavior.
+        *Tip:* Users who expect to use only one of the two forms of indent
+        (cleaning or non-cleaning) can unbind the explicit "clean" and
+        "no_clean" command variants and use |g:sexp_indent_does_clean| to
+        ensure that == and =- give the desired behavior.
 
 
 WRAP COMMANDS (normal, visual)~
@@ -668,6 +670,22 @@ at head) after using a wrap command like |<Plug>(sexp_round_head_wrap_list)|.
         " Default
         let g:sexp_insert_after_wrap = 1
 <
+                                                    *g:sexp_indent_does_clean*
+Remove "extra" whitespace before performing an indent. Affects behavior of
+indent and clone commands. For details, see sections |clean-indent| and
+|indent-after-clone|.
+>
+        " Default
+        let g:sexp_indent_does_clean = 0
+<
+
+                                                    *g:sexp_clone_does_indent*
+Indent the elements involved in a clone operation.
+TODO: Flesh this out...
+>
+        " Default
+        let g:sexp_clone_does_indent = 1
+<
                                                              *g:sexp_mappings*
 Dictionary of user vim-sexp mappings. Keys are the <Plug> names without
 "<Plug>" or the surrounding parentheses, and the values are the key sequences
@@ -715,6 +733,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_indent_top':                '=-',
             \ 'sexp_indent_and_clean':          '<M-=>',
             \ 'sexp_indent_and_clean_top':      '<M-->',
+            \ 'sexp_indent_no_clean':           '',
+            \ 'sexp_indent_no_clean_top':       '',
             \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
             \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
             \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',

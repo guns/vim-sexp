@@ -70,6 +70,8 @@ let s:sexp_mappings = {
     \ 'sexp_indent_top':                '=-',
     \ 'sexp_indent_and_clean':          '<M-=>',
     \ 'sexp_indent_and_clean_top':      '<M-->',
+    \ 'sexp_indent_no_clean':           '',
+    \ 'sexp_indent_no_clean_top':       '',
     \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
     \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
     \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',

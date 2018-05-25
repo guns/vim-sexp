@@ -2664,14 +2664,15 @@ endfunction
 
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
-" elements not contained in an compound form (e.g. top-level comments).
+" elements not contained in a compound form (e.g. top-level comments).
+" FIXME: Add param to force cleanup.
 function! sexp#indent(mode, top, count, clean, ...)
     let win = winsaveview()
     let cursor = getpos('.')
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
+    let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
 
-    " FIXME!!!!: Currently, not indenting top-level non-list elements in normal mode, but should probably treat them as though the top-level non-list element had been selected and the indent run from visual mode...
     if a:mode ==? 'n'
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
@@ -3117,7 +3118,7 @@ fu! sexp#convolute(count, ...)
     endif
 
     " Indent the outer list *and* the one that contains it.
-    call sexp#indent('n', 0, 2)
+    call sexp#indent('n', 0, 2, clean)
 
     " Re-calculate pos for final cursor positioning.
     " Note: When outer list ends on a different line from inner list, the
@@ -3149,6 +3150,7 @@ function! s:get_clone_target(mode, before)
     endif
 endfunction
 
+" FIXME: Add param to force indent.
 function! sexp#clone(mode, count, before)
     let cursor = getpos('.')
     let wsv = winsaveview()
@@ -3183,8 +3185,10 @@ function! sexp#clone(mode, count, before)
     silent call s:put_at(copy, a:before, 0, a:before ? start : end)
     let lines_added = line('$') - lines_orig
     " Design Decision: Single line clone can't change indent.
-    " Rationale: If it's wrong now, it was already wrong.
-    if multi
+    " Rationale: If it's wrong now, it was already wrong, as we haven't done
+    " anything that should have any impact on indentation.
+    let need_indent = multi && !!g:sexp_clone_does_indent
+    if need_indent
         if top
             " Indent range
             " TODO: Consider whether to indent target or not.
@@ -3205,7 +3209,7 @@ function! sexp#clone(mode, count, before)
             let isl = s:is_list(line('.'), col('.'))
             " Caveat: Failure to set optional force_syntax flag in call to indent
             " may result in incorrect indentation.
-            call sexp#indent('n', 0, isl > 1 ? 2 : 1, 1)
+            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1)
         endif
         if a:before
             " Cursor has effectively moved.
@@ -3227,7 +3231,7 @@ function! sexp#clone(mode, count, before)
         endif
     endif
 
-    if multi || a:before
+    if need_indent || a:before
         " Caveat: wsv.col uses zero-based index.
         let wsv.col += col([wsv.lnum, '$']) - cur_eol
         if a:mode ==? 'v'

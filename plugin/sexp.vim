@@ -19,6 +19,7 @@ let g:sexp_loaded = 1
 
 """ Global State {{{1
 
+" TODO: More concise way...
 if !exists('g:sexp_filetypes')
     let g:sexp_filetypes = 'clojure,scheme,lisp,timl'
 endif
@@ -29,6 +30,14 @@ endif
 
 if !exists('g:sexp_insert_after_wrap')
     let g:sexp_insert_after_wrap = 1
+endif
+
+if !exists('g:sexp_indent_does_clone')
+    let g:sexp_indent_does_clone = 1
+endif
+
+if !exists('g:sexp_clone_does_indent')
+    let g:sexp_clone_does_indent = 1
 endif
 
 if !exists('g:sexp_mappings')
@@ -248,10 +257,16 @@ function! s:sexp_create_mappings()
                \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
                \ 'sexp_clone_before',             'sexp_clone_after',
                \ 'sexp_indent',                   'sexp_indent_top',
-               \ 'sexp_indent_and_clean',         'sexp_indent_and_clean_top']
+               \ 'sexp_indent_and_clean',         'sexp_indent_and_clean_top',
+               \ 'sexp_indent_no_clean',          'sexp_indent_no_clean_top']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            if plug =~ '^sexp_indent' && lhs == '=='
+                " Special Case: Just as == overrides Vim's default normal mode
+                " command, = must override Vim's default visual mode command.
+                let lhs = '='
+            endif
             execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
         endif
     endfor
@@ -377,15 +392,19 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 """ Commands {{{1
 
 " Indent S-Expression
-" TODO: Check the added visual versions - eg, correct version of Defplug?
-Defplug! nnoremap sexp_indent                sexp#indent('n', 0, v:count, 0)
-Defplug! xnoremap sexp_indent                sexp#indent('x', 0, v:count, 0)
-Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, 0)
-Defplug! xnoremap sexp_indent_top            sexp#indent('x', 1, v:count, 0)
+" Question: Would 'repeat' make any sense for visual variants?
+Defplug! nnoremap sexp_indent                sexp#indent('n', 0, v:count, -1)
+Defplug  xnoremap sexp_indent                sexp#indent('x', 0, v:count, -1)
+Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, -1)
+Defplug  xnoremap sexp_indent_top            sexp#indent('x', 1, v:count, -1)
 Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
-Defplug! xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
+Defplug  xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
 Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
-Defplug! xnoremap sexp_indent_and_clean_top  sexp#indent('x', 1, v:count, 1)
+Defplug  xnoremap sexp_indent_and_clean_top  sexp#indent('x', 1, v:count, 1)
+Defplug! nnoremap sexp_indent_no_clean       sexp#indent('n', 0, v:count, 0)
+Defplug  xnoremap sexp_indent_no_clean       sexp#indent('x', 0, v:count, 0)
+Defplug! nnoremap sexp_indent_no_clean_top   sexp#indent('n', 1, v:count, 0)
+Defplug  xnoremap sexp_indent_no_clean_top   sexp#indent('x', 1, v:count, 0)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

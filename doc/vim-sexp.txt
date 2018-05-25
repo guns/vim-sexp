@@ -426,7 +426,11 @@ CLONE COMMANDS (normal, visual)~
                                                           *indent-after-clone*
         If |g:sexp_clone_does_indent| is set (set by default), indent the
         compound form (or range of lines at toplevel) containing the cloned
-        elements. If indent is required, |g:sexp_indent_does_clean| determines
+        elements.
+        Note: Indent is never performed for clone operations affecting only a
+        single line.
+
+        If indent is required, |g:sexp_indent_does_clean| determines
         whether extra whitespace is cleaned up. (See |clean-indent| for
         details.)
 
@@ -680,8 +684,8 @@ indent and clone commands. For details, see sections |clean-indent| and
 <
 
                                                     *g:sexp_clone_does_indent*
-Indent the elements involved in a clone operation.
-TODO: Flesh this out...
+Indent the elements involved in a multi-line clone operation. For details, see
+section |indent-after-clone|.
 >
         " Default
         let g:sexp_clone_does_indent = 1

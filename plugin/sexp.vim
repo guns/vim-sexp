@@ -32,8 +32,8 @@ if !exists('g:sexp_insert_after_wrap')
     let g:sexp_insert_after_wrap = 1
 endif
 
-if !exists('g:sexp_indent_does_clone')
-    let g:sexp_indent_does_clone = 1
+if !exists('g:sexp_indent_does_clean')
+    let g:sexp_indent_does_clean = 1
 endif
 
 if !exists('g:sexp_clone_does_indent')
@@ -233,7 +233,9 @@ function! s:sexp_create_mappings()
     endfor
 
     for plug in ['sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
-               \ 'sexp_convolute',           'sexp_splice_list']
+               \ 'sexp_convolute',           'sexp_splice_list',
+               \ 'sexp_indent_top',          'sexp_indent_and_clean_top',
+               \ 'sexp_indent_no_clean_top']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -256,15 +258,15 @@ function! s:sexp_create_mappings()
                \ 'sexp_flow_to_prev_leaf_head',   'sexp_flow_to_next_leaf_head',
                \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
                \ 'sexp_clone_before',             'sexp_clone_after',
-               \ 'sexp_indent',                   'sexp_indent_top',
-               \ 'sexp_indent_and_clean',         'sexp_indent_and_clean_top',
-               \ 'sexp_indent_no_clean',          'sexp_indent_no_clean_top']
+               \ 'sexp_indent',                   'sexp_indent_and_clean',
+               \ 'sexp_indent_no_clean']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
             if plug =~ '^sexp_indent' && lhs == '=='
                 " Special Case: Just as == overrides Vim's default normal mode
                 " command, = must override Vim's default visual mode command.
+                " Rationale: Prevents ambiguity that leads to map delay.
                 let lhs = '='
             endif
             execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'

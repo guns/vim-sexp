@@ -2665,7 +2665,6 @@ endfunction
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
-" FIXME: Add param to force cleanup.
 function! sexp#indent(mode, top, count, clean, ...)
     let win = winsaveview()
     let cursor = getpos('.')
@@ -2707,21 +2706,6 @@ function! sexp#indent(mode, top, count, clean, ...)
         " TODO: Decide how to restore visual selection: should it be
         " [start,end] (constrained) or original selection (adjusted by
         " cleanup_ws).
-        " FIXME: s:constrained_range isn't right for this: it constrains based
-        " on the cursor position, and what I really want is a super region
-        " that includes all elements even partly selected.
-        " Example:
-        " ( ( a b (c d (e f))))
-        "     >---------<
-        " I think I'd want to select from a through the end of the list
-        " containing c and d. Note that s:constrained_range would give me this
-        " iff the keep_end arg were 0. What I really want is an inner element
-        " selection with cursor at the end of visual selection that's higher.
-        " Question: Is it possible that this would make sense for inner/outer
-        " element selections as well? In that case, I tend to think that it
-        " makes more sense to consider the cursor position, but that's just
-        " intuition at this point...
-        "let [start, end] = s:constrained_range(vi.vs, vi.ve, vi.at_end)
         let [start, end] = s:super_range(vi.vs, vi.ve)
     endif
     if a:clean
@@ -3132,6 +3116,8 @@ endfu
 function! s:get_clone_target(mode, before)
     let cursor = getpos('.')
     if a:mode ==? 'v'
+        " FIXME!!!: This is wrong. Needs to work more like super_range(). (In
+        " fact, may just use super_range().)
         return s:set_marks_around_current_element('v', 1, 0, 1)
     else
         " Get our bearings...

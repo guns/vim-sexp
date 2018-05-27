@@ -435,16 +435,27 @@ CLONE COMMANDS (normal, visual)~
         details.)
 
 
-INDENT COMMANDS (normal)~
+INDENT COMMANDS (normal, visual)~
 
 ==                                                       *<Plug>(sexp_indent)*
 =-                                                   *<Plug>(sexp_indent_top)*
-        Indent [count] surrounding lists (compound FORMs) or current top-level
-        list without moving the cursor. If the cursor is not in a compound
-        FORM, the current element is indented instead.
+        In normal mode, indent [count] surrounding lists (compound FORMs) or
+        current top-level list without moving the cursor. If the cursor is not
+        in a compound FORM, the current element is indented instead.
+
+        In visual mode, indent the range of elements either fully or partially
+        selected.
+        Note: Visual mappings are not created for the "top" variants of indent
+        commands; such commands would be pointless since "top" implies
+        ignoring the visual selection.
 
         == shadows the builtin |==| mapping. If you wish to remap this
         command, see |g:sexp_mappings| for more information.
+        Note: The presence of builtin = would result in an undesirable delay
+        if == were used for sexp_indent in visual mode; accordingly, if you
+        have not overridden the default mapping for sexp_indent, = is used
+        instead of == for visual mode sexp_indent.
+        
 
                                                                 *clean-indent*
         If |g:sexp_indent_does_clean| is set (unset by default), attempt to

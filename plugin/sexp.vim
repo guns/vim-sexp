@@ -19,7 +19,6 @@ let g:sexp_loaded = 1
 
 """ Global State {{{1
 
-" TODO: More concise way...
 if !exists('g:sexp_filetypes')
     let g:sexp_filetypes = 'clojure,scheme,lisp,timl'
 endif
@@ -395,18 +394,18 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 
 " Indent S-Expression
 " Question: Would 'repeat' make any sense for visual variants?
+" Answer: I think it would, but for some reason, vim-sexp has historically not
+" supported repeat for visual operations, so I guess I'll be consistent for
+" now.
 Defplug! nnoremap sexp_indent                sexp#indent('n', 0, v:count, -1)
 Defplug  xnoremap sexp_indent                sexp#indent('x', 0, v:count, -1)
 Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, -1)
-Defplug  xnoremap sexp_indent_top            sexp#indent('x', 1, v:count, -1)
 Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
 Defplug  xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
 Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
-Defplug  xnoremap sexp_indent_and_clean_top  sexp#indent('x', 1, v:count, 1)
 Defplug! nnoremap sexp_indent_no_clean       sexp#indent('n', 0, v:count, 0)
 Defplug  xnoremap sexp_indent_no_clean       sexp#indent('x', 0, v:count, 0)
 Defplug! nnoremap sexp_indent_no_clean_top   sexp#indent('n', 1, v:count, 0)
-Defplug  xnoremap sexp_indent_no_clean_top   sexp#indent('x', 1, v:count, 0)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

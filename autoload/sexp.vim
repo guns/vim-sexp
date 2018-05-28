@@ -2684,6 +2684,7 @@ function! sexp#indent(mode, top, count, clean, ...)
     let cursor = getpos('.')
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
+    " If caller hasn't specified clean, defer to option.
     let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
 
     if a:mode ==? 'n'
@@ -2722,7 +2723,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         " cleanup_ws).
         let [start, end] = s:super_range(vi.vs, vi.ve)
     endif
-    if a:clean
+    if clean
         " Always force syntax update when we're modifying the buffer.
         let force_syntax = 1
         " Design Decision: Handle both non-list and list elements identically:

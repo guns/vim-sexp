@@ -113,10 +113,12 @@ ie                                                *<Plug>(sexp_inner_element)*
         In operator pending mode, selects the current element and [count]-1
         additional elements. In visual mode, selects the contiguous range of
         elements either fully or partially included in the current visual
-        selection (or the element after cursor if between elements) and
-        incorporates [count]-1 additional elements on the cursor side of the
-        selection. Repeated applications pull additional elements into the
-        selection.
+        selection and incorporates [count]-1 additional elements on the cursor
+        side of the selection. Repeated applications in visual mode pull
+        additional elements into the selection.
+
+        If the cursor is on whitespace that is not in a string or between line
+        comments, the motion targets the subsequent element, if it exists.
         
         An element is defined as:
 
@@ -189,29 +191,6 @@ ie                                                *<Plug>(sexp_inner_element)*
           changes the direction of the expansion.
 <
 
-        If the cursor is on whitespace that is not in a string or between line
-        comments, the motion targets the subsequent element, if it exists.
-
-                                                       *selection-adjustment*
-        These text objects always select a contiguous range of one or more
-        complete elements at the level defined by the cursor position. If the
-        original visual selection extends outside the compound form containing
-        the cursor, it is pre-truncated automatically prior to command
-        execution. Similarly, if the selection that survives pre-truncation
-        includes only one end of a compound form, the selection is
-        automatically pre-extended to include the other end as well.
-
-        Examples of pre-truncation/extension~
-        Note: ^ indicates original cursor position
-              - indicates visual range.
-        >
-                     (a b (c d) e f)
-          original:        ^----- 
-          truncated:       ^--
-                     (a b (c d) e f)
-          original:     ^---
-          extended:     ^------
-<
 
 aC                                             *<Plug>(sexp_outer_child_tail)*
 ac                                             *<Plug>(sexp_outer_child_head)*

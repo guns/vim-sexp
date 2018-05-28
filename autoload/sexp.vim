@@ -76,6 +76,18 @@ function! s:vm_cc(chars)
     return '[' . substitute(a:chars, '[^[0-9a-zA-Z_]]', '\\&', 'g') . ']'
 endfunction
 
+""" USER INTERFACE {{{1
+
+" Display warning
+function! s:warnmsg(s)
+    try
+        echohl WarningMsg
+        echo a:s
+    finally
+        echohl None
+    endtry
+endfunction
+
 """ PRE/POST COMMAND CALLBACKS/CACHE {{{1
 
 function! s:make_cache(mode, name)
@@ -1918,7 +1930,9 @@ function! s:set_marks_around_current_element(mode, inner, ...)
             let vi = b:sexp_cmd_cache.cvi
             let dir = vi.at_end
             " Rationalize visual range.
-            let [vs, ve] = s:constrained_range(vi.vs, vi.ve, dir)
+            " TODO: Decide whether constrained or super range makes more sense here.
+            "let [vs, ve] = s:constrained_range(vi.vs, vi.ve, dir)
+            let [vs, ve] = s:super_range(vi.vs, vi.ve)
             " In case actual cursor position has changed.
             " Note: Cursor will align with either '< or '>
             let cursor = dir ? ve : vs
@@ -3027,9 +3041,7 @@ fu! sexp#convolute(count, ...)
         let p = s:move_to_nearest_bracket(0)
         if !p[1]
             " Warn and return without changing anything.
-            echohl WarningMsg
-            echomsg "Convolute impossible with count given: insufficient nesting"
-            echohl None
+            call s:warnmsg("Convolute impossible with count given: insufficient nesting")
             call s:setcursor(cursor)
             return
         endif
@@ -3113,11 +3125,10 @@ fu! sexp#convolute(count, ...)
 endfu
 
 " Return [start, end] of region to be cloned.
-function! s:get_clone_target(mode, before)
+function! s:get_target_range(mode, next)
     let cursor = getpos('.')
     if a:mode ==? 'v'
-        " FIXME!!!: This is wrong. Needs to work more like super_range(). (In
-        " fact, may just use super_range().)
+        " Let set_marks_around_current_element adjust the range.
         return s:set_marks_around_current_element('v', 1, 0, 1)
     else
         " Get our bearings...
@@ -3126,7 +3137,7 @@ function! s:get_clone_target(mode, before)
             let p = getpos('.')
             " Not on an element. Find adjacent (if one exists in applicable
             " direction).
-            call s:move_to_adjacent_element(!a:before, 0, 0)
+            call s:move_to_adjacent_element(a:next, 0, 0)
             if p == getpos('.')
                 " Nothing to clone at this level!
                 return [[0, 0, 0, 0], [0, 0, 0, 0]]
@@ -3136,14 +3147,14 @@ function! s:get_clone_target(mode, before)
     endif
 endfunction
 
-" FIXME: Add param to force indent.
 function! sexp#clone(mode, count, before)
     let cursor = getpos('.')
     let wsv = winsaveview()
     " Get region to be cloned.
-    let [start, end] = s:get_clone_target(a:mode, a:before)
+    let [start, end] = s:get_target_range(a:mode, !a:before)
     if !start[1]
-        " Nothing to clone. TODO: How to handle...
+        " Nothing to clone.
+        call s:warnmsg("Nothing to clone")
         return
     endif
     " Assumption: Prior logic guarantees start and end at same level.

@@ -450,17 +450,11 @@ INDENT COMMANDS (normal, visual)~
         Like == (|sexp_indent)| and =- (|sexp_indent_top|), but ALWAYS removes
         extra whitespace, ignoring option |g:sexp_indent_does_clean|.
 
-                                                *<Plug>(sexp_indent_no_clean)*
-                                            *<Plug>(sexp_indent_no_clean_top)*
-        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but NEVER removes
-        extra whitespace, ignoring option |g:sexp_indent_does_clean|.
-        Note: Unbound by default.
-
 
         *Tip:* Users who expect to use only one of the two forms of indent
-        (cleaning or non-cleaning) can unbind the explicit "clean" and
-        "no_clean" command variants and use |g:sexp_indent_does_clean| to
-        ensure that == and =- give the desired behavior.
+        (cleaning or non-cleaning) can unbind <M-=> and <M--> and use
+        |g:sexp_indent_does_clean| to ensure that == and =- give the desired
+        behavior.
 
 
 WRAP COMMANDS (normal, visual)~
@@ -727,8 +721,6 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_indent_top':                '=-',
             \ 'sexp_indent_and_clean':          '<M-=>',
             \ 'sexp_indent_and_clean_top':      '<M-->',
-            \ 'sexp_indent_no_clean':           '',
-            \ 'sexp_indent_no_clean_top':       '',
             \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
             \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
             \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',

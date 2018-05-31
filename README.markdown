@@ -68,6 +68,7 @@ Text object selections refer to text _around_ the cursor.
 * The `aF` and `iF` objects select top-level COMPOUND FORMS.
 * The `as` and `is` objects select STRINGS.
 * The `ae` and `ie` objects select ELEMENTS.
+* The `ac` and `ic` objects select child ELEMENTS.
 
 ### Text Object Motions (normal, visual, operator-pending)
 
@@ -81,10 +82,36 @@ operator-pending mode.
 * The `[[` and `]]` motions move the cursor to an adjacent top-level ELEMENT.
 * The `[e` and `]e` mappings select an adjacent ELEMENT.
 
-### Indent Commands (normal)
+### Flow Motions (normal, visual)
+
+Like text object motions, flow motions move the cursor in normal mode and move the selection in visual mode. Unlike text object motions, flow motions are completely unconstrained by list structure, permitting the cursor to move freely in and out of compound forms. For this reason, flow-motions are not provided in operator-pending mode.
+
+TODO: Refine this...
+* The `<M-]>` motion moves the cursor forward by open brackets
+* The `<M-[>` motion moves the cursor backward by close brackets
+* The `<M-}>` motion moves the cursor forward by close brackets
+* The `<M-{>` motion moves the cursor backward by open brackets
+* The `<M-S-b>` motion moves the cursor backward to leaf head
+* The `<M-S-w>` motion moves the cursor forward to leaf head
+* The `<M-S-g>` motion moves the cursor backward to leaf tail
+* The `<M-S-e>` motion moves the cursor forward to leaf tail
+
+TODO: Need list/leaf concept overview...
+
+### Indent Commands (normal, visual)
 
 * `==` indents the current COMPOUND FORM without moving the cursor
-* `=-` indents the current top-level COMPOUND FORM without moving the cursor
+* `=-` indents the current top-level COMPOUND FORM without moving the cursor (normal mode only)
+* `<M-=>` indents and removes extra whitespace from the current COMPOUND FORM without moving the cursor
+* `<M-->` indents and removes extra whitespace from the current top-level COMPOUND FORM without moving the cursor (normal mode only)
+
+If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` commands remove extra whitespace before performing indent. If you set this option, you should unmap `<M-=>` and `<M-->` to avoid creating redundant mappings.
+
+### Clone Commands (normal, visual)
+
+* The `<M-C>` and `<M-c>` commands create copies of one or more elements before or after the cursor.
+
+If `g:sexp_clone_does_indent` is set (true by default), all elements involved in the clone (both original and copies) will be indented.
 
 ### Wrap Commands (normal, visual)
 
@@ -114,8 +141,9 @@ current COMPOUND FORM or ELEMENT.
 * `<M-h>` and `<M-l>` swap the position of the current ELEMENT with a sibling ELEMENT.
 * `<M-S-j>` and `<M-S-k>` emit the terminal ELEMENTS of the current COMPOUND FORM.
 * `<M-S-h>` and `<M-S-l>` capture adjacent ELEMENTS into the current COMPOUND FORM.
+* `<M-?>` _convolutes_ the current COMPOUND FORM, splicing the tail of the current list into the current list's parent and moving the head of the current list to the head of a new list containing the parent of the current list.
 
-The last two commands are also known as `barfage` and `slurpage` in [paredit.el][].
+The `Emit` and `capture` commands are known as `barfage` and `slurpage` in [paredit.el][].
 
 ### Cursor Insertion (normal)
 

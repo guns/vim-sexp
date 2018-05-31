@@ -78,8 +78,6 @@ let s:sexp_mappings = {
     \ 'sexp_indent_top':                '=-',
     \ 'sexp_indent_and_clean':          '<M-=>',
     \ 'sexp_indent_and_clean_top':      '<M-->',
-    \ 'sexp_indent_no_clean':           '',
-    \ 'sexp_indent_no_clean_top':       '',
     \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
     \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
     \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -233,8 +231,7 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
                \ 'sexp_convolute',           'sexp_splice_list',
-               \ 'sexp_indent_top',          'sexp_indent_and_clean_top',
-               \ 'sexp_indent_no_clean_top']
+               \ 'sexp_indent_top',          'sexp_indent_and_clean_top']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -257,8 +254,7 @@ function! s:sexp_create_mappings()
                \ 'sexp_flow_to_prev_leaf_head',   'sexp_flow_to_next_leaf_head',
                \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
                \ 'sexp_clone_before',             'sexp_clone_after',
-               \ 'sexp_indent',                   'sexp_indent_and_clean',
-               \ 'sexp_indent_no_clean']
+               \ 'sexp_indent',                   'sexp_indent_and_clean']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -403,9 +399,6 @@ Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, -1)
 Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
 Defplug  xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
 Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
-Defplug! nnoremap sexp_indent_no_clean       sexp#indent('n', 0, v:count, 0)
-Defplug  xnoremap sexp_indent_no_clean       sexp#indent('x', 0, v:count, 0)
-Defplug! nnoremap sexp_indent_no_clean_top   sexp#indent('n', 1, v:count, 0)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

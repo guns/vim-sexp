@@ -2679,6 +2679,8 @@ endfunction
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
+" FIXME!!!!: clean no longer needs to be tri-state: can be "force clean"
+" boolean.
 function! sexp#indent(mode, top, count, clean, ...)
     let win = winsaveview()
     let cursor = getpos('.')

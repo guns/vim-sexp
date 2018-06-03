@@ -206,6 +206,14 @@ ic                                             *<Plug>(sexp_inner_child_head)*
         The meaning of the terms "inner" and "outer" are as defined for the ie
         and ae text objects. 
 
+                                                  *child-objects-vs-[e-and-]e*
+        There is overlap between the use cases for child objects and the
+        select prev/next element commands ([e and ]e). The chief difference is
+        that a child object's offset is always specified relative to the start
+        or end of a compound form, whereas [e and ]e always search relative to
+        the cursor position. Depending on the use case, one form may be
+        significantly more convenient than the other.
+
 TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
 (                                          *<Plug>(sexp_move_to_prev_bracket)*
@@ -412,6 +420,10 @@ CLONE COMMANDS (normal, visual)~
         If indent is required, |g:sexp_indent_does_clean| determines
         whether extra whitespace is cleaned up. (See |clean-indent| for
         details.)
+
+        *Design-Decision-Needed* Do we need to support distinct element /
+        compound form variants of the clone commands (for sake of
+        consistency)?
 
 
 INDENT COMMANDS (normal, visual)~

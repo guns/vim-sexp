@@ -2100,6 +2100,8 @@ endfunction
 " that selection. Selects current element if cursor is not in a list.
 function! sexp#select_current_list(mode, offset, allow_expansion)
     if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
+        " TODO: I'd really rather hard-code 1 for inner here, but need to
+        " consider backwards-compatability...
         call s:set_marks_around_current_element(a:mode, a:offset)
     endif
     return s:select_current_marks(a:mode)
@@ -2480,7 +2482,6 @@ function! s:yankdel_range__postadjust_positions(adj, splice)
                 " EOL. In such cases, it's better to set position to point
                 " just past EOL and rely on subsequent cursor positioning to
                 " pull it back.
-                echomsg "Shouldn't get here!"
                 let [p[1], p[2]] = s[1:2]
             else
                 " Use either adjusted original pos or adjusted original
@@ -2621,45 +2622,53 @@ let Ydr = function('s:yankdel_range')
 " cursor_after   Nonzero leaves cursor just after put text (default at start)
 " [pos]          Location at which to put the text. Defaults to cursor pos.
 fu! s:put_at(text, before, cursor_after, ...)
-    " Position defaults to cursor pos.
-    if a:0
-        call s:setcursor(a:1)
-    endif
-    let [reg_save, @a] = [@a, a:text]
-    " Caveat: Vim's treatment of -1 string index doesn't obey POLS; use range.
-    let linewise = a:text[-1:] == "\n"
-    if linewise
-        " Make the register non-linewise.
-        let @a .= ' '
-    endif
-    " Note: Use g modifier unconditionally in linewise case to simplify
-    " post-put logic.
-    exe 'normal! "a'
-        \ . (linewise || a:cursor_after ? 'g' : '') . (a:before ? 'P' : 'p')
-    let @a = reg_save
-    if linewise
-        " Remove the space added to inhibit linewise operation.
-        " Save '[ and '] before x or X modify them.
-        let [start, end] = [getpos("'["), getpos("']")]
-        " Space will always be at BOL; whether we're on or after the space
-        " depends upon line and 'virtualedit'.
-        if col('.') == 1
-            " Must be at EOL.
-            normal! "_x
-        else
-            " Backspace over the space
-            normal! "_X
+    let ve_save = &ve
+    set ve=onemore
+    try
+        " Position defaults to cursor pos.
+        if a:0
+            " FIXME: Probably need to save/restore ve=onemore if we're not going
+            " to do it at higher level.
+            call s:setcursor(a:1)
         endif
-        " Note: When pasting a register that ends in newline, Vim leaves
-        " cursor *after* newline, but sets '] mark *before*; do likewise...
-        call setpos("'[", start)
-        call setpos("']", end)
-        " Note: In cursor_after case, position is already correct.
-        if !a:cursor_after
-            " Position at start of operation.
-            call s:setcursor(start)
+        let [reg_save, @a] = [@a, a:text]
+        " Caveat: Vim's treatment of -1 string index doesn't obey POLS; use range.
+        let linewise = a:text[-1:] == "\n"
+        if linewise
+            " Make the register non-linewise.
+            let @a .= ' '
         endif
-    endif
+        " Note: Use g modifier unconditionally in linewise case to simplify
+        " post-put logic.
+        exe 'normal! "a'
+            \ . (linewise || a:cursor_after ? 'g' : '') . (a:before ? 'P' : 'p')
+        let @a = reg_save
+        if linewise
+            " Remove the space added to inhibit linewise operation.
+            " Save '[ and '] before x or X modify them.
+            let [start, end] = [getpos("'["), getpos("']")]
+            " Space will always be at BOL; whether we're on or after the space
+            " depends upon line and 'virtualedit'.
+            if col('.') == 1
+                " Must be at EOL.
+                normal! "_x
+            else
+                " Backspace over the space
+                normal! "_X
+            endif
+            " Note: When pasting a register that ends in newline, Vim leaves
+            " cursor *after* newline, but sets '] mark *before*; do likewise...
+            call setpos("'[", start)
+            call setpos("']", end)
+            " Note: In cursor_after case, position is already correct.
+            if !a:cursor_after
+                " Position at start of operation.
+                call s:setcursor(start)
+            endif
+        endif
+    finally
+        let &ve = ve_save
+    endtry
 endfu
 
 " Adjust the input view to ensure that, if possible, the cursor line doesn't
@@ -2851,7 +2860,6 @@ endfunction
 function! s:cleanup_ws(start, ps, ...)
     let end = a:0 ? a:1 : [0, 0, 0, 0]
     let [open, close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
-    echomsg "in cleanup: start=" . string(a:start) . " end=" . string(end)
     if !end[1]
         let open = a:start[:]
         " Cleanup a list.
@@ -3132,20 +3140,21 @@ fu! sexp#convolute(count, ...)
 endfu
 
 " Return [start, end] of region to be cloned.
-function! s:get_target_range(mode, next, list)
+function! s:get_target_range(mode, after, list)
     let cursor = getpos('.')
     if a:mode ==? 'v'
         " Let set_marks_around_current_element adjust the range.
         return s:set_marks_around_current_element('v', 1, 0, 1)
     else
         " Select list/element to be cloned.
-        let [start, end] = [[0, 0, 0, 0], [0, 0, 0, 0]]
         if a:list
             " Are we within/on a list?
-            let found_list = sexp#select_current_list('n', 0, 0)
+            " TODO: Can we use set_marks_around_current_list()???? What about
+            " the extra call to set_marks_around_current_element????
+            let found = sexp#select_current_list('n', 0, 0)
             " Caveat! Don't stay in visual mode.
             exe "normal! \<Esc>"
-            if found_list
+            if found
                 let [vs, ve] = [getpos("'<"), getpos("'>")]
                 " Make sure we're on or in the found list.
                 " Rationale: select_current_list can find list after cursor,
@@ -3159,17 +3168,19 @@ function! s:get_target_range(mode, next, list)
         else
             " Are we on an element?
             let p = s:current_element_terminal(0)
-            if !p[1]
+            let found = p[1]
+            " Consider an element past the cursor if cloning after.
+            " Rationale: Feels right.
+            if !found && a:after
                 let p = getpos('.')
                 " Not on an element. Find adjacent (if one exists in applicable
                 " direction).
-                call s:move_to_adjacent_element(a:next, 0, 0)
-                if p == getpos('.')
-                    " Nothing to clone at this level!
-                    return [[0, 0, 0, 0], [0, 0, 0, 0]]
-                endif
+                call s:move_to_adjacent_element(1, 0, 0)
+                let found = p != getpos('.')
             endif
-            return s:set_marks_around_current_element('n', 1, 0, 1)
+            return found
+                \ ? s:set_marks_around_current_element('n', 1, 0, 1)
+                \ : [0, 0, 0, 0]
         endif
     endif
 endfunction

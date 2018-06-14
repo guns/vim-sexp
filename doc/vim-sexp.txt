@@ -401,18 +401,16 @@ Leaf flow commands~
 
 CLONE COMMANDS (normal, visual)~
 
-<M-C>                                      *<Plug>(sexp_clone_element_before)*
-<M-c>                                         *<Plug>(sexp_clone_list_before)*
-<C-M-C>                                     *<Plug>(sexp_clone_element_after)*
-<C-M-c>                                        *<Plug>(sexp_clone_list_after)*
+<LocalLeader>C                             *<Plug>(sexp_clone_element_before)*
+<LocalLeader>c                                *<Plug>(sexp_clone_list_before)*
+                                            *<Plug>(sexp_clone_element_after)*
+                                               *<Plug>(sexp_clone_list_after)*
         Insert [count] copies of the current list (compound FORM), element or
-        visual selection before or after the originals, preserving cursor
-        position relative to the originals.
+        visual selection before or after the original, preserving cursor
+        position relative to the original.
 
         In normal mode, the element under the cursor or the list containing
-        the cursor is cloned. If cursor is not on an element, the "clone
-        element" commands look for an adjacent element/list, on the side given
-        by the command name. In visual mode, the range of elements either
+        the cursor is cloned. In visual mode, the range of elements either
         fully or partially selected are cloned.
 
                                                           *indent-after-clone*

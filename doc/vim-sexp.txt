@@ -401,14 +401,19 @@ Leaf flow commands~
 
 CLONE COMMANDS (normal, visual)~
 
-<M-C>                                              *<Plug>(sexp_clone_before)*
-<M-c>                                               *<Plug>(sexp_clone_after)*
-        Insert [count] clones of one or more elements before or after the
-        originals.
+<M-C>                                      *<Plug>(sexp_clone_element_before)*
+<M-c>                                         *<Plug>(sexp_clone_list_before)*
+<C-M-C>                                     *<Plug>(sexp_clone_element_after)*
+<C-M-c>                                        *<Plug>(sexp_clone_list_after)*
+        Insert [count] copies of the current list (compound FORM), element or
+        visual selection before or after the originals, preserving cursor
+        position relative to the originals.
 
-        In normal mode, the element under or after the cursor is cloned. In
-        visual mode, the range of elements either fully or partially selected
-        are cloned.
+        In normal mode, the element under the cursor or the list containing
+        the cursor is cloned. If cursor is not on an element, the "clone
+        element" commands look for an adjacent element/list, on the side given
+        by the command name. In visual mode, the range of elements either
+        fully or partially selected are cloned.
 
                                                           *indent-after-clone*
         If |g:sexp_clone_does_indent| is set (set by default), indent the
@@ -420,10 +425,6 @@ CLONE COMMANDS (normal, visual)~
         If indent is required, |g:sexp_indent_does_clean| determines
         whether extra whitespace is cleaned up. (See |clean-indent| for
         details.)
-
-        *Design-Decision-Needed* Do we need to support distinct element /
-        compound form variants of the clone commands (for sake of
-        consistency)?
 
 
 INDENT COMMANDS (normal, visual)~

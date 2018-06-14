@@ -2582,6 +2582,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 endif
                 " Replace selection with splice text.
                 silent! normal! "ap
+                "put a
                 if linewise
                     " Cleanup the space that was appended to inhibit linewise put.
                     normal! `]x
@@ -2717,13 +2718,14 @@ function! sexp#indent(mode, top, count, clean, ...)
         exe "normal! \<Esc>"
     else
         " Treat visual mode specially.
-        let vi = b:sexp_cmd_cache.cvi
-        let dir = vi.at_end
+        " TODO: Consider using true '< and '>, in case caller has changed it.
+        "let vi = b:sexp_cmd_cache.cvi
         " Rationalize visual range.
         " TODO: Decide how to restore visual selection: should it be
         " [start,end] (constrained) or original selection (adjusted by
         " cleanup_ws).
-        let [start, end] = s:super_range(vi.vs, vi.ve)
+        " TEMP DEBUG
+        let [start, end] = s:super_range(getpos("'<"), getpos("'>"))
     endif
     if clean
         " Always force syntax update when we're modifying the buffer.
@@ -2849,6 +2851,7 @@ endfunction
 function! s:cleanup_ws(start, ps, ...)
     let end = a:0 ? a:1 : [0, 0, 0, 0]
     let [open, close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    echomsg "in cleanup: start=" . string(a:start) . " end=" . string(end)
     if !end[1]
         let open = a:start[:]
         " Cleanup a list.
@@ -2865,6 +2868,7 @@ function! s:cleanup_ws(start, ps, ...)
         if !next[1]
             " Not in element.
             let next = s:nearest_element_terminal(1, 0)
+            " Note: nearest_element_terminal returns current pos on failure.
             if !s:compare_pos(next, getpos("."))
                 " No element on or after start. Null next so that close will
                 " be set in loop...
@@ -2974,7 +2978,7 @@ function! s:cleanup_ws(start, ps, ...)
         let prev = s:move_to_current_element_terminal(1)
         let next = s:nearest_element_terminal(1, 0)
         if next == prev
-            " Note: We'll go through loop once more.
+            " Note: We'll go through loop once more. Null next to find close.
             let next = [0, 0, 0, 0]
         elseif end[1] && s:compare_pos(next, end) > 0
             " Next element is past range.
@@ -3128,33 +3132,53 @@ fu! sexp#convolute(count, ...)
 endfu
 
 " Return [start, end] of region to be cloned.
-function! s:get_target_range(mode, next)
+function! s:get_target_range(mode, next, list)
     let cursor = getpos('.')
     if a:mode ==? 'v'
         " Let set_marks_around_current_element adjust the range.
         return s:set_marks_around_current_element('v', 1, 0, 1)
     else
-        " Get our bearings...
-        let p = s:current_element_terminal(0)
-        if !p[1]
-            let p = getpos('.')
-            " Not on an element. Find adjacent (if one exists in applicable
-            " direction).
-            call s:move_to_adjacent_element(a:next, 0, 0)
-            if p == getpos('.')
-                " Nothing to clone at this level!
-                return [[0, 0, 0, 0], [0, 0, 0, 0]]
+        " Select list/element to be cloned.
+        let [start, end] = [[0, 0, 0, 0], [0, 0, 0, 0]]
+        if a:list
+            " Are we within/on a list?
+            let found_list = sexp#select_current_list('n', 0, 0)
+            " Caveat! Don't stay in visual mode.
+            exe "normal! \<Esc>"
+            if found_list
+                let [vs, ve] = [getpos("'<"), getpos("'>")]
+                " Make sure we're on or in the found list.
+                " Rationale: select_current_list can find list after cursor,
+                " and we're not interested in those.
+                if s:compare_pos(cursor, vs) >= 0 && s:compare_pos(cursor, ve) <= 0
+                    return [vs, ve]
+                endif
             endif
+            " Not on or in list
+            return [[0, 0, 0, 0], [0, 0, 0, 0]]
+        else
+            " Are we on an element?
+            let p = s:current_element_terminal(0)
+            if !p[1]
+                let p = getpos('.')
+                " Not on an element. Find adjacent (if one exists in applicable
+                " direction).
+                call s:move_to_adjacent_element(a:next, 0, 0)
+                if p == getpos('.')
+                    " Nothing to clone at this level!
+                    return [[0, 0, 0, 0], [0, 0, 0, 0]]
+                endif
+            endif
+            return s:set_marks_around_current_element('n', 1, 0, 1)
         endif
-        return s:set_marks_around_current_element('n', 1, 0, 1)
     endif
 endfunction
 
-function! sexp#clone(mode, count, before)
+function! sexp#clone(mode, count, list, after)
     let cursor = getpos('.')
     let wsv = winsaveview()
     " Get region to be cloned.
-    let [start, end] = s:get_target_range(a:mode, !a:before)
+    let [start, end] = s:get_target_range(a:mode, a:after, a:list)
     if !start[1]
         " Nothing to clone.
         call s:warnmsg("Nothing to clone")
@@ -3164,44 +3188,45 @@ function! sexp#clone(mode, count, before)
     let top = s:at_top(start[1], start[2])
     let multi = start[1] != end[1]
     let copy = s:yankdel_range(start, end, 0, 1)
-    call s:setcursor(a:before ? start : end)
+    call s:setcursor(a:after ? end : start)
     let repl = multi
-        \ ? a:before ? [copy, "\n"] : ["\n", copy]
-        \ : a:before ? [copy, " "] : [" ", copy]
+        \ ? a:after ? ["\n", copy] : [copy, "\n"]
+        \ : a:after ? [" ", copy] : [copy, " "]
     let copy = join(repeat(repl, a:count ? a:count : 1), "")
 
     let lines_orig = line('$')
-    let cur_eol = multi && !a:before && cursor[1] == end[1]
+    let cur_eol = multi && a:after && cursor[1] == end[1]
         \ ? s:offset_char(end, 1, 1)[2]
         \ : col([cursor[1], '$'])
     if a:mode ==? 'v'
-        let start_eol = multi && !a:before && start[1] == end[1]
+        let start_eol = multi && a:after && start[1] == end[1]
             \ ? s:offset_char(end, 1, 1)[2]
             \ : col([start[1], '$'])
-        let end_eol = multi && !a:before
+        let end_eol = multi && a:after
             \ ? s:offset_char(end, 1, 1)[2]
             \ : col([end[1], '$'])
     endif
-    silent call s:put_at(copy, a:before, 0, a:before ? start : end)
+    silent call s:put_at(copy, !a:after, 0, a:after ? end : start)
     let lines_added = line('$') - lines_orig
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong, as we haven't done
     " anything that should have any impact on indentation.
     let need_indent = multi && !!g:sexp_clone_does_indent
     if need_indent
+        " TODO: Can the top and non-top cases be harmonized?
         if top
-            " Indent range
-            " TODO: Consider whether to indent target or not.
-            let [l1, l2] = [start[1], end[1] + lines_added]
-            " How many lines were added?
-            " Design Decision: Format both cloned element and clones.
-            " Rationale: In some cases, a cloned element that was not the first
-            " element on its line will be moved to a line of its own, and in such
-            " cases, re-indenting is needed.
-            " Note: := command doesn't do what you think...
-            " TODO: Determine whether the special force_syntax logic added to
-            " sexp#indent is required in this case as well.
-            keepjumps exe 'normal! ' . l1 . 'G=' . l2 . "G"
+            " At toplevel, there's no parent to constrain the indent, and we
+            " may need to indent multiple toplevel forms, so select them all
+            " and do visual mode indent.
+            " Take multi and a:after into account to get l1 and l2
+            " Assumpton: multi == true
+            if a:after
+                let end = getpos("']")
+            else
+                let end = [0, end[1] + lines_added, end[2], 0]
+            endif
+            call s:set_visual_marks([start, end])
+            call sexp#indent('v', 0, 0, -1, 1)
         else
             " Indent parent
             " Note: Because of the way sexp#indent works, we need to know whether
@@ -3211,7 +3236,7 @@ function! sexp#clone(mode, count, before)
             " may result in incorrect indentation.
             call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1)
         endif
-        if a:before
+        if !a:after
             " Cursor has effectively moved.
             let wsv.lnum += lines_added
             " TODO: Decide whether it's better to keep view unchanged or to
@@ -3231,7 +3256,7 @@ function! sexp#clone(mode, count, before)
         endif
     endif
 
-    if need_indent || a:before
+    if need_indent || !a:after
         " Caveat: wsv.col uses zero-based index.
         let wsv.col += col([wsv.lnum, '$']) - cur_eol
         if a:mode ==? 'v'

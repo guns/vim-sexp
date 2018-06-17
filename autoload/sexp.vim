@@ -2388,8 +2388,10 @@ endfunction
 "   0 = exclusive
 "   1 = inclusive (nop)
 "   2 = exclusive of whitespace up to and including newline at EOL
-"       range) or BOL (end of range)
 "       Note: Equivalent to inc==0 if not in whitespace at EOL
+" Example:
+" foo)|<SPC>   ==>   foo)<SPC>
+" bar                |bar
 function! s:yankdel_range__preadjust_range_start(start, inc)
     let ret = a:start[:]
     if a:inc == 2 && getline(ret[1])[ret[2] - 1:] =~ '^.\?\s*$'
@@ -2414,6 +2416,9 @@ endfunction
 "   1 = inclusive (nop)
 "   2 = exclusive of whitespace back to and including newline at BOL
 "       Note: Equivalent to inc==0 if not in whitespace at BOL
+" Example:
+" foo)        ==>   foo)|
+" <SPC>|bar         <SPC>bar
 function! s:yankdel_range__preadjust_range_end(end, inc)
     let ret = a:end[:]
     if a:inc == 2 && getline(ret[1])[:ret[2] - 1] =~ '^\s*.\?$'
@@ -2443,6 +2448,12 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
     return ret
 endfunction
 
+" Note: This preadjustment step isn't strictly necessary, since number of
+" bytes to be deleted could be calculated theoritically (even before any
+" buffer modifications have occurred) using pos2byte etc on start/end;
+" attempting to convert from bytes back to positions, however, is
+" significantly more complex: much simpler/safer to do it using byte2pos after
+" the deletion has occurred.
 function! s:yankdel_range__preadjust_positions(start, end, ps)
     " Pre-op position adjustment
     let ret = {'ps': a:ps, 'byte_offs': [], 'start': a:start}
@@ -2492,7 +2503,6 @@ function! s:yankdel_range__postadjust_positions(adj, splice)
             if p[2] >= col([p[1], '$']) && p[1] < line('$')
                 let p[1:2] = [p[1] + 1, 1]
             endif
-
         endif
     endfor
 endfunction
@@ -2513,7 +2523,7 @@ endfunction
 " character before and after the operation. If this is not possible, we should
 " do the next best thing, which typically means adjusting the position to a
 " deterministic location near the head or tail of the operated region.
-" TODO: Idea: Could passing 'splice' arg of one or more newlinews obviate need
+" TODO: Idea: Could passing 'splice' arg of one or more newlines obviate need
 " for the special inc==2 value??? Think on this...
 function! s:yankdel_range(start, end, del_or_spl, ...)
     let ret = ''
@@ -2534,8 +2544,8 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
         " e.g., start == end and either end (but not both) exclusive. Though
         " there are simpler ways to accomplish it, you could use such null
         " regions to perform a simple put, whose direction is determined by
-        " which end is inclusive (inclusive start => put before).
-        let spl_put = cmp > 0 && s:offset_char(end, 1, 1) == start
+        " the inclusive side (inclusive start => put before).
+        let spl_put = cmp > 0 && a:start == a:end
         if cmp <= 0 || spl_put
             " Note: Since splice also deletes, del will be set for either.
             let [del, spl, spl_text] = type(a:del_or_spl) == 1
@@ -2566,7 +2576,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
             endif
             " Perform the yank/del/splice.
             if spl_put
-                call s:setcursor(end)
+                call s:setcursor(a:start)
             else
                 " Select text to be yanked/deleted
                 call s:set_visual_marks([start, end])
@@ -2582,8 +2592,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                     let @a .= ' '
                 endif
                 " Replace selection with splice text.
-                silent! normal! "ap
-                "put a
+                silent! exe 'normal! "a' . (spl_put && inc[0] ? 'P' : 'p')
                 if linewise
                     " Cleanup the space that was appended to inhibit linewise put.
                     normal! `]x
@@ -2686,11 +2695,33 @@ function! s:adjust_saved_view(view, cursor)
     " column is visible.
 endfunction
 
+function! s:indent_preadjust_positions(ps)
+    let ret = {'ps': a:ps, 'line_ends': {}}
+    let line_ends = ret.line_ends
+    for p in a:ps
+        if !has_key(line_ends, p[1])
+            let line_ends[p[1]] = col([p[1], '$'])
+        endif
+    endfor
+    return ret
+endfunction
+
+function! s:indent_postadjust_positions(adj)
+    let line_ends = a:adj.line_ends
+    for p in a:adj.ps
+        " Note: I suppose that for a position inside leading whitespace, the
+        " optimal logic might calculate the % visual distance (not byte
+        " distance) into the ws and try to preserve it across indent, but this
+        " is a lot of complexity for a small potential advantage.
+        " Decision: For now, stay on this side of point of diminishing returns
+        " by preserving byte distance from EOL.
+        let p[2] -= line_ends[p[1]] - col([p[1], '$'])
+    endfor
+endfunction
+
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
-" FIXME!!!!: clean no longer needs to be tri-state: can be "force clean"
-" boolean.
 function! sexp#indent(mode, top, count, clean, ...)
     let win = winsaveview()
     let cursor = getpos('.')
@@ -2698,11 +2729,14 @@ function! sexp#indent(mode, top, count, clean, ...)
     let force_syntax = a:0 && !!a:1
     " If caller hasn't specified clean, defer to option.
     let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
+    " Were positions supplied for adjustment?
+    let ps = a:0 > 1 ? a:2 : []
 
     if a:mode ==? 'n'
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
-        if getline(line)[col - 1] =~ s:closing_bracket && !s:syntax_match(s:ignored_region, line, col)
+        if getline(line)[col - 1] =~ s:closing_bracket
+            \ && !s:syntax_match(s:ignored_region, line, col)
             let pos = [0, line, col, 0]
         else
             let pos = s:move_to_nearest_bracket(1)
@@ -2727,13 +2761,10 @@ function! sexp#indent(mode, top, count, clean, ...)
         exe "normal! \<Esc>"
     else
         " Treat visual mode specially.
-        " TODO: Consider using true '< and '>, in case caller has changed it.
-        "let vi = b:sexp_cmd_cache.cvi
         " Rationalize visual range.
         " TODO: Decide how to restore visual selection: should it be
         " [start,end] (constrained) or original selection (adjusted by
         " cleanup_ws).
-        " TEMP DEBUG
         let [start, end] = s:super_range(getpos("'<"), getpos("'>"))
     endif
     if clean
@@ -2743,9 +2774,10 @@ function! sexp#indent(mode, top, count, clean, ...)
         " cleanup back to prev, but indent starting with current.
 
         " Note: Adding optional end arg.
-        call s:cleanup_ws(start, [start, end, cursor], end)
+        call s:cleanup_ws(start, s:concat_positions(ps, [start, end, cursor]), end)
     endif
     " Record initial distance from cursor to end of line.
+    " TODO: Remove these if no longer required.
     let cur_edist = col([cursor[1], '$']) - cursor[2]
     let s_edist = col([start[1], '$']) - start[2]
     let e_edist = col([end[1], '$']) - end[2]
@@ -2762,17 +2794,22 @@ function! sexp#indent(mode, top, count, clean, ...)
         " in such scenarios to force syntax recalculation prior to the =.
         exe start[1] . ',' . end[1] . 'call synID(line("."), col("."), 1)'
     endif
+    " Position pre-adjustment
+    let adj = s:indent_preadjust_positions(
+        \ s:concat_positions(ps, start, end, cursor))
     silent keepjumps exe "normal! " . start[1] . 'G=' . end[1] . "G"
-    " Adjust cursor pos to account for leading whitespace changes.
-    " Note: If cleanup was performed, s:cleanup_ws() may also have performed
-    " adjustments.
+    " Position post-adjustment
+    call s:indent_postadjust_positions(adj)
+
+    " Adjust window view object to account for buffer changes made by the
+    " indent (and possibly by s:cleanup_ws).
+    " FIXME: Since this function is called internally (e.g., from sexp#clone),
+    " should probably either factor out the cursor/window restoration (e.g.,
+    " putting it into a static workhorse function that can be called by
+    " sexp#clone as well), or make it selectable.
     let win.lnum = cursor[1]
-    let win.col = col([cursor[1], '$']) - cur_edist - 1
+    let win.col = cursor[2] - 1 " .col is zero-based
     " Restore (potentially adjusted) visual selection.
-    " Caveat: Unlike winrestview object members, start/end use normal
-    " (1-based) col numbers.
-    let start[2] = col([start[1], '$']) - s_edist
-    let end[2] = col([end[1], '$']) - e_edist
     call s:set_visual_marks([start, end])
     call winrestview(win)
 endfunction
@@ -2780,6 +2817,10 @@ endfunction
 " Create a flat list encompassing all input positions.
 " Note: The flat list is intended to facilitate iteration: the positions it
 " contains are generally modifed in-place.
+" TODO: Consider adding position uniquifying logic.
+" Rationale: The created lists are generally used in pass-by ref position
+" modifications strategies, which would modify the same position multiple
+" times if it somehow made it into the list multiple times.
 function! s:concat_positions(...)
     let ret = []
     for p in a:000
@@ -3188,6 +3229,8 @@ endfunction
 function! sexp#clone(mode, count, list, after)
     let cursor = getpos('.')
     let wsv = winsaveview()
+    " Save offset of cursor from top of window
+    let cursor_off = cursor[1] - wsv.topline
     " Get region to be cloned.
     let [start, end] = s:get_target_range(a:mode, a:after, a:list)
     if !start[1]
@@ -3197,7 +3240,8 @@ function! sexp#clone(mode, count, list, after)
     endif
     " Assumption: Prior logic guarantees start and end at same level.
     let top = s:at_top(start[1], start[2])
-    let multi = start[1] != end[1]
+    " Experimental: Don't clone things at toplevel on same line.
+    let multi = top || start[1] != end[1]
     let copy = s:yankdel_range(start, end, 0, 1)
     call s:setcursor(a:after ? end : start)
     let repl = multi
@@ -3205,89 +3249,54 @@ function! sexp#clone(mode, count, list, after)
         \ : a:after ? [" ", copy] : [copy, " "]
     let copy = join(repeat(repl, a:count ? a:count : 1), "")
 
-    let lines_orig = line('$')
-    let cur_eol = multi && a:after && cursor[1] == end[1]
-        \ ? s:offset_char(end, 1, 1)[2]
-        \ : col([cursor[1], '$'])
-    if a:mode ==? 'v'
-        let start_eol = multi && a:after && start[1] == end[1]
-            \ ? s:offset_char(end, 1, 1)[2]
-            \ : col([start[1], '$'])
-        let end_eol = multi && a:after
-            \ ? s:offset_char(end, 1, 1)[2]
-            \ : col([end[1], '$'])
-    endif
-    silent call s:put_at(copy, !a:after, 0, a:after ? end : start)
-    let lines_added = line('$') - lines_orig
+    " Implement put with yankdel_range to take advantage of position
+    " adjustment.
+    let p = a:after ? end : start
+    let inc = a:after ? [0, 1] : [1, 0]
+    " TODO: Consider creating a put_at wrapper for this.
+    call s:yankdel_range(p, p, copy, inc, [start, end, cursor])
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong, as we haven't done
     " anything that should have any impact on indentation.
     let need_indent = multi && !!g:sexp_clone_does_indent
     if need_indent
-        " TODO: Can the top and non-top cases be harmonized?
         if top
             " At toplevel, there's no parent to constrain the indent, and we
             " may need to indent multiple toplevel forms, so select them all
             " and do visual mode indent.
-            " Take multi and a:after into account to get l1 and l2
             " Assumpton: multi == true
+            " Note: start never changes, and end has been adjusted
+            " automatically if copy direction is before.
             if a:after
                 let end = getpos("']")
-            else
-                let end = [0, end[1] + lines_added, end[2], 0]
             endif
             call s:set_visual_marks([start, end])
-            call sexp#indent('v', 0, 0, -1, 1)
+            call sexp#indent('v', 0, 0, -1, 1, [start, end, cursor])
         else
             " Indent parent
-            " Note: Because of the way sexp#indent works, we need to know whether
-            " cursor is on an open or close.
+            " Note: Because of the way sexp#indent works, we need to know
+            " whether cursor is on an open or close.
             let isl = s:is_list(line('.'), col('.'))
-            " Caveat: Failure to set optional force_syntax flag in call to indent
-            " may result in incorrect indentation.
-            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1)
-        endif
-        if !a:after
-            " Cursor has effectively moved.
-            let wsv.lnum += lines_added
-            " TODO: Decide whether it's better to keep view unchanged or to
-            " allow text to shift down (to make it obvious something's
-            " happened).
-            let wsv.topline += lines_added
-            " Design Decision: Don't adjust wsv.topline.
-            " Rationale: When near start of file, it can prevent user from
-            " noticing that anything changed (since added stuff would be above
-            " view).
-            " FIXME: If end is no longer in view, scroll up to put it at bottom or
-            " start at top...
-            if a:mode ==? 'v'
-                let start[1] += lines_added
-                let end[1] += lines_added
-            endif
+            " Caveat: Failure to set optional force_syntax flag in call to
+            " indent may result in incorrect indentation.
+            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1, [start, end, cursor])
         endif
     endif
 
-    if need_indent || !a:after
-        " Caveat: wsv.col uses zero-based index.
-        let wsv.col += col([wsv.lnum, '$']) - cur_eol
-        if a:mode ==? 'v'
-            let start[2] += col([start[1], '$']) - start_eol
-            let end[2] += col([end[1], '$']) - end_eol
-        endif
+    let wsv.lnum = cursor[1]
+    if !a:after
+        " TODO: This logic isn't quite right.
+        let wsv.topline = max([1, cursor[1] - cursor_off])
     endif
-
+    let wsv.col = cursor[2] - 1
     call winrestview(wsv)
-    " TODO: Consider checking whether cloned element is partly below view and
-    " scrolling up if so...
 
-    " Handle visual selection.
+    " Adjust visual selection.
     " Note: Restore *inner* version of original selection, since changes to
     " surrounding whitespace can make it impossible to define, let alone
     " restore, an outer selection.
     if a:mode ==? 'v'
         call s:set_visual_marks([start, end])
-        " FIXME: Probably don't leave visual selection active.
-        "call s:select_current_marks('v')
     endif
 endfunction
 

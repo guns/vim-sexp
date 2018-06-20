@@ -2731,6 +2731,8 @@ function! sexp#indent(mode, top, count, clean, ...)
     let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
     " Were positions supplied for adjustment?
     let ps = a:0 > 1 ? a:2 : []
+    " Note: This flag can be set (but not cleared) post init.
+    let at_top = a:top
 
     if a:mode ==? 'n'
         " Move to current list tail since the expansion step of
@@ -2744,6 +2746,7 @@ function! sexp#indent(mode, top, count, clean, ...)
 
         normal! v
         if pos[1] < 1
+            let at_top = 1
             " At top-level. If current (or next) element is list, select it.
             " Note: When not within list, 'inner' includes brackets.
             keepjumps call sexp#select_current_element('v', 1)
@@ -2752,6 +2755,9 @@ function! sexp#indent(mode, top, count, clean, ...)
             keepjumps call sexp#select_current_top_list('v', 0)
         else
             " Inside list. Select [count]th containing list.
+            " TODO: Do we need to check for (and include) macro chars?
+            " Note: Currently, cleanup_ws will work properly if macro chars
+            " are omitted from selection, but should we rely on this?
             keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
         endif
         " Cache visual start/end; end can actually be changed by s:cleanup_ws().
@@ -2772,9 +2778,11 @@ function! sexp#indent(mode, top, count, clean, ...)
         let force_syntax = 1
         " Design Decision: Handle both non-list and list elements identically:
         " cleanup back to prev, but indent starting with current.
-
-        " Note: Adding optional end arg.
-        call s:cleanup_ws(start, s:concat_positions(ps, [start, end, cursor]), end)
+        " TODO: Consider combining start/end into a range.
+        " Note: Avoid unnecessary calls to at_top().
+        let at_top = at_top || s:at_top(end[1], end[2])
+        call s:cleanup_ws(start, at_top,
+            \ s:concat_positions(ps, [start, end, cursor]), end)
     endif
     " Record initial distance from cursor to end of line.
     " TODO: Remove these if no longer required.
@@ -2898,7 +2906,7 @@ endfunction
 " FIXME: When function called with optional end argument, we don't assume that
 " start is an open; rather, start and (optional) close demarcate the cleanup
 " as follows: start at element *before* start and end with element past close.
-function! s:cleanup_ws(start, ps, ...)
+function! s:cleanup_ws(start, at_top, ps, ...)
     let end = a:0 ? a:1 : [0, 0, 0, 0]
     let [open, close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
     if !end[1]
@@ -2979,9 +2987,11 @@ function! s:cleanup_ws(start, ps, ...)
                 \ && !precedes_com
                 \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
                 " Replace gap with either 1 or 2 newlines: the goal generally
-                " is to remove blank lines, but if a comment is preceded by
-                " one or more blank lines, keep one.
-                let spl = precedes_com && gap > 2 ? "\n\n" : "\n"
+                " is to remove blank lines, but if any of the following
+                " conditions holds true, keep a single blank line:
+                " 1. next is comment preceded by one or more blank lines
+                " 2. next and prev are at toplevel
+                let spl = precedes_com && gap > 2 || a:at_top ? "\n\n" : "\n"
             endif
         " Single-line (whitespace between collinear elements)
         " Cursor Logic: If cursor is in whitespace to be contracted, but not
@@ -3018,7 +3028,7 @@ function! s:cleanup_ws(start, ps, ...)
         call cursor(eff_next[1], eff_next[2])
         if s:is_list(eff_next[1], eff_next[2])
             let next = s:move_to_list_open()
-            call s:cleanup_ws(next, a:ps)
+            call s:cleanup_ws(next, 0, a:ps)
             " Assumption: Restore cursor pos (potentially changed by
             " recursion) to next (which can't be invalidated by recursion).
             call s:setcursor(next)
@@ -3285,7 +3295,8 @@ function! sexp#clone(mode, count, list, after)
 
     let wsv.lnum = cursor[1]
     if !a:after
-        " TODO: This logic isn't quite right.
+        " Design Decision: To avoid visual disturbance, preserve original
+        " screen line.
         let wsv.topline = max([1, cursor[1] - cursor_off])
     endif
     let wsv.col = cursor[2] - 1

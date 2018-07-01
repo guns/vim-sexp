@@ -153,6 +153,8 @@ ie                                                *<Plug>(sexp_inner_element)*
             * spare initially selected whitespace preceding the first
               selected element (unless removing the whitespace would violate
               one of the other constraints)
+            * remove all blank lines between toplevel elements initially
+              separated by at least 1 blank line.
         Note: The rules may sound complex, but they mostly follow the
         "principle of least surprise".
 
@@ -414,7 +416,7 @@ CLONE COMMANDS (normal, visual)~
         fully or partially selected are cloned.
 
                                                           *indent-after-clone*
-        If |g:sexp_clone_does_indent| is set (set by default), indent the
+        If |g:sexp_clone_does_indent| is set (the default), indent the
         compound form (or range of lines at toplevel) containing the cloned
         elements.
         Note: Indent is never performed for clone operations affecting only a
@@ -451,10 +453,11 @@ INDENT COMMANDS (normal, visual)~
         If |g:sexp_indent_does_clean| is set (unset by default), attempt to
         cleanup the indented region by removing extra whitespace. The rules
         for determining whether whitespace is "extra" obey the principle of
-        least surprise mentioned under |whitespace-cleanup-rules| in the
+        least surprise mentioned under |surrounding-whitespace-rules| in the
         section on sexp_outer_element.
-        Note: Blank lines are generally removed; however, if a comment is
-        preceded by one or more blank lines, a single blank line will be kept.
+        Note: Blank lines are generally removed; however, if a comment or
+        toplevel element is preceded by one or more blank lines, a single
+        blank line will be kept.
 
 <M-=>                                          *<Plug>(sexp_indent_and_clean)*
 <M-->                                      *<Plug>(sexp_indent_and_clean_top)*

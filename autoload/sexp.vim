@@ -2102,7 +2102,11 @@ function! sexp#select_current_list(mode, offset, allow_expansion)
     if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
         " TODO: I'd really rather hard-code 1 for inner here, but need to
         " consider backwards-compatability...
-        call s:set_marks_around_current_element(a:mode, a:offset)
+        " FIXME: The thing is, "inner" means something different for lists:
+        " i.e., even outer doesn't select whitespace around the list, so if
+        " we're going to fall back to current element, I think it should be
+        " inner, regardless of a:offset.
+        call s:set_marks_around_current_element(a:mode, 1) "a:offset)
     endif
     return s:select_current_marks(a:mode)
 endfunction
@@ -2461,9 +2465,14 @@ function! s:yankdel_range__preadjust_positions(start, end, ps)
     let ret.bytes_in_file = s:total_bytes_in_file()
     " Calculate byte offset of start wrt BOF and end wrt start.
     let ret.start_byte = s:pos2byte(a:start)
-    " FIXME: Consider whether e_off should reflect position just *past* end.
+    " Note: Considered making e_off reflect position just *past* end.
     " Rationale: When position is deleted, it looks best when it falls forward
     " *out of* the deleted range (i.e., into first non-deleted text).
+    " Decision: I actually think it's best to position *at* original end.
+    " Rationale: If splice text is non-empty, it looks best for cursor to move
+    " to end of spliced text; if splice is empty (i.e., splice is actually
+    " delete), end position will correspond to first char past deletion
+    " naturally.
     let ret.end_off = s:pos2byte(a:end) - ret.start_byte
     " Calculate and store offsets of positions of interest wrt start of range.
     for p in a:ps
@@ -2483,22 +2492,9 @@ function! s:yankdel_range__postadjust_positions(adj, splice)
         let [o, p] = [offs[i], ps[i]]
         if o > 0
             " Adjustment required.
-            " TODO: Decide whether I don't want to use end pos for splice as
-            " well.
-            if o < e_off && 0 "a:splice
-                " Move to start
-                " Caveat: Considered using byte offsets to calculate start
-                " (rather than saving in adjustment struct), but this could
-                " cause undesirable shift to subsequent line when end is at
-                " EOL. In such cases, it's better to set position to point
-                " just past EOL and rely on subsequent cursor positioning to
-                " pull it back.
-                let [p[1], p[2]] = s[1:2]
-            else
-                " Use either adjusted original pos or adjusted original
-                " end (if original pos is in deleted range).
-                let [p[1], p[2]] = s:byte2pos(s_byte + max([o, e_off]) + delta)[1:2]
-            endif
+            " Use either adjusted original pos or adjusted original end (if
+            " original pos is in deleted range).
+            let [p[1], p[2]] = s:byte2pos(s_byte + max([o, e_off]) + delta)[1:2]
             "echomsg "p=" . string(p)
             if p[2] >= col([p[1], '$']) && p[1] < line('$')
                 let p[1:2] = [p[1] + 1, 1]
@@ -2554,24 +2550,23 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
 
             if del
                 " Pre-op position adjustment
-                " Special Case: If inc[1]==2, use inc[1]==1 end position to
-                " calculate offset.
-                " Rationale: When positions to be adjusted lie within deleted
-                " lines, using the later of the 2 end positions yields more
-                " intuitive results: namely, position will seem not to move,
-                " whereas using the earlier end position will make it appear
-                " to move backwards to end of a preceding line.
-                " Actually: I really need to use position just *past* end.
-                " TODO: Think this through, especially the inc arg to
-                " preadjust function... I.e., why am I even calling this
-                " function with the nop (1) inc arg? I think I can just use
-                " a:end.
-                " Brainstorming: In both inc[1]==2 && 0 cases, a:end is
-                " exclusive, so we can just use it; else, apply offset_char()
-                " to end.
-                " TODO!!!!!!: Analyze these changes...
-                let adj = s:yankdel_range__preadjust_positions(start,
-                    \ inc[1] != 1 ? a:end : s:offset_char(end, 1),
+                " End: Treat deletion and non-null splice differently: for a
+                " deletion, end should be *past* the deleted text, but for a
+                " non-empty splice, use the end of the spliced area.
+                " Rationale: Looks best to keep cursor within replacement area
+                " (typically whitespace) when text is spliced, but to let it
+                " fall forward into undeleted text when deleting.
+                " Start: If we're doing a put before, pre-adjustment needs to
+                " use a start position prior to a:start; otherwise, the
+                " original start position will not be adjusted, despite coming
+                " after the put text.
+                " Note: Both 0 and 2 inc values are excusive.
+                " FIXME-ws-contract-logic
+                let adj = s:yankdel_range__preadjust_positions(
+                    \ spl_put && inc[0] ? s:offset_char(start, 0) : start,
+                    \ !spl
+                        \ ? inc[1] != 1 ? a:end : s:offset_char(end, 1)
+                        \ : end,
                     \ a:0 > 1 ? s:concat_positions(a:2, cursor) : [cursor])
             endif
             " Perform the yank/del/splice.
@@ -2594,8 +2589,15 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 " Replace selection with splice text.
                 silent! exe 'normal! "a' . (spl_put && inc[0] ? 'P' : 'p')
                 if linewise
+                    " Save [ and ] marks for restoration after space deletion.
+                    let [smark, emark] =
+                        \ [getpos("'["), [0, line("']") - 1, col([line("']"), '$']) - 1, 0]]
                     " Cleanup the space that was appended to inhibit linewise put.
-                    normal! `]x
+                    normal! `]"_x
+                    " Restore the [ and ] marks, which are clobbered by normal
+                    " x, even when lockmarks is used.
+                    call setpos("'[", smark)
+                    call setpos("']", emark)
                     let @" = @"[:-2]
                 endif
                 if !spl_put
@@ -2784,11 +2786,6 @@ function! sexp#indent(mode, top, count, clean, ...)
         call s:cleanup_ws(start, at_top,
             \ s:concat_positions(ps, [start, end, cursor]), end)
     endif
-    " Record initial distance from cursor to end of line.
-    " TODO: Remove these if no longer required.
-    let cur_edist = col([cursor[1], '$']) - cursor[2]
-    let s_edist = col([start[1], '$']) - start[2]
-    let e_edist = col([end[1], '$']) - end[2]
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
     if force_syntax
@@ -2986,18 +2983,30 @@ function! s:cleanup_ws(start, at_top, ps, ...)
             if gap > 2 || gap > 1
                 \ && !precedes_com
                 \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
-                " Replace gap with either 1 or 2 newlines: the goal generally
-                " is to remove blank lines, but if any of the following
-                " conditions holds true, keep a single blank line:
+                " Replace gap with either 1 or 2 newlines followed by space:
+                " the goal generally is to remove blank lines, but if any of
+                " the following conditions holds true, keep a single blank
+                " line:
                 " 1. next is comment preceded by one or more blank lines
                 " 2. next and prev are at toplevel
-                let spl = precedes_com && gap > 2 || a:at_top ? "\n\n" : "\n"
+                " Note: Without the appended space, a position that started
+                " out within whitespace would move to first non-blank on the
+                " line following the newline(s), and that position is the one
+                " that would be preserved across the subsequent indent, even
+                " though the indent is likely to add back some leading
+                " whitespace, and it would be more natural to keep the
+                " position in it.
+                " FIXME-ws-contract-logic
+                let spl = precedes_com && gap > 2 || a:at_top ? "\n\n " : "\n "
             endif
         " Single-line (whitespace between collinear elements)
         " Cursor Logic: If cursor is in whitespace to be contracted, but not
         " on *first* whitespace in the range, we want it to end up *past* the
         " single remaining space; otherwise, on it.
-        " FIXME: Not currently handling collinear whitespace at EOF!!!
+        " FIXME: Is this really what we want? It seems a bit inconsistent,
+        " given that when yankdel_range is used to contract whitespace with a
+        " splice, its position adjustment moves cursor from within deleted
+        " range to the end of the spliced text (not past it).
         " If multiple whitespace and next isn't a comment, contract to single
         " space.
         " Rationale: Only before a comment does extra (non-leading) whitespace
@@ -3275,10 +3284,14 @@ function! sexp#clone(mode, count, list, after)
             " may need to indent multiple toplevel forms, so select them all
             " and do visual mode indent.
             " Assumpton: multi == true
-            " Note: start never changes, and end has been adjusted
-            " automatically if copy direction is before.
+            " Note: One end of the region to be indented has been adjusted by
+            " yankdel_range; the other can be obtained from [ or ] mark.
+            " FIXME: Using [ and ] marks doesn't work properly.
             if a:after
                 let end = getpos("']")
+            else
+                " Could also simply save prior to copy.
+                let start = getpos("'[")
             endif
             call s:set_visual_marks([start, end])
             call sexp#indent('v', 0, 0, -1, 1, [start, end, cursor])
@@ -3293,6 +3306,8 @@ function! sexp#clone(mode, count, list, after)
         endif
     endif
 
+    " Preserve view to avoid visual disturbance: e.g., keep cursor where it
+    " was, both w.r.t screen and original text.
     let wsv.lnum = cursor[1]
     if !a:after
         " Design Decision: To avoid visual disturbance, preserve original
@@ -3302,13 +3317,13 @@ function! sexp#clone(mode, count, list, after)
     let wsv.col = cursor[2] - 1
     call winrestview(wsv)
 
-    " Adjust visual selection.
+    " Adjust visual marks.
+    " Design Decision: Since we use visual selections regardless of a:mode,
+    " might as well adjust regardless of mode.
     " Note: Restore *inner* version of original selection, since changes to
     " surrounding whitespace can make it impossible to define, let alone
     " restore, an outer selection.
-    if a:mode ==? 'v'
-        call s:set_visual_marks([start, end])
-    endif
+    call s:set_visual_marks([start, end])
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted
@@ -3650,3 +3665,5 @@ function! sexp#backspace_insertion()
         return "\<BS>"
     endif
 endfunction
+
+" vim:ts=4:sw=4:et

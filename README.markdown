@@ -84,7 +84,8 @@ operator-pending mode.
 
 ### Flow Motions (normal, visual)
 
-Like text object motions, flow motions move the cursor in normal mode and move the selection in visual mode. Unlike text object motions, flow motions are completely unconstrained by list structure, permitting the cursor to move freely in and out of compound forms. For this reason, flow-motions are not provided in operator-pending mode.
+Flow motions move the cursor in normal mode and move (not extend) the selection in visual mode. Unlike text object motions, flow motions are completely unconstrained by list structure, permitting the cursor to move freely in and out of compound forms.
+Note: Since the application of delete operators across list boundaries could destroy structural integrity, flow-motions are not provided in operator-pending mode.
 
 TODO: Refine this...
 * The `<M-]>` motion moves the cursor forward by open brackets
@@ -100,18 +101,19 @@ TODO: Need list/leaf concept overview...
 
 ### Indent Commands (normal, visual)
 
-* `==` indents the current COMPOUND FORM without moving the cursor
+* `==` indents the current COMPOUND FORM or visual selection without moving the cursor
 * `=-` indents the current top-level COMPOUND FORM without moving the cursor (normal mode only)
-* `<M-=>` indents and removes extra whitespace from the current COMPOUND FORM without moving the cursor
+* `<M-=>` indents and removes extra whitespace from the current COMPOUND FORM or visual selection without moving the cursor
 * `<M-->` indents and removes extra whitespace from the current top-level COMPOUND FORM without moving the cursor (normal mode only)
 
-If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` commands remove extra whitespace before performing indent. If you set this option, you should unmap `<M-=>` and `<M-->` to avoid creating redundant mappings.
+If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` commands remove extra whitespace before performing indent. If you set this option, you may wish to unmap `<M-=>` and `<M-->` to avoid creating redundant mappings.
 
 ### Clone Commands (normal, visual)
 
-* The `<M-C>` and `<M-c>` commands create copies of one or more elements before or after the cursor.
+* `<LocalLeader>c` creates copy of current list or visual selection before cursor without moving cursor
+* `<LocalLeader>C` creates copy of current element or visual selection before cursor without moving cursor
 
-If `g:sexp_clone_does_indent` is set (true by default), all elements involved in the clone (both original and copies) will be indented.
+If `g:sexp_clone_does_indent` is set (true by default) and cloned text spans multiple lines, all elements involved in the clone (both original and copies) will be indented.
 
 ### Wrap Commands (normal, visual)
 

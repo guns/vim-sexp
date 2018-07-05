@@ -403,17 +403,17 @@ Leaf flow commands~
 
 CLONE COMMANDS (normal, visual)~
 
-<LocalLeader>C                             *<Plug>(sexp_clone_element_before)*
 <LocalLeader>c                                *<Plug>(sexp_clone_list_before)*
-                                            *<Plug>(sexp_clone_element_after)*
+<LocalLeader>C                             *<Plug>(sexp_clone_element_before)*
                                                *<Plug>(sexp_clone_list_after)*
+                                            *<Plug>(sexp_clone_element_after)*
         Insert [count] copies of the current list (compound FORM), element or
         visual selection before or after the original, preserving cursor
         position relative to the original.
 
-        In normal mode, the element under the cursor or the list containing
-        the cursor is cloned. In visual mode, the range of elements either
-        fully or partially selected are cloned.
+        In visual mode, the selection is first expanded to cover all partially
+        selected lists and elements so that structural integrity is
+        maintained.
 
                                                           *indent-after-clone*
         If |g:sexp_clone_does_indent| is set (the default), indent the
@@ -422,9 +422,8 @@ CLONE COMMANDS (normal, visual)~
         Note: Indent is never performed for clone operations affecting only a
         single line.
 
-        If indent is required, |g:sexp_indent_does_clean| determines
-        whether extra whitespace is cleaned up. (See |clean-indent| for
-        details.)
+        If indent is required, |g:sexp_indent_does_clean| determines whether
+        extra whitespace is cleaned up. (See |clean-indent| for details.)
 
 
 INDENT COMMANDS (normal, visual)~
@@ -435,10 +434,10 @@ INDENT COMMANDS (normal, visual)~
         current top-level list without moving the cursor. If the cursor is not
         in a compound FORM, the current element is indented instead.
 
-        In visual mode, indent the range of elements either fully or partially
-        selected.
+        In visual mode, the selection is first expanded to cover all partially
+        selected lists and elements.
         Note: Visual mappings are not created for the "top" variants of indent
-        commands; such commands would be pointless since "top" implies
+        commands; such commands would be pointless because "top" implies
         ignoring the visual selection.
 
         == shadows the builtin |==| mapping. If you wish to remap this
@@ -447,14 +446,13 @@ INDENT COMMANDS (normal, visual)~
         if == were used for sexp_indent in visual mode; accordingly, if you
         have not overridden the default mapping for sexp_indent, = is used
         instead of == for visual mode sexp_indent.
-        
 
                                                                 *clean-indent*
-        If |g:sexp_indent_does_clean| is set (unset by default), attempt to
-        cleanup the indented region by removing extra whitespace. The rules
-        for determining whether whitespace is "extra" obey the principle of
-        least surprise mentioned under |surrounding-whitespace-rules| in the
-        section on sexp_outer_element.
+        If |g:sexp_indent_does_clean| is set (unset by default), the indent
+        commands also perform "cleanup" on the indented region by removing
+        extra whitespace. The rules for determining whether whitespace is
+        "extra" obey the principle of least surprise mentioned under
+        |surrounding-whitespace-rules| in the section on sexp_outer_element.
         Note: Blank lines are generally removed; however, if a comment or
         toplevel element is preceded by one or more blank lines, a single
         blank line will be kept.
@@ -751,8 +749,10 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ 'sexp_splice_list':               '<LocalLeader>@',
             \ 'sexp_convolute':                 '<LocalLeader>?',
-            \ 'sexp_clone_before':              '<M-C>',
-            \ 'sexp_clone_after':               '<M-c>',
+            \ 'sexp_clone_list_before           '<LocalLeader>c',
+            \ 'sexp_clone_list_after            '',
+            \ 'sexp_clone_element_before':      '<LocalLeader>C',
+            \ 'sexp_clone_element_after':       '',
             \ 'sexp_raise_list':                '<LocalLeader>o',
             \ 'sexp_raise_element':             '<LocalLeader>O',
             \ 'sexp_swap_list_backward':        '<M-k>',
@@ -835,6 +835,14 @@ copy, paste, and edit this example to taste.
             omap <silent><buffer> ae              <Plug>(sexp_outer_element)
             xmap <silent><buffer> ie              <Plug>(sexp_inner_element)
             omap <silent><buffer> ie              <Plug>(sexp_inner_element)
+            xmap <silent><buffer> ac              <Plug>(sexp_outer_child_head)
+            omap <silent><buffer> ac              <Plug>(sexp_outer_child_head)
+            xmap <silent><buffer> ic              <Plug>(sexp_inner_child_head)
+            omap <silent><buffer> ic              <Plug>(sexp_inner_child_head)
+            xmap <silent><buffer> aC              <Plug>(sexp_outer_child_tail)
+            omap <silent><buffer> aC              <Plug>(sexp_outer_child_tail)
+            xmap <silent><buffer> iC              <Plug>(sexp_inner_child_tail)
+            omap <silent><buffer> iC              <Plug>(sexp_inner_child_tail)
             nmap <silent><buffer> (               <Plug>(sexp_move_to_prev_bracket)
             xmap <silent><buffer> (               <Plug>(sexp_move_to_prev_bracket)
             omap <silent><buffer> (               <Plug>(sexp_move_to_prev_bracket)
@@ -865,8 +873,32 @@ copy, paste, and edit this example to taste.
             nmap <silent><buffer> ]e              <Plug>(sexp_select_next_element)
             xmap <silent><buffer> ]e              <Plug>(sexp_select_next_element)
             omap <silent><buffer> ]e              <Plug>(sexp_select_next_element)
+            nmap <silent><buffer> <M-]>           <Plug>(sexp_flow_to_next_open)
+            xmap <silent><buffer> <M-]>           <Plug>(sexp_flow_to_next_open)
+            nmap <silent><buffer> <M-[>           <Plug>(sexp_flow_to_prev_close)
+            xmap <silent><buffer> <M-[>           <Plug>(sexp_flow_to_prev_close)
+            nmap <silent><buffer> <M-{>           <Plug>(sexp_flow_to_prev_open)
+            xmap <silent><buffer> <M-{>           <Plug>(sexp_flow_to_prev_open)
+            nmap <silent><buffer> <M-}>           <Plug>(sexp_flow_to_next_close)
+            xmap <silent><buffer> <M-}>           <Plug>(sexp_flow_to_next_close)
+            nmap <silent><buffer> <M-S-b>         <Plug>(sexp_flow_to_prev_leaf_head)
+            xmap <silent><buffer> <M-S-b>         <Plug>(sexp_flow_to_prev_leaf_head)
+            nmap <silent><buffer> <M-S-w>         <Plug>(sexp_flow_to_next_leaf_head)
+            xmap <silent><buffer> <M-S-w>         <Plug>(sexp_flow_to_next_leaf_head)
+            nmap <silent><buffer> <M-S-g>         <Plug>(sexp_flow_to_prev_leaf_tail)
+            xmap <silent><buffer> <M-S-g>         <Plug>(sexp_flow_to_prev_leaf_tail)
+            nmap <silent><buffer> <M-S-e>         <Plug>(sexp_flow_to_next_leaf_tail)
+            xmap <silent><buffer> <M-S-e>         <Plug>(sexp_flow_to_next_leaf_tail)
+            nmap <silent><buffer> <LocalLeader>c  <Plug>(sexp_clone_list_before)
+            xmap <silent><buffer> <LocalLeader>c  <Plug>(sexp_clone_list_before)
+            nmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element_before)
+            xmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element_before)
             nmap <silent><buffer> ==              <Plug>(sexp_indent)
+            xmap <silent><buffer> =               <Plug>(sexp_indent)
             nmap <silent><buffer> =-              <Plug>(sexp_indent_top)
+            nmap <silent><buffer> <M-=>           <Plug>(sexp_indent_and_clean)
+            xmap <silent><buffer> <M-=>           <Plug>(sexp_indent_and_clean)
+            nmap <silent><buffer> <M-->           <Plug>(sexp_indent_and_clean_top)
             nmap <silent><buffer> <LocalLeader>i  <Plug>(sexp_round_head_wrap_list)
             xmap <silent><buffer> <LocalLeader>i  <Plug>(sexp_round_head_wrap_list)
             nmap <silent><buffer> <LocalLeader>I  <Plug>(sexp_round_tail_wrap_list)
@@ -894,6 +926,7 @@ copy, paste, and edit this example to taste.
             nmap <silent><buffer> <LocalLeader>h  <Plug>(sexp_insert_at_list_head)
             nmap <silent><buffer> <LocalLeader>l  <Plug>(sexp_insert_at_list_tail)
             nmap <silent><buffer> <LocalLeader>@  <Plug>(sexp_splice_list)
+            nmap <silent><buffer> <LocalLeader>?  <Plug>(sexp_convolute)
             nmap <silent><buffer> <LocalLeader>o  <Plug>(sexp_raise_list)
             xmap <silent><buffer> <LocalLeader>o  <Plug>(sexp_raise_list)
             nmap <silent><buffer> <LocalLeader>O  <Plug>(sexp_raise_element)

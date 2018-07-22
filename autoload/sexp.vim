@@ -125,7 +125,13 @@ function! s:is_dirty(...)
     return empty(oc)
 endfunction
 
+let s:sexp_ve_save = 0
 function! sexp#pre_op(mode, name)
+    " TODO: Should we use
+    "if type(s:sexp_ve_save) != 0
+    "    let s:sexp_ve_save = &ve
+    "endif
+    "set ve=onemore
     if !exists('b:sexp_cmd_prev_cache')
         let b:sexp_cmd_prev_cache = {}
     endif
@@ -133,6 +139,11 @@ function! sexp#pre_op(mode, name)
 endfunction
 
 function! sexp#post_op(mode, name)
+    " Restore original 'virtualedit' setting.
+    " Assumption: This is called from finally block.
+    "let &ve = s:sexp_ve_save
+    "" Set to integer so we can tell when it's in use.
+    "let s:sexp_ve_save = 0
     " Note: Use actual mode in post command handler.
     let b:sexp_cmd_prev_cache = s:make_cache(mode(), a:name)
 endfunction
@@ -1920,39 +1931,44 @@ endfunction
 "   a:2  inhibit visual selection (return range only)
 function! s:set_marks_around_current_element(mode, inner, ...)
     " Extra args imply extension mode only if mode is visual.
-    "let extend = a:0 && !!a:1 && a:mode ==? 'v'
-    let multi = a:0 && a:1 >= 0
-    let cnt = a:0 && a:1 >= 0 ? a:1 : 0
+    let cnt = a:0 && a:1 > 0 ? a:1 : 0
     let no_sel = a:0 > 1 ? !!a:2 : 0
-    let leading = []
-    if multi
+    let cursor = getpos('.')
+    let curpos = cursor
+    if cnt > 0
         if a:mode ==? 'v'
-            let vi = b:sexp_cmd_cache.cvi
-            let dir = vi.at_end
+            " FIXME: This needs to be done for non-multi case as well: i.e.,
+            " pull it out of the containing if's...
+            let [vs, ve] = [getpos("'<"), getpos("'>")]
+            "let dir = vs == cursor && ve != cursor ? 0 : 1
+            let dir = b:sexp_cmd_cache.cvi.at_end
             " Rationalize visual range.
-            " TODO: Decide whether constrained or super range makes more sense here.
-            "let [vs, ve] = s:constrained_range(vi.vs, vi.ve, dir)
-            let [vs, ve] = s:super_range(vi.vs, vi.ve)
+            let [vs, ve] = s:super_range(vs, ve)
             " In case actual cursor position has changed.
             " Note: Cursor will align with either '< or '>
-            let cursor = dir ? ve : vs
-            call s:setcursor(cursor)
-            let p = cursor
+            " Design Decision Needed: When visual selection is modified by
+            " super_range, should we consider original cursor side? I'm
+            " thinking we need to.
+            " Adjust curpos to reflect adjusted range.
+            let curpos = dir ? ve : vs
+            "echomsg 'dir=' . dir . ' vs=' . string(vs) . ' ve=' . string(ve) . ' c=' . string(cursor)
+            " Position at start of range.
+            call s:setcursor(vs)
         else
-            let cursor = getpos('.')
-            let [vs, ve] = [cursor, cursor]
             let dir = 1
         endif
-        " Position at start of range.
-        call s:setcursor(vs)
     else
-        let cursor = getpos('.')
+        " Backwards Compatibility: In non-multi case, treat visual mode like
+        " normal mode.
+        " TODO...
+        " Note: I don't think 'dir' is needed here...
+        let dir = 1
     endif
     " Search from element start to avoid errors with elements that end
     " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
-    " TODO: Rework this comment...
+    " TODO: Rework this comment... What exactly is the danger?
+    " TODO: Factor into function.
     let start = s:move_to_current_element_terminal(0)
-
     if !start[1]
         " We are on whitespace; check for next element
         let p = getpos('.')
@@ -1963,63 +1979,77 @@ function! s:set_marks_around_current_element(mode, inner, ...)
                 " Inhibit operation.
                 delmarks < >
             endif
+            " TODO: Do we need to restore cursor position?
             return [[0, 0, 0, 0], [0, 0, 0, 0]]
         endif
-
-        " *Maybe* don't include whitespace at other end.
-        let leading = cursor
         let start = next
     endif
 
-    " Position ourselves to look for end.
-    " Assumption: We're at head of element.
-    let end = []
-    " TODO: Consider not setting vs/ve in multi when mode not visual.
-    if multi && s:compare_pos(start, ve) < 0
-        " Position on end of visual region, then find either end of current or
-        " end of previous (if no current element).
-        " TODO: Consider changing this logic when counts involved...
-        call s:setcursor(ve)
-        let end = s:current_element_terminal(1)
-        if !end[1]
-            " Weren't on an element. Get to end of previous (whose
-            " existence is guaranteed).
-            let end = s:move_to_adjacent_element(0, 1, 0)
+    " If cursor (non-visual mode) or start of selection (visual mode) is
+    " before start, save the position.
+    " Rationale: Input to terminals_with_whitespace.
+    let leading = a:mode ==? 'v' && cnt > 0 ? vs : curpos
+    if s:compare_pos(leading, start) >= 0
+        let leading = []
+    endif
+
+    " Position ourselves to look for (first) end.
+    call s:setcursor(a:mode ==? 'v' && cnt > 0 &&
+                \ s:compare_pos(ve, start) > 0 ? ve : start)
+
+    " Find first end, looking backwards if necessary.
+    " TODO: Consider changing this logic when counts involved...
+    " TODO: Factor into function.
+    let end = s:current_element_terminal(1)
+    if !end[1]
+        " Weren't on an element. Get to end of previous (whose
+        " existence is implied by existence of start).
+        let end = s:move_to_adjacent_element(0, 1, 0)
+    endif
+
+    if cnt > 0
+        " Determine whether first step is cleanup or expansion.
+        let [s, e] = a:inner
+            \ ? [start, end]
+            \ : s:terminals_with_whitespace(start, end, leading)
+        if a:mode !=? 'v' || s != vs || e != ve
+            " No cleanup required.
+            let cnt -= 1
+            if !a:inner && !cnt
+                " Cache results of terminals_with_whitespace to avoid
+                " redundant call.
+                let [o_start, o_end] = [s, e]
+            endif
         endif
     endif
-    if empty(end)
-        " Assumption: Still at element head.
-        let end = s:current_element_terminal(1)
-    endif
 
-    " We've now established 'current' selection. Consider pulling in extra,
-    " taking direction into account.
-    if cnt > 0
-        let p = dir ? end : start
-        call s:setcursor(p)
-        while cnt > 0
-            let pp = p
-            " Assumption: Can't get here in legacy case.
-            " TODO: Consider breaking the legacy case out into legacy func...
-            let p = s:move_to_adjacent_element(dir, dir, 0)
-            if p == pp
-                " We've gone as far as possible.
-                break
-            endif
-            let cnt -= 1
-        endwhile
-        " Adjust the end we've pulled.
-        let l:[dir ? 'end' : 'start'] = p
-    endif
+    " We've now established a 'current' *inner* selection. Consider pulling in
+    " more, taking direction into account.
+    let p = dir ? end : start
+    if cnt > 0 | call s:setcursor(p) | endif
+    while cnt > 0
+        let pp = p
+        " Assumption: Can't get here in legacy case.
+        let p = s:move_to_adjacent_element(dir, dir, 0)
+        if p == pp
+            " We've gone as far as possible.
+            break
+        endif
+        let cnt -= 1
+    endwhile
+    " Adjust the end we've pulled.
+    let l:[dir ? 'end' : 'start'] = p
 
-    " Handle surrounding whitespace if 'outer'.
     if !a:inner
-        let [start, end] = s:terminals_with_whitespace(start, end, leading)
+        " Handle surrounding whitespace in 'outer' case, skipping call if
+        " positions are cached.
+        let [start, end] = exists('l:o_start')
+            \ ? [o_start, o_end]
+            \ : s:terminals_with_whitespace(start, end, leading)
     endif
 
     call s:setcursor(cursor)
     if !no_sel
-        " TODO: Need to ensure cursor at specific side, but perhas in caller?
         call s:set_visual_marks([start, end])
     endif
     return [start, end]
@@ -2134,13 +2164,15 @@ function! sexp#select_current_element(mode, inner, ...)
     " TODO: Take actual command name into account, or create new command
     " (e.g., select_current_elements).
     let cnt = a:0 ? a:1 ? a:1 : 1 : -1
-    if cnt > 0
-        \ && b:sexp_cmd_cache.name =~ 'sexp_\%(inner\|outer\)_element'
-        \ && s:is_dirty()
-        let cnt -= 1
-    endif
+    "if cnt > 0
+    "    \ && b:sexp_cmd_cache.name =~ 'sexp_\%(inner\|outer\)_element'
+    "    \ && s:is_dirty()
+    "    let cnt -= 1
+    "endif
     call s:set_marks_around_current_element(a:mode, a:inner, cnt)
     " TODO: Preserve cursor position.
+    "echomsg string(b:sexp_cmd_cache.cvi) . " cur=" . string(b:sexp_cmd_cache.cvi.cursor) . "gp=" . string(getpos('.'))
+    "let dir = vs == cursor && ve != cursor ? 0 : 1
     return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
 endfunction
 

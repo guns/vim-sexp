@@ -152,9 +152,12 @@ function! s:defplug(flags, mapmode, name, ...)
         " TODO: Factor the pre/post-op call text into variables.
         " Wrap in pre/post-op calls.
         let rhs = substitute(rhs, '\v%(<call>)@=',
-            \ 'call sexp#pre_op("' . a:mapmode[0] . '", "' . a:name . '") \\| ', '')
+            \   'call sexp#pre_op("' . a:mapmode[0] . '", "' . a:name . '")'
+            \ . '\\| try \\| ', '')
         let rhs = substitute(rhs, '\v%(\<cr\>)@=',
-            \ ' \\| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")', '')
+            \   '\\| finally'
+            \ . '\\| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")'
+            \ . '\\| endtry', '')
         execute lhs . ' ' . rhs
         return 1
     endif

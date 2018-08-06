@@ -153,11 +153,11 @@ function! s:defplug(flags, mapmode, name, ...)
         " Wrap in pre/post-op calls.
         let rhs = substitute(rhs, '\v%(<call>)@=',
             \   'call sexp#pre_op("' . a:mapmode[0] . '", "' . a:name . '")'
-            \ . '\\| try \\| ', '')
-        let rhs = substitute(rhs, '\v%(\<cr\>)@=',
-            \   '\\| finally'
-            \ . '\\| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")'
-            \ . '\\| endtry', '')
+            \ . ' \\| try \\| ', '')
+        let rhs = substitute(rhs, '\c\v%(\<cr\>)@=',
+            \   ' \\| finally'
+            \ . ' \\| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")'
+            \ . ' \\| endtry', '')
         execute lhs . ' ' . rhs
         return 1
     endif

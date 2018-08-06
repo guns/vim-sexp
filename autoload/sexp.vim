@@ -725,10 +725,13 @@ endfunction
 function! s:ml_join(twwi)
     let o = a:twwi
     let [spos, epos] = s:get_join_whitespace(o)
-    if !spos[1] && !o.bol && !o.eol
-        " No good way to join completely, but we have no choice.
-        return [o.start, o.end]
+    if !o.bol && !o.eol
+        " We're forced to join lines, one way or the other.
+        return spos[1] ? [spos, epos] : [o.start, o.end]
     endif
+    " bol || eol
+    " Assumption: If range has any surrounding whitespace
+    " (neither leading nor trailing), in 
     if spos[1]
         " Get first kept char, which, for multi-line join, will always be next
         " real char past last deleted char pos.
@@ -742,18 +745,9 @@ function! s:ml_join(twwi)
             return [spos, epos]
         endif
     endif
-    " If here, only 2 join possibilities remain:
-    " 1. The better counterpart to !spos[1] && !bol && !eol earlier. Hmm...
-    "    Can we combine? Actually, maybe just handle this above: the only
-    "    difference between the 2 cases is whether we use [o.start, o.end] or
-    "    [spos, epos]; in fact, !bol && !eol makes the jlen test (above)
-    "    unnecessary!!!!
-    " 2. Partial line join
-    if !o.bol && !o.eol
-        return [spos, epos]
-    else
-        return s:partial_ml_join(o)
-    endif
+    " Assumption: Can't get here if !bol && !eol; thus, we know there's a
+    " partial join possibility.
+    return s:partial_ml_join(o)
 endfunction
 
 " TODO: Join may be a bit of a misnomer in the single line case.
@@ -780,9 +774,6 @@ function! s:partial_ml_join(twwi)
                 \ ? [0, o.ws_e[1] - 2, col([o.ws_e[1] - 2, '$']), 0]
                 \ : [0, o.ws_e[1] - 1, col([o.ws_e[1] - 1, '$']) - 1, 0]
         endif
-    elseif !o.bol
-        " !eol && !bol
-        "
     else
         " !eol && bol
         " Rationale: Can't get into this function if !bol and !eol (NOT TRUE!).

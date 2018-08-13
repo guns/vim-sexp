@@ -128,10 +128,10 @@ endfunction
 let s:sexp_ve_save = 0
 function! sexp#pre_op(mode, name)
     " TODO: Should we use
-    "if type(s:sexp_ve_save) != 0
-    "    let s:sexp_ve_save = &ve
-    "endif
-    "set ve=onemore
+    if type(s:sexp_ve_save) != 0
+        let s:sexp_ve_save = &ve
+    endif
+    set ve=onemore
     if !exists('b:sexp_cmd_prev_cache')
         let b:sexp_cmd_prev_cache = {}
     endif
@@ -141,9 +141,9 @@ endfunction
 function! sexp#post_op(mode, name)
     " Restore original 'virtualedit' setting.
     " Assumption: This is called from finally block.
-    "let &ve = s:sexp_ve_save
-    "" Set to integer so we can tell when it's in use.
-    "let s:sexp_ve_save = 0
+    let &ve = s:sexp_ve_save
+    " Set to integer so we can tell when it's in use.
+    let s:sexp_ve_save = 0
     " Note: Use actual mode in post command handler.
     let b:sexp_cmd_prev_cache = s:make_cache(mode(), a:name)
 endfunction
@@ -1174,6 +1174,18 @@ function! s:at_top(line, col)
     return ret
 endfunction
 
+" Returns nonzero if input position first non-ws on line
+" Note: Accepts virtual cursor pos at EOL.
+function! s:at_bol(line, col)
+    return getline(a:line)[:a:col - 2] !~ '\S'
+endfunction
+
+" Returns nonzero if input position last non-ws on line
+" Note: Accepts virtual cursor pos at EOL.
+function! s:at_eol(line, col)
+    return getline(a:line)[a:col - 1:] =~ '^.\?\s*$'
+endfunction
+
 " Returns nonzero if on list opening/closing chars:
 "  0 => not on list head or tail
 "  1 => on macro chars preceding opening bracket
@@ -1850,7 +1862,9 @@ function! s:select_child(mode, count, next, inner)
         let cnt -= 1
     endwhile
 
-    call s:set_marks_around_current_element(a:mode, a:inner)
+    " Note: Although we may be called from visual mode, child selection
+    " ignores current selection by definition.
+    call s:set_marks_around_current_element('n', a:inner, 0, 0)
 endfunction
 
 " Return dict representing the most recent visual selection.
@@ -1930,42 +1944,34 @@ endfunction
 "
 " Will set both to [0, 0, 0, 0] if an element could not be found and mode does
 " not equal 'v'.
-" Optional Args:
-"   a:1  count (>= 0 implies multi-select)
-"   a:2  inhibit visual selection (return range only)
-function! s:set_marks_around_current_element(mode, inner, ...)
+" Args:
+"   count   (> 0 means expansion possible)
+"   no_sel  inhibit visual selection (return range only)
+function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     " Extra args imply extension mode only if mode is visual.
-    let cnt = a:0 && a:1 > 0 ? a:1 : 0
-    let no_sel = a:0 > 1 ? !!a:2 : 0
+    "let cnt = a:0 && a:1 > 0 ? a:1 : 0
+    let cnt = a:count > 0 ? a:count : 0
     let cursor = getpos('.')
     let curpos = cursor
-    if cnt > 0
-        if a:mode ==? 'v'
-            " FIXME: This needs to be done for non-multi case as well: i.e.,
-            " pull it out of the containing if's...
-            let [vs, ve] = [getpos("'<"), getpos("'>")]
-            "let dir = vs == cursor && ve != cursor ? 0 : 1
-            let dir = b:sexp_cmd_cache.cvi.at_end
-            " Rationalize visual range.
-            let [vs, ve] = s:super_range(vs, ve)
-            " In case actual cursor position has changed.
-            " Note: Cursor will align with either '< or '>
-            " Design Decision Needed: When visual selection is modified by
-            " super_range, should we consider original cursor side? I'm
-            " thinking we need to.
-            " Adjust curpos to reflect adjusted range.
-            let curpos = dir ? ve : vs
-            "echomsg 'dir=' . dir . ' vs=' . string(vs) . ' ve=' . string(ve) . ' c=' . string(cursor)
-            " Position at start of range.
-            call s:setcursor(vs)
-        else
-            let dir = 1
-        endif
+    if a:mode ==? 'v'
+        let [vs_orig, ve_orig] = [getpos("'<"), getpos("'>")]
+        "let dir = vs == cursor && ve != cursor ? 0 : 1
+        let dir = b:sexp_cmd_cache.cvi.at_end
+        " Rationalize visual range.
+        " TODO: Should super_range adjust selection inward or no? If it did,
+        " some of the subsequent end logic could go away.
+        let [vs, ve] = s:super_range(vs_orig, ve_orig)
+        " In case actual cursor position has changed.
+        " Note: Cursor will align with either '< or '>
+        " Design Decision Needed: When visual selection is modified by
+        " super_range, should we consider original cursor side? I'm
+        " thinking we need to.
+        " Adjust curpos to reflect adjusted range.
+        let curpos = dir ? ve : vs
+        "echomsg 'dir=' . dir . ' vs=' . string(vs) . ' ve=' . string(ve) . ' c=' . string(cursor)
+        " Position at start of range.
+        call s:setcursor(vs)
     else
-        " Backwards Compatibility: In non-multi case, treat visual mode like
-        " normal mode.
-        " TODO...
-        " Note: I don't think 'dir' is needed here...
         let dir = 1
     endif
     " Search from element start to avoid errors with elements that end
@@ -1992,13 +1998,13 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     " If cursor (non-visual mode) or start of selection (visual mode) is
     " before start, save the position.
     " Rationale: Input to terminals_with_whitespace.
-    let leading = a:mode ==? 'v' && cnt > 0 ? vs : curpos
+    let leading = a:mode ==? 'v' ? vs_orig : curpos
     if s:compare_pos(leading, start) >= 0
         let leading = []
     endif
 
     " Position ourselves to look for (first) end.
-    call s:setcursor(a:mode ==? 'v' && cnt > 0 &&
+    call s:setcursor(a:mode ==? 'v' &&
                 \ s:compare_pos(ve, start) > 0 ? ve : start)
 
     " Find first end, looking backwards if necessary.
@@ -2016,8 +2022,8 @@ function! s:set_marks_around_current_element(mode, inner, ...)
         let [s, e] = a:inner
             \ ? [start, end]
             \ : s:terminals_with_whitespace(start, end, leading)
-        if a:mode !=? 'v' || s != vs || e != ve
-            " No cleanup required.
+        if a:mode !=? 'v' || s != vs_orig || e != ve_orig
+            " Cleanup was needed.
             let cnt -= 1
             if !a:inner && !cnt
                 " Cache results of terminals_with_whitespace to avoid
@@ -2053,7 +2059,7 @@ function! s:set_marks_around_current_element(mode, inner, ...)
     endif
 
     call s:setcursor(cursor)
-    if !no_sel
+    if !a:no_sel
         call s:set_visual_marks([start, end])
     endif
     return [start, end]
@@ -2076,7 +2082,7 @@ function! s:set_marks_around_adjacent_element(mode, next)
     endif
 
     call s:move_to_adjacent_element(a:next, 0, 0)
-    call s:set_marks_around_current_element(a:mode, 1)
+    call s:set_marks_around_current_element('n', 1, 0, 0)
     call s:setcursor(cursor)
 endfunction
 
@@ -2140,7 +2146,7 @@ function! sexp#select_current_list(mode, offset, allow_expansion)
         " i.e., even outer doesn't select whitespace around the list, so if
         " we're going to fall back to current element, I think it should be
         " inner, regardless of a:offset.
-        call s:set_marks_around_current_element(a:mode, 1) "a:offset)
+        call s:set_marks_around_current_element(a:mode, 1, 0, 0) "a:offset)
     endif
     return s:select_current_marks(a:mode)
 endfunction
@@ -2150,7 +2156,7 @@ endfunction
 " list.
 function! sexp#select_current_top_list(mode, offset)
     if !s:set_marks_around_current_top_list(a:mode, a:offset)
-        call s:set_marks_around_current_element(a:mode, a:offset)
+        call s:set_marks_around_current_element(a:mode, a:offset, 0, 0)
     endif
     return s:select_current_marks(a:mode)
 endfunction
@@ -2167,13 +2173,14 @@ endfunction
 function! sexp#select_current_element(mode, inner, ...)
     " TODO: Take actual command name into account, or create new command
     " (e.g., select_current_elements).
-    let cnt = a:0 ? a:1 ? a:1 : 1 : -1
+    " FIXME: Probably just pass through...
+    let cnt = a:0 && a:1 ? a:1 : 1
     "if cnt > 0
     "    \ && b:sexp_cmd_cache.name =~ 'sexp_\%(inner\|outer\)_element'
     "    \ && s:is_dirty()
     "    let cnt -= 1
     "endif
-    call s:set_marks_around_current_element(a:mode, a:inner, cnt)
+    call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
     " TODO: Preserve cursor position.
     "echomsg string(b:sexp_cmd_cache.cvi) . " cur=" . string(b:sexp_cmd_cache.cvi.cursor) . "gp=" . string(getpos('.'))
     "let dir = vs == cursor && ve != cursor ? 0 : 1
@@ -2242,7 +2249,7 @@ function! s:insert_brackets_around_current_string(bra, ket, at_tail, headspace)
 endfunction
 
 function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
-    call s:set_marks_around_current_element('n', 1)
+    call s:set_marks_around_current_element('n', 1, 0, 0)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
@@ -3295,8 +3302,14 @@ function! sexp#clone(mode, count, list, after)
     endif
     " Assumption: Prior logic guarantees start and end at same level.
     let top = s:at_top(start[1], start[2])
+    " TODO: Determine whether start is BOL and end is EOL
+    "let bol = s:at_bol(start[1], start[2])
+    "let eol = s:at_eol(end[1], end[2])
+    "let com = s:is_comment(end[1], end[2])
     " Experimental: Don't clone things at toplevel on same line.
     let multi = top || start[1] != end[1]
+        \ || s:at_bol(start[1], start[2]) && s:at_eol(end[1], end[2])
+        \ || s:is_comment(end[1], end[2])
     let copy = s:yankdel_range(start, end, 0, 1)
     call s:setcursor(a:after ? end : start)
     let repl = multi
@@ -3493,10 +3506,10 @@ function! sexp#swap_element(mode, next, list)
             delmarks < >
         else
             call s:setcursor(tail)
-            call s:set_marks_around_current_element('o', 1)
+            call s:set_marks_around_current_element('o', 1, 0, 0)
         endif
     else
-        call s:set_marks_around_current_element('o', 1)
+        call s:set_marks_around_current_element('o', 1, 0, 0)
     endif
 
     if getpos("'<")[1] < 1 || !s:swap_current_selection(a:mode, a:next, pairwise)

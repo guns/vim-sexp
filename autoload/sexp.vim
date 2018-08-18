@@ -3032,15 +3032,14 @@ function! s:cleanup_ws(start, at_top, ps, ...)
                 " line:
                 " 1. next is comment preceded by one or more blank lines
                 " 2. next and prev are at toplevel
-                " Note: Without the appended space, a position that started
-                " out within whitespace would move to first non-blank on the
-                " line following the newline(s), and that position is the one
-                " that would be preserved across the subsequent indent, even
-                " though the indent is likely to add back some leading
-                " whitespace, and it would be more natural to keep the
-                " position in it.
-                " FIXME-ws-contract-logic
-                let spl = precedes_com && gap > 2 || a:at_top ? "\n\n " : "\n "
+                " Note: Without the appended space (non-toplevel case only), a
+                " position that started out within whitespace would move to
+                " first non-blank on the line following the newline(s), and
+                " that position is the one that would be preserved across the
+                " subsequent indent, even though the indent is likely to add
+                " back some leading whitespace, within which it would be more
+                " natural to keep the position.
+                let spl = precedes_com && gap > 2 || a:at_top ? "\n\n" : "\n "
             endif
         " Single-line (whitespace between collinear elements)
         " Cursor Logic: If cursor is in whitespace to be contracted, but not
@@ -3232,7 +3231,8 @@ fu! sexp#convolute(count, ...)
     endif
 
     " Indent the outer list *and* the one that contains it.
-    call sexp#indent('n', 0, 2, clean)
+    " Let 'clean' be determined by options.
+    call sexp#indent('n', 0, 2, -1)
 
     " Re-calculate pos for final cursor positioning.
     " Note: When outer list ends on a different line from inner list, the

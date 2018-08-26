@@ -2170,19 +2170,8 @@ endfunction
 
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner, ...)
-    " TODO: Take actual command name into account, or create new command
-    " (e.g., select_current_elements).
-    " FIXME: Probably just pass through...
     let cnt = a:0 && a:1 ? a:1 : 1
-    "if cnt > 0
-    "    \ && b:sexp_cmd_cache.name =~ 'sexp_\%(inner\|outer\)_element'
-    "    \ && s:is_dirty()
-    "    let cnt -= 1
-    "endif
     call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
-    " TODO: Preserve cursor position.
-    "echomsg string(b:sexp_cmd_cache.cvi) . " cur=" . string(b:sexp_cmd_cache.cvi.cursor) . "gp=" . string(getpos('.'))
-    "let dir = vs == cursor && ve != cursor ? 0 : 1
     return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
 endfunction
 
@@ -3245,7 +3234,7 @@ fu! sexp#convolute(count, ...)
 endfu
 
 " Return [start, end] of region to be cloned.
-function! s:get_target_range(mode, after, list)
+function! s:get_clone_target_range(mode, after, list)
     let cursor = getpos('.')
     if a:mode ==? 'v'
         " Let set_marks_around_current_element adjust the range.
@@ -3254,12 +3243,13 @@ function! s:get_target_range(mode, after, list)
         " Select list/element to be cloned.
         if a:list
             " Are we within/on a list?
-            " TODO: Can we use set_marks_around_current_list()???? What about
-            " the extra call to set_marks_around_current_element????
             let found = sexp#select_current_list('n', 0, 0)
             " Caveat! Don't stay in visual mode.
             exe "normal! \<Esc>"
             if found
+                " Design Decision: Perform inner element selection to
+                " incorporate any adjacent macro chars.
+                call sexp#select_current_element('n', 1)
                 let [vs, ve] = [getpos("'<"), getpos("'>")]
                 " Make sure we're on or in the found list.
                 " Rationale: select_current_list can find list after cursor,
@@ -3296,7 +3286,7 @@ function! sexp#clone(mode, count, list, after)
     " Save offset of cursor from top of window
     let cursor_off = cursor[1] - wsv.topline
     " Get region to be cloned.
-    let [start, end] = s:get_target_range(a:mode, a:after, a:list)
+    let [start, end] = s:get_clone_target_range(a:mode, a:after, a:list)
     if !start[1]
         " Nothing to clone.
         call s:warnmsg("Nothing to clone")

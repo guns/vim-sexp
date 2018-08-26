@@ -127,8 +127,7 @@ endfunction
 
 let s:sexp_ve_save = 0
 function! sexp#pre_op(mode, name)
-    " TODO: Should we use
-    if type(s:sexp_ve_save) != 0
+    if type(s:sexp_ve_save) == 0
         let s:sexp_ve_save = &ve
     endif
     set ve=onemore
@@ -2794,28 +2793,27 @@ function! sexp#indent(mode, top, count, clean, ...)
             let at_top = 1
             " At top-level. If current (or next) element is list, select it.
             " Note: When not within list, 'inner' includes brackets.
-            keepjumps call sexp#select_current_element('v', 1)
+            keepjumps call sexp#select_current_element('n', 1)
         elseif a:top
             " Inside list. Select topmost list.
-            keepjumps call sexp#select_current_top_list('v', 0)
+            keepjumps call sexp#select_current_top_list('n', 0)
         else
             " Inside list. Select [count]th containing list.
-            " TODO: Do we need to check for (and include) macro chars?
-            " Note: Currently, cleanup_ws will work properly if macro chars
-            " are omitted from selection, but should we rely on this?
-            keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'v', 0, 1)
+            " If performing clean, select only inner list.
+            " Rationale: cleanup_ws will get any open or close adjacent to
+            " selection, and we want to stop at the edge of current list.
+            keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'n', clean, 1)
         endif
         " Cache visual start/end; end can actually be changed by s:cleanup_ws().
         let [start, end] = [getpos("'<"), getpos("'>")]
-        " We're done with visual mode. Leave it to avoid problems below (eg, with
-        " function calls).
+        " We're done with visual mode. Leave it to avoid problems below (eg,
+        " with function calls).
         exe "normal! \<Esc>"
     else
         " Treat visual mode specially.
         " Rationalize visual range.
-        " TODO: Decide how to restore visual selection: should it be
-        " [start,end] (constrained) or original selection (adjusted by
-        " cleanup_ws).
+        " TODO: Decide which selection to restore: raw or adjusted by
+        " s:super_range()?
         let [start, end] = s:super_range(getpos("'<"), getpos("'>"))
     endif
     if clean
@@ -2823,7 +2821,6 @@ function! sexp#indent(mode, top, count, clean, ...)
         let force_syntax = 1
         " Design Decision: Handle both non-list and list elements identically:
         " cleanup back to prev, but indent starting with current.
-        " TODO: Consider combining start/end into a range.
         " Note: Avoid unnecessary calls to at_top().
         let at_top = at_top || s:at_top(end[1], end[2])
         call s:cleanup_ws(start, at_top,
@@ -2866,9 +2863,9 @@ endfunction
 " Note: The flat list is intended to facilitate iteration: the positions it
 " contains are generally modifed in-place.
 " TODO: Consider adding position uniquifying logic.
-" Rationale: The created lists are generally used in pass-by ref position
-" modifications strategies, which would modify the same position multiple
-" times if it somehow made it into the list multiple times.
+" Rationale: The created lists are generally used in pass-by-ref position
+" modification strategies, which would modify the same position multiple times
+" if it somehow made it into the list multiple times.
 function! s:concat_positions(...)
     let ret = []
     for p in a:000
@@ -2984,22 +2981,24 @@ function! s:cleanup_ws(start, at_top, ps, ...)
     let done = 0
     while 1
         " Note: next and close are mutually exclusive.
-        if !next[1]
-            let close = s:nearest_bracket(1)
-        else
-            let close = [0, 0, 0, 0]
-        endif
+        let close = next[1] ? [0, 0, 0, 0] : s:nearest_bracket(1)
         " Distinction: Non-null prev/next always represent actual elements at
         " current level; eff_prev/next can be either element or open/close.
         " TODO: Consider handling eff_prev in post-update (or some other way).
         " Rationale: After first iteration, it will always be prev (not open).
+        let bof = 0
         let eff_prev = prev[1] ? prev : open
-        if !eff_prev[1] | let eff_prev = [0, 1, 1, 0] | endif
+        if !eff_prev[1]
+            let eff_prev = [0, 1, 1, 0]
+            let bof = 1
+        endif
         let eff_next = next[1] ? next : close
-        if !eff_next[1] | let eff_next = getpos([line('$'), '$']) | endif
+        if !eff_next[1]
+            " Assumption: ve=onemore obviates need for eof flag.
+            let eff_next = getpos([line('$'), '$'])
+        endif
 
-        " Determine whether join is in order.
-        " Note: A join removes *all* whitespace between eff_prev and eff_next.
+        " Do we want to remove *all* whitespace between eff_prev and eff_next?
         let full_join =
                 \ !next[1] && !prev[1]
                 \ || !next[1] && (!close[1] || !s:is_comment(prev[1], prev[2]))
@@ -3009,62 +3008,62 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         " to perform any required whitespace contraction: calculate the
         " 'splice' arg, which can be either 1 (delete) for a full join, or
         " actual splice text consisting of a single space or newline(s).
-        let gap = eff_next[1] - eff_prev[1]
         let spl = 0
         if full_join
             " Delete rather than splice.
             let spl = 1
-        elseif gap
-            " Multi-line
-            " Contract whitespace between prev and next if any of the
-            " following conditions holds true for the gap between prev and
-            " next:
-            " 1. more than 1 blank line
-            " 2. exactly 1 blank and next not comment
-            " 3. trailing whitespace on prev line
-            let precedes_com = next[1] && s:is_comment(next[1], next[2])
-            if gap > 2 || gap > 1
-                \ && !precedes_com
-                \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
-                " Replace gap with either 1 or 2 newlines followed by space:
-                " the goal generally is to remove blank lines, but if any of
-                " the following conditions holds true, keep a single blank
-                " line:
-                " 1. next is comment preceded by one or more blank lines
-                " 2. next and prev are at toplevel
-                " Note: Without the appended space (non-toplevel case only), a
-                " position that started out within whitespace would move to
-                " first non-blank on the line following the newline(s), and
-                " that position is the one that would be preserved across the
-                " subsequent indent, even though the indent is likely to add
-                " back some leading whitespace, within which it would be more
-                " natural to keep the position.
-                let spl = precedes_com && gap > 2 || a:at_top ? "\n\n" : "\n "
+        else
+            " Maybe splice...
+            let gap = eff_next[1] - eff_prev[1]
+            if gap
+                " Multi-line
+                " Contract whitespace between prev and next if any of the
+                " following conditions holds true for the gap between prev and
+                " next:
+                " 1. more than 1 blank line (remove all but 0 or 1 blanks)
+                " 2. exactly 1 blank and next not comment (remove all blanks)
+                " 3. (else) trailing whitespace on prev line (remove trailing ws)
+                let precedes_com = next[1] && s:is_comment(next[1], next[2])
+                if gap > 2 || gap > 1 && !precedes_com
+                    \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
+                    " Replace gap with either 1 or 2 newlines followed by
+                    " original whitespace on eff_next's line:
+                    " Note: the goal generally is to remove blank lines, but
+                    " if any of the following conditions is met, keep (but
+                    " don't add if it doesn't already exist) a single blank
+                    " line:
+                    " 1. next is comment
+                    " 2. next and prev are at toplevel
+                    let spl = precedes_com && gap > 2 || a:at_top
+                            \ ? "\n\n" : "\n"
+                endif
+            " Single-line (whitespace between collinear elements)
+            " Cursor Logic: If cursor is in whitespace to be contracted, but
+            " not on *first* whitespace in the range, we want it to end up
+            " *past* the single remaining space; otherwise, on it.
+            " Rationale: Only before a comment does extra (non-leading) whitespace
+            " make sense.
+            elseif getline(eff_prev[1])[eff_prev[2] - 1 : eff_next[2] - 1] =~ '....'
+                \ && next[1] && !s:is_comment(next[1], next[2])
+                " Replace multiple whitespace on single line with single space.
+                " Assumption: BOF and EOF are always handled as full join
+                let spl = ' '
             endif
-        " Single-line (whitespace between collinear elements)
-        " Cursor Logic: If cursor is in whitespace to be contracted, but not
-        " on *first* whitespace in the range, we want it to end up *past* the
-        " single remaining space; otherwise, on it.
-        " FIXME: Is this really what we want? It seems a bit inconsistent,
-        " given that when yankdel_range is used to contract whitespace with a
-        " splice, its position adjustment moves cursor from within deleted
-        " range to the end of the spliced text (not past it).
-        " If multiple whitespace and next isn't a comment, contract to single
-        " space.
-        " Rationale: Only before a comment does extra (non-leading) whitespace
-        " make sense.
-        elseif getline(eff_prev[1])[eff_prev[2] - 1 : eff_next[2] - 1] =~ '....'
-            \ && next[1] && !s:is_comment(next[1], next[2])
-            " Replace multiple whitespace on single line with single space.
-            " Assumption: BOF and EOF are always handled as full join
-            let spl = ' '
         endif
         if !empty(spl)
             " Adjust inc as necessary.
-            let inc = [eff_prev[1] ? 0 : 1, eff_next[1] ? 0 : 1]
+            let inc = [bof, 0]
             " Perform the indicated whitespace contraction.
-            call s:yankdel_range(eff_prev, eff_next, spl,
-                    \ inc, s:concat_positions(a:ps, eff_next, end))
+            " Argument Notes:
+            " *Normally, range to be spliced is exclusive, but cleaning back
+            "  to bof is special case. (ve=onemore obviates need for special
+            "  case at eof)
+            " *Never remove leading whitespace on final line.
+            call s:yankdel_range(eff_prev,
+                    \ spl[0] == "\n" ? [0, eff_next[1], 1, 0] : eff_next,
+                    \ spl,
+                    \ [bof, 0],
+                    \ s:concat_positions(a:ps, eff_next, end))
         endif
 
         " TODO: Consider processing backwards to obviate need for 'next'
@@ -3088,10 +3087,13 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         let prev = s:move_to_current_element_terminal(1)
         let next = s:nearest_element_terminal(1, 0)
         if next == prev
-            " Note: We'll go through loop once more. Null next to find close.
+            " No more elements at current level.
+            " Note: Null next to ensure attempt to find close on next and
+            " final iteration of this recursion.
             let next = [0, 0, 0, 0]
         elseif end[1] && s:compare_pos(next, end) > 0
-            " Next element is past range.
+            " Next element is past range. Go through once more to clean up
+            " after final element.
             let done = 1
         else
             call s:setcursor(next)
@@ -3302,12 +3304,7 @@ function! sexp#clone(mode, count, list, after)
     endif
     " Assumption: Prior logic guarantees start and end at same level.
     let top = s:at_top(start[1], start[2])
-    " TODO: Determine whether start is BOL and end is EOL
-    "let bol = s:at_bol(start[1], start[2])
-    "let eol = s:at_eol(end[1], end[2])
-    "let com = s:is_comment(end[1], end[2])
-    " Experimental: Don't clone things at toplevel on same line.
-    let multi = top || start[1] != end[1]
+    let multi = start[1] != end[1]
         \ || s:at_bol(start[1], start[2]) && s:at_eol(end[1], end[2])
         \ || s:is_comment(end[1], end[2])
     let copy = s:yankdel_range(start, end, 0, 1)
@@ -3322,7 +3319,7 @@ function! sexp#clone(mode, count, list, after)
     let p = a:after ? end : start
     let inc = a:after ? [0, 1] : [1, 0]
     " TODO: Consider creating a put_at wrapper for this.
-    call s:yankdel_range(p, p, copy, inc, [start, end, cursor])
+    call s:yankdel_range(p, p, copy, inc, [end, cursor])
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong, as we haven't done
     " anything that should have any impact on indentation.
@@ -3337,13 +3334,16 @@ function! sexp#clone(mode, count, list, after)
             " yankdel_range; the other can be obtained from [ or ] mark.
             " FIXME: Using [ and ] marks doesn't work properly.
             if a:after
+                " start cannot have changed
                 let end = getpos("']")
             else
-                " Could also simply save prior to copy.
+                " end was adjusted by yankdel_range
+                " TODO: Can start ever change on a copy before? I don't think
+                " so. If not, remove the else.
                 let start = getpos("'[")
             endif
             call s:set_visual_marks([start, end])
-            call sexp#indent('v', 0, 0, -1, 1, [start, end, cursor])
+            call sexp#indent('v', 1, 0, -1, 1, [start, end, cursor])
         else
             " Indent parent
             " Note: Because of the way sexp#indent works, we need to know

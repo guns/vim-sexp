@@ -415,6 +415,14 @@ CLONE COMMANDS (normal, visual)~
         selected lists and elements so that structural integrity is
         maintained.
 
+        If the element(s) to be cloned are all within a single line, the
+        copies will be placed on the same line, unless any of the following
+        conditions are met:
+                * The final element within the cloned text is a comment
+                * The cloned text occupies the entire line (ignoring any
+                  leading or trailing whitespace)
+                 
+
                                                           *indent-after-clone*
         If |g:sexp_clone_does_indent| is set (the default), indent the
         compound form (or range of lines at toplevel) containing the cloned

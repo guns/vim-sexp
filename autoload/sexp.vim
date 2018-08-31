@@ -3264,9 +3264,9 @@ function! s:get_clone_target_range(mode, after, list)
             " Are we on an element?
             let p = s:current_element_terminal(0)
             let found = p[1]
-            " Consider an element past the cursor if cloning after.
+            " Consider an element past the cursor.
             " Rationale: Feels right.
-            if !found && a:after
+            if !found
                 let p = getpos('.')
                 " Not on an element. Find adjacent (if one exists in applicable
                 " direction).
@@ -3275,7 +3275,7 @@ function! s:get_clone_target_range(mode, after, list)
             endif
             return found
                 \ ? s:set_marks_around_current_element('n', 1, 0, 1)
-                \ : [0, 0, 0, 0]
+                \ : [[0, 0, 0, 0], [0, 0, 0, 0]]
         endif
     endif
 endfunction

@@ -2860,7 +2860,12 @@ function! s:concat_positions(...)
     for p in a:000
         " p will be one of the following:
         "   1) empty list 2) position, 3) position list
-        let ret += !empty(p) && type(p[0]) == 0 ? [p] : p
+        " Caveat: Discard null positions appearing either singly or in list.
+        if !empty(p) && p != [0, 0, 0, 0]
+            let ret += type(p[0]) == 0
+                \ ? [p]
+                \ : filter(copy(p), 'v:val != [0, 0, 0, 0]')
+        endif
     endfor
     return ret
 endfunction
@@ -3280,11 +3285,23 @@ function! s:get_clone_target_range(mode, after, list)
     endif
 endfunction
 
+" Clone list/element at cursor (normal mode) or range of elements partially or
+" fully included in visual selection.
+" Design Decision: In normal mode, change to visual selection should be a
+" completely transparent and temporary side-effect of the implementation:
+" thus, we restore the (adjusted) original selection (if any). In
+" visual/operator modes, otoh, we restore the adjusted inner selection
+" corresponding to the copied range.
 function! sexp#clone(mode, count, list, after)
     let cursor = getpos('.')
     let wsv = winsaveview()
     " Save offset of cursor from top of window
     let cursor_off = cursor[1] - wsv.topline
+    let keep_vs = a:mode ==? 'n'
+    if keep_vs
+        " Save original selection for adjustment and subsequent restoration.
+        let [vs, ve] = [getpos("'<"), getpos("'>")]
+    endif
     " Get region to be cloned.
     let [start, end] = s:get_clone_target_range(a:mode, a:after, a:list)
     if !start[1]
@@ -3304,12 +3321,18 @@ function! sexp#clone(mode, count, list, after)
         \ : a:after ? [" ", copy] : [copy, " "]
     let copy = join(repeat(repl, a:count ? a:count : 1), "")
 
+    if !keep_vs
+        " Save the target range, which will become the new selection after
+        " adjustment.
+        let [vs, ve] = [copy(start), copy(end)]
+    endif
     " Implement put with yankdel_range to take advantage of position
     " adjustment.
     let p = a:after ? end : start
     let inc = a:after ? [0, 1] : [1, 0]
     " TODO: Consider creating a put_at wrapper for this.
-    call s:yankdel_range(p, p, copy, inc, [end, cursor])
+    call s:yankdel_range(p, p, copy, inc,
+            \ s:concat_positions([end, cursor], [vs, ve]))
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong, as we haven't done
     " anything that should have any impact on indentation.
@@ -3322,7 +3345,6 @@ function! sexp#clone(mode, count, list, after)
             " Assumpton: multi == true
             " Note: One end of the region to be indented has been adjusted by
             " yankdel_range; the other can be obtained from [ or ] mark.
-            " FIXME: Using [ and ] marks doesn't work properly.
             if a:after
                 " start cannot have changed
                 let end = getpos("']")
@@ -3333,7 +3355,7 @@ function! sexp#clone(mode, count, list, after)
                 let start = getpos("'[")
             endif
             call s:set_visual_marks([start, end])
-            call sexp#indent('v', 1, 0, -1, 1, [start, end, cursor])
+            call sexp#indent('v', 1, 0, -1, 1, [start, end, cursor, vs, ve])
         else
             " Indent parent
             " Note: Because of the way sexp#indent works, we need to know
@@ -3341,7 +3363,8 @@ function! sexp#clone(mode, count, list, after)
             let isl = s:is_list(line('.'), col('.'))
             " Caveat: Failure to set optional force_syntax flag in call to
             " indent may result in incorrect indentation.
-            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1, [start, end, cursor])
+            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1,
+                    \ [start, end, cursor, vs, ve])
         endif
     endif
 
@@ -3356,13 +3379,8 @@ function! sexp#clone(mode, count, list, after)
     let wsv.col = cursor[2] - 1
     call winrestview(wsv)
 
-    " Adjust visual marks.
-    " Design Decision: Since we use visual selections regardless of a:mode,
-    " might as well adjust regardless of mode.
-    " Note: Restore *inner* version of original selection, since changes to
-    " surrounding whitespace can make it impossible to define, let alone
-    " restore, an outer selection.
-    call s:set_visual_marks([start, end])
+    " Adjust visual marks. See note in header on what vs/ve represent.
+    call s:set_visual_marks([vs, ve])
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted

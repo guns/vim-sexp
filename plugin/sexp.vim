@@ -94,10 +94,10 @@ let s:sexp_mappings = {
     \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
     \ 'sexp_splice_list':               '<LocalLeader>@',
     \ 'sexp_convolute':                 '<LocalLeader>?',
-    \ 'sexp_clone_list_before':         '<LocalLeader>c',
-    \ 'sexp_clone_list_after':          '',
-    \ 'sexp_clone_element_before':      '<LocalLeader>C',
-    \ 'sexp_clone_element_after':       '',
+    \ 'sexp_clone_list':                '<LocalLeader>c',
+    \ 'sexp_clone_list_sl':             '<LocalLeader><LocalLeader>c',
+    \ 'sexp_clone_element':             '<LocalLeader>C',
+    \ 'sexp_clone_element_sl':          '<LocalLeader><LocalLeader>C',
     \ 'sexp_raise_list':                '<LocalLeader>o',
     \ 'sexp_raise_element':             '<LocalLeader>O',
     \ 'sexp_swap_list_backward':        '<M-k>',
@@ -258,8 +258,8 @@ function! s:sexp_create_mappings()
                \ 'sexp_flow_to_prev_open',        'sexp_flow_to_next_close',
                \ 'sexp_flow_to_prev_leaf_head',   'sexp_flow_to_next_leaf_head',
                \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
-               \ 'sexp_clone_list_before',        'sexp_clone_list_after',
-               \ 'sexp_clone_element_before',     'sexp_clone_element_after',
+               \ 'sexp_clone_list',               'sexp_clone_list_sl',
+               \ 'sexp_clone_element',            'sexp_clone_element_sl',
                \ 'sexp_indent',                   'sexp_indent_and_clean']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
@@ -449,16 +449,16 @@ Defplug  xnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'v', ''
 DefplugN! nnoremap sexp_convolute sexp#convolute(v:count, 'n')
 
 " Clone list
-DefplugN  nnoremap sexp_clone_list_before sexp#clone('n', v:count, 1, 0)
-DEFPLUG   xnoremap sexp_clone_list_before <Esc>:<C-u>call sexp#clone('v', v:prevcount, 1, 0)<CR>
-DefplugN  nnoremap sexp_clone_list_after sexp#clone('n', v:count, 1, 1)
-DEFPLUG   xnoremap sexp_clone_list_after <Esc>:<C-u>call sexp#clone('v', v:prevcount, 1, 1)<CR>
+DefplugN  nnoremap sexp_clone_list    sexp#clone('n', v:count, 1, 0, 0)
+DEFPLUG   xnoremap sexp_clone_list    <Esc>:<C-u>call sexp#clone('v', v:prevcount, 1, 0, 0)<CR>
+DefplugN  nnoremap sexp_clone_list_sl sexp#clone('n', v:count, 1, 0, 1)
+DEFPLUG   xnoremap sexp_clone_list_sl <Esc>:<C-u>call sexp#clone('v', v:prevcount, 1, 0, 1)<CR>
 
 " Clone element
-DefplugN  nnoremap sexp_clone_element_before sexp#clone('n', v:count, 0, 0)
-DEFPLUG   xnoremap sexp_clone_element_before <Esc>:<C-u>call sexp#clone('v', v:prevcount, 0, 0)<CR>
-DefplugN  nnoremap sexp_clone_element_after sexp#clone('n', v:count, 0, 1)
-DEFPLUG   xnoremap sexp_clone_element_after <Esc>:<C-u>call sexp#clone('v', v:prevcount, 0, 1)<CR>
+DefplugN  nnoremap sexp_clone_element    sexp#clone('n', v:count, 0, 0, 0)
+DEFPLUG   xnoremap sexp_clone_element    <Esc>:<C-u>call sexp#clone('v', v:prevcount, 0, 0, 0)<CR>
+DefplugN  nnoremap sexp_clone_element_sl sexp#clone('n', v:count, 0, 0, 1)
+DEFPLUG   xnoremap sexp_clone_element_sl <Esc>:<C-u>call sexp#clone('v', v:prevcount, 0, 0, 1)<CR>
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)

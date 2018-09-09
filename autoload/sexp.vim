@@ -3292,7 +3292,7 @@ endfunction
 " thus, we restore the (adjusted) original selection (if any). In
 " visual/operator modes, otoh, we restore the adjusted inner selection
 " corresponding to the copied range.
-function! sexp#clone(mode, count, list, after)
+function! sexp#clone(mode, count, list, after, force_sl)
     let cursor = getpos('.')
     let wsv = winsaveview()
     " Save offset of cursor from top of window
@@ -3302,6 +3302,7 @@ function! sexp#clone(mode, count, list, after)
         " Save original selection for adjustment and subsequent restoration.
         let [vs, ve] = [getpos("'<"), getpos("'>")]
     endif
+
     " Get region to be cloned.
     let [start, end] = s:get_clone_target_range(a:mode, a:after, a:list)
     if !start[1]
@@ -3311,9 +3312,22 @@ function! sexp#clone(mode, count, list, after)
     endif
     " Assumption: Prior logic guarantees start and end at same level.
     let top = s:at_top(start[1], start[2])
-    let multi = start[1] != end[1]
-        \ || s:at_bol(start[1], start[2]) && s:at_eol(end[1], end[2])
+    " Logic: By default, clone will be multi-line if any of the following
+    " conditions holds:
+    "  1. target is alone on its line
+    "  2. target is at toplevel
+    "  3. target ends in comment
+    " The default logic can be overridden in 2 ways:
+    "  1. explicit [count] supplied => forces multi-line
+    "  2. single-line map variant used => forces single-line *unless* target
+    "     ends in comment, in which case, clone is always multi-line
+    let force_l = a:force_sl ? 's' : a:count ? 'm' : ''
+    let multi = force_l == 'm'
         \ || s:is_comment(end[1], end[2])
+        \ || force_l != 's'
+        \ && (top || start[1] != end[1]
+            \ || s:at_bol(start[1], start[2]) && s:at_eol(end[1], end[2]))
+    " Get the text to be copied.
     let copy = s:yankdel_range(start, end, 0, 1)
     call s:setcursor(a:after ? end : start)
     let repl = multi

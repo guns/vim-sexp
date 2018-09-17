@@ -110,8 +110,10 @@ If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` comma
 
 ### Clone Commands (normal, visual)
 
-* `<LocalLeader>c` creates copy of current list or visual selection before cursor without moving cursor
-* `<LocalLeader>C` creates copy of current element or visual selection before cursor without moving cursor
+* `<LocalLeader>c` inserts copy(s) of current list, element or visual selection before cursor without moving cursor
+* `<LocalLeader><LocalLeader>c` like previous, but inhibits insertion of newlines between copies
+* `<LocalLeader>C` inserts copy(s) of current element or visual selection before cursor without moving cursor
+* `<LocalLeader><LocalLeader>C` like previous, but inhibits insertion of newlines between copies
 
 If `g:sexp_clone_does_indent` is set (true by default) and cloned text spans multiple lines, all elements involved in the clone (both original and copies) will be indented.
 

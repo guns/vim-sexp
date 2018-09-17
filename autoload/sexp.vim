@@ -3294,9 +3294,6 @@ endfunction
 " corresponding to the copied range.
 function! sexp#clone(mode, count, list, after, force_sl)
     let cursor = getpos('.')
-    let wsv = winsaveview()
-    " Save offset of cursor from top of window
-    let cursor_off = cursor[1] - wsv.topline
     let keep_vs = a:mode ==? 'n'
     if keep_vs
         " Save original selection for adjustment and subsequent restoration.
@@ -3309,6 +3306,11 @@ function! sexp#clone(mode, count, list, after, force_sl)
         " Nothing to clone.
         call s:warnmsg("Nothing to clone")
         return
+    endif
+    " Design Decision: If cursor starts in whitespace before target, move it
+    " to head of target to ensure that cursor always stays with target.
+    if s:compare_pos(cursor, start) < 0
+        let cursor = start[:]
     endif
     " Assumption: Prior logic guarantees start and end at same level.
     let top = s:at_top(start[1], start[2])
@@ -3382,16 +3384,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
         endif
     endif
 
-    " Preserve view to avoid visual disturbance: e.g., keep cursor where it
-    " was, both w.r.t screen and original text.
-    let wsv.lnum = cursor[1]
-    if !a:after
-        " Design Decision: To avoid visual disturbance, preserve original
-        " screen line.
-        let wsv.topline = max([1, cursor[1] - cursor_off])
-    endif
-    let wsv.col = cursor[2] - 1
-    call winrestview(wsv)
+    call s:setcursor(cursor)
 
     " Adjust visual marks. See note in header on what vs/ve represent.
     call s:set_visual_marks([vs, ve])

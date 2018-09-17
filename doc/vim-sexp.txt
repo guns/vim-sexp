@@ -403,25 +403,37 @@ Leaf flow commands~
 
 CLONE COMMANDS (normal, visual)~
 
-<LocalLeader>c                                *<Plug>(sexp_clone_list_before)*
-<LocalLeader>C                             *<Plug>(sexp_clone_element_before)*
-                                               *<Plug>(sexp_clone_list_after)*
-                                            *<Plug>(sexp_clone_element_after)*
+<LocalLeader>c                                       *<Plug>(sexp_clone_list)*
+<LocalLeader>C                                    *<Plug>(sexp_clone_element)*
+<LocalLeader><LocalLeader>c                       *<Plug>(sexp_clone_list_sl)*
+<LocalLeader><LocalLeader>C                    *<Plug>(sexp_clone_element_sl)*
         Insert [count] copies of the current list (compound FORM), element or
-        visual selection before or after the original, preserving cursor
-        position relative to the original.
+        visual selection (hereafter referred to as "target"), preserving
+        cursor position relative to original.
 
         In visual mode, the selection is first expanded to cover all partially
         selected lists and elements so that structural integrity is
         maintained.
 
-        If the element(s) to be cloned are all within a single line, the
-        copies will be placed on the same line, unless any of the following
-        conditions are met:
-                * The final element within the cloned text is a comment
-                * The cloned text occupies the entire line (ignoring any
-                  leading or trailing whitespace)
-                 
+                                                 *single-vs-multi-line-clone*
+        A "multi-line" clone is one in which the copies of the target are
+        separated from the target (and from each other) by a newline. The
+        default logic selects multi-line operation whenever any of the
+        following conditions are met:
+                * target is on a line by itself
+                * target is at toplevel
+                * target ends in a comment
+
+        It is always possible to override the default logic, forcing either
+        single or multi-line operation, as follows:
+                Single-line~
+                        Use sl command variants ("_sl" suffix).
+                Multi-line~
+                        Supply an explicit [count] (possibly 1) to one of the
+                        non-sl command variants.
+                        Note: Vim-sexp can tell the difference between an
+                        explicit [count]==1 and a default [count] of 1.
+
 
                                                           *indent-after-clone*
         If |g:sexp_clone_does_indent| is set (the default), indent the
@@ -757,10 +769,10 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
             \ 'sexp_splice_list':               '<LocalLeader>@',
             \ 'sexp_convolute':                 '<LocalLeader>?',
-            \ 'sexp_clone_list_before           '<LocalLeader>c',
-            \ 'sexp_clone_list_after            '',
-            \ 'sexp_clone_element_before':      '<LocalLeader>C',
-            \ 'sexp_clone_element_after':       '',
+            \ 'sexp_clone_list':                '<LocalLeader>c',
+            \ 'sexp_clone_list_sl':             '<LocalLeader><LocalLeader>c',
+            \ 'sexp_clone_element':             '<LocalLeader>C',
+            \ 'sexp_clone_element_sl':          '<LocalLeader><LocalLeader>C',
             \ 'sexp_raise_list':                '<LocalLeader>o',
             \ 'sexp_raise_element':             '<LocalLeader>O',
             \ 'sexp_swap_list_backward':        '<M-k>',
@@ -897,10 +909,14 @@ copy, paste, and edit this example to taste.
             xmap <silent><buffer> <M-S-g>         <Plug>(sexp_flow_to_prev_leaf_tail)
             nmap <silent><buffer> <M-S-e>         <Plug>(sexp_flow_to_next_leaf_tail)
             xmap <silent><buffer> <M-S-e>         <Plug>(sexp_flow_to_next_leaf_tail)
-            nmap <silent><buffer> <LocalLeader>c  <Plug>(sexp_clone_list_before)
-            xmap <silent><buffer> <LocalLeader>c  <Plug>(sexp_clone_list_before)
-            nmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element_before)
-            xmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element_before)
+            nmap <silent><buffer> <LocalLeader>c  <Plug>(sexp_clone_list)
+            xmap <silent><buffer> <LocalLeader>c  <Plug>(sexp_clone_list)
+            nmap <silent><buffer> <LocalLeader><LocalLeader>c  <Plug>(sexp_clone_list_sl)
+            xmap <silent><buffer> <LocalLeader><LocalLeader>c  <Plug>(sexp_clone_list_sl)
+            nmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element)
+            xmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element)
+            nmap <silent><buffer> <LocalLeader><LocalLeader>C  <Plug>(sexp_clone_element_sl)
+            xmap <silent><buffer> <LocalLeader><LocalLeader>C  <Plug>(sexp_clone_element_sl)
             nmap <silent><buffer> ==              <Plug>(sexp_indent)
             xmap <silent><buffer> =               <Plug>(sexp_indent)
             nmap <silent><buffer> =-              <Plug>(sexp_indent_top)

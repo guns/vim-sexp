@@ -2786,6 +2786,10 @@ function! sexp#indent(mode, top, count, clean, ...)
     let at_top = a:top
 
     if a:mode ==? 'n'
+        " Save original visual marks for restoration after adjustment.
+        " Rationale: Use of visual selection to perform indent is an
+        " implementation detail that should be completely transparent.
+        let [vs, ve] = [getpos("'<"), getpos("'>")]
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
         if getline(line)[col - 1] =~ s:closing_bracket
@@ -2819,8 +2823,6 @@ function! sexp#indent(mode, top, count, clean, ...)
     else
         " Treat visual mode specially.
         " Rationalize visual range.
-        " TODO: Decide which selection to restore: raw or adjusted by
-        " s:super_range()?
         let [start, end] = s:super_range(getpos("'<"), getpos("'>"))
     endif
     if clean
@@ -2831,7 +2833,8 @@ function! sexp#indent(mode, top, count, clean, ...)
         " Note: Avoid unnecessary calls to at_top().
         let at_top = at_top || s:at_top(end[1], end[2])
         call s:cleanup_ws(start, at_top,
-            \ s:concat_positions(ps, [start, end, cursor]), end)
+            \ s:concat_positions(ps, start, end, cursor,
+                \ a:mode ==? 'n' ? [vs, ve] : []]), end)
     endif
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
@@ -2848,7 +2851,7 @@ function! sexp#indent(mode, top, count, clean, ...)
     endif
     " Position pre-adjustment
     let adj = s:indent_preadjust_positions(
-        \ s:concat_positions(ps, start, end, cursor))
+        \ s:concat_positions(ps, start, end, cursor, vs, ve))
     silent keepjumps exe "normal! " . start[1] . 'G=' . end[1] . "G"
     " Position post-adjustment
     call s:indent_postadjust_positions(adj)
@@ -2861,10 +2864,9 @@ function! sexp#indent(mode, top, count, clean, ...)
     " sexp#clone as well), or make it selectable.
     let win.lnum = cursor[1]
     let win.col = cursor[2] - 1 " .col is zero-based
-    " Restore (potentially adjusted) visual selection.
-    call s:set_visual_marks([start, end])
-    " FIXME: Add logic similar to what's in sexp#clone to ensure we don't
-    " change visual marks for normal mode execution!
+    " Design Decision: In normal mode, restore old (adjusted) visual
+    " selection; in visual mode, restore the adjusted super-range.
+    call s:set_visual_marks(a:mode ==? 'n' ? [vs, ve] : [start, end])
     call winrestview(win)
 endfunction
 

@@ -85,6 +85,7 @@ operator-pending mode.
 ### Flow Motions (normal, visual)
 
 Flow motions move the cursor in normal mode and move (not extend) the selection in visual mode. Unlike text object motions, flow motions are completely unconstrained by list structure, permitting the cursor to move freely in and out of compound forms.
+
 Note: Since the application of delete operators across list boundaries could destroy structural integrity, flow-motions are not provided in operator-pending mode.
 
 There are 2 types of flow motions:
@@ -96,6 +97,7 @@ There are 2 types of flow motions:
 * The `<M-[>` motion moves the cursor backward by close brackets
 * The `<M-}>` motion moves the cursor forward by close brackets
 * The `<M-{>` motion moves the cursor backward by open brackets
+
 Hint: Square bracket commands tend to move down and into lists, curly braces up and out. If you picture a top-level form as a tree, `<M-]>`/`<M-[>` perform forwards/backwards depth-first recursive descents, and `<M-{>`/`<M-}>` may be used to "rewind" the descent.
 
 #### Leaf flow commands

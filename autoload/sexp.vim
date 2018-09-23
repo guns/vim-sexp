@@ -2445,7 +2445,7 @@ function! s:yankdel_range__preadjust_range_start(start, inc)
     return ret
 endfunction
 
-" Adjust range start pos to make range entirely inclusive, taking special inc
+" Adjust range end pos to make range entirely inclusive, taking special inc
 " value into account.
 "   0 = exclusive
 "   1 = inclusive (nop)
@@ -2454,6 +2454,9 @@ endfunction
 " Example:
 " foo)        ==>   foo)|
 " <SPC>|bar         <SPC>bar
+" Special Case: If end is BOF and adjustment is exclusive, return special
+" non-physical position [0, 1, -1, 0].
+" Caveat: Callers requiring physical positions will need to check for this.
 function! s:yankdel_range__preadjust_range_end(end, inc)
     let ret = a:end[:]
     if a:inc == 2 && getline(ret[1])[:ret[2] - 1] =~ '^\s*.\?$'
@@ -2474,11 +2477,19 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
             endif
         else
             " BOF
-            let ret[1:2] = [1, 1]
+            " As a special case, return sentinel (non-physical) position just
+            " before beginning of first line.
+            let ret[1:2] = [1, -1]
         endif
     elseif a:inc != 1 " 0 or 2
         " Move to prev position, including newline.
-        let ret = s:offset_char(ret, 0, 1)
+        if ret[1:2] == [1, 1]
+            " Already at BOF, so return the special sentinel position just
+            " prior to first char.
+            let ret[2] = -1
+        else
+            let ret = s:offset_char(ret, 0, 1)
+        endif
     endif
     return ret
 endfunction
@@ -2555,25 +2566,34 @@ endfunction
 function! s:yankdel_range(start, end, del_or_spl, ...)
     let ret = ''
     let cursor = getpos('.')
-    " Temporarily set 'virtualedit' to onemore.
+    " Assumption: 'virtualedit' has been set to onemore (by pre-op handler).
     " Rationale: Need to be able to select (visually) past EOL in certain
     " cases (e.g., non-inclusive start at EOL).
-    let ve_save = &ve
-    set ve=onemore
     let reg_save = [@a, @"]
     try
         let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
         let start = s:yankdel_range__preadjust_range_start(a:start, inc[0])
         let end = s:yankdel_range__preadjust_range_end(a:end, inc[1])
-        let cmp = s:compare_pos(start, end)
-        " Special Case: Treat splice of null replacement region as a put.
+        " Special Case: Treat splice of certain types of null replacement
+        " regions as a put.
         " Design Decision: Only *just empty* regions will be treated this way:
-        " e.g., start == end and either end (but not both) exclusive. Though
-        " there are simpler ways to accomplish it, you could use such null
-        " regions to perform a simple put, whose direction is determined by
-        " the inclusive side (inclusive start => put before).
-        let spl_put = cmp > 0 && a:start == a:end
-        if cmp <= 0 || spl_put
+        " e.g., start == end and either end (but not both) exclusive (=== 0).
+        " Though there are simpler ways to accomplish it, you could use such
+        " null regions to perform a simple put, whose direction is determined
+        " by the inclusive side (inclusive start => put before).
+        " Design Decision: If del_or_spl === 1 (in lieu of splice text), the
+        " aforementioned 'just empty' null regions result in NOPs.
+        let cmp = s:compare_pos(a:start, a:end)
+        " Caveat: Vim 7.3 didn't have xor() function so do it manually.
+        let spl_put = type(a:del_or_spl) == 1 && !cmp
+            \ && (!inc[0] && inc[1] == 1 || inc[0] && !inc[1] == 1)
+        if spl_put || s:compare_pos(start, end) <= 0
+            " Either splice is a directional put (spl_put) or the adjusted
+            " region is non-empty.
+            " Note: end adjustment may have returned non-physical location; if
+            " so, fix now...
+            if start[2] < 0 | let start[2] = 1 | endif
+            " non-empty region to be spliced/deleted...
             " Note: Since splice also deletes, del will be set for either.
             let [del, spl, spl_text] = type(a:del_or_spl) == 1
                 \ ? [1, 1, a:del_or_spl]
@@ -2591,8 +2611,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 " use a start position prior to a:start; otherwise, the
                 " original start position will not be adjusted, despite coming
                 " after the put text.
-                " Note: Both 0 and 2 inc values are excusive.
-                " FIXME-ws-contract-logic
+                " Note: Both 0 and 2 inc values are exclusive.
                 let adj = s:yankdel_range__preadjust_positions(
                     \ spl_put && inc[0] ? s:offset_char(start, 0) : start,
                     \ !spl
@@ -2646,7 +2665,6 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
     finally
         " Restore options/regs/cursor...
         let [@a, @"] = reg_save
-        let &ve = ve_save
         call s:setcursor(cursor)
     endtry
 
@@ -3045,19 +3063,22 @@ function! s:cleanup_ws(start, at_top, ps, ...)
             endif
         endif
         if !empty(spl)
-            " Adjust inc as necessary.
-            let inc = [bof, 0]
-            " Perform the indicated whitespace contraction.
-            " Argument Notes:
-            " *Normally, range to be spliced is exclusive, but cleaning back
-            "  to bof is special case. (ve=onemore obviates need for special
-            "  case at eof)
-            " *Never remove leading whitespace on final line.
-            call s:yankdel_range(eff_prev,
-                    \ spl[0] == "\n" ? [0, eff_next[1], 1, 0] : eff_next,
-                    \ spl,
-                    \ [bof, 0],
-                    \ s:concat_positions(a:ps, eff_next, end))
+            " Prevent pointless calls to s:yankdel_range (when there's no
+            " whitespace to contract).
+            if !(bof && eff_next[1:2] == [1, 1] ||
+                \ !bof && s:offset_char(eff_prev, 1) == eff_next)
+                " Perform the indicated whitespace contraction.
+                " Argument Notes:
+                " *Normally, range to be spliced is exclusive, but cleaning
+                "  back to bof is special case. (ve=onemore obviates need for
+                "  special case at eof)
+                " *Never remove leading whitespace on 'next' line.
+                call s:yankdel_range(eff_prev,
+                        \ spl[0] == "\n" ? [0, eff_next[1], 1, 0] : eff_next,
+                        \ spl,
+                        \ [bof, 0],
+                        \ s:concat_positions(a:ps, eff_next, end))
+            endif
         endif
 
         " TODO: Consider processing backwards to obviate need for 'next'

@@ -68,7 +68,7 @@ Text object selections refer to text _around_ the cursor.
 * The `aF` and `iF` objects select top-level COMPOUND FORMS.
 * The `as` and `is` objects select STRINGS.
 * The `ae` and `ie` objects select ELEMENTS.
-* The `ac` and `ic` objects select child ELEMENTS.
+* The `ac` and `ic` objects select Nth child ELEMENT from start/end of current COMPOUND FORM.
 
 ### Text Object Motions (normal, visual, operator-pending)
 
@@ -87,17 +87,22 @@ operator-pending mode.
 Flow motions move the cursor in normal mode and move (not extend) the selection in visual mode. Unlike text object motions, flow motions are completely unconstrained by list structure, permitting the cursor to move freely in and out of compound forms.
 Note: Since the application of delete operators across list boundaries could destroy structural integrity, flow-motions are not provided in operator-pending mode.
 
-TODO: Refine this...
+There are 2 types of flow motions:
+1. "list" motions land only on brackets
+1. "leaf" motions land only on non-list elements (e.g., atoms, strings and comments).
+
+#### List flow commands
 * The `<M-]>` motion moves the cursor forward by open brackets
 * The `<M-[>` motion moves the cursor backward by close brackets
 * The `<M-}>` motion moves the cursor forward by close brackets
 * The `<M-{>` motion moves the cursor backward by open brackets
+Hint: Square bracket commands tend to move down and into lists, curly braces up and out. If you picture a top-level form as a tree, `<M-]>`/`<M-[>` perform forwards/backwards depth-first recursive descents, and `<M-{>`/`<M-}>` may be used to "rewind" the descent.
+
+#### Leaf flow commands
 * The `<M-S-b>` motion moves the cursor backward to leaf head
 * The `<M-S-w>` motion moves the cursor forward to leaf head
 * The `<M-S-g>` motion moves the cursor backward to leaf tail
 * The `<M-S-e>` motion moves the cursor forward to leaf tail
-
-TODO: Need list/leaf concept overview...
 
 ### Indent Commands (normal, visual)
 
@@ -110,7 +115,7 @@ If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` comma
 
 ### Clone Commands (normal, visual)
 
-* `<LocalLeader>c` inserts copy(s) of current list, element or visual selection before cursor without moving cursor
+* `<LocalLeader>c` inserts copy(s) of current list or visual selection before cursor without moving cursor
 * `<LocalLeader><LocalLeader>c` like previous, but inhibits insertion of newlines between copies
 * `<LocalLeader>C` inserts copy(s) of current element or visual selection before cursor without moving cursor
 * `<LocalLeader><LocalLeader>C` like previous, but inhibits insertion of newlines between copies

@@ -2863,6 +2863,8 @@ function! sexp#indent(mode, top, count, clean, ...)
     let win.col = cursor[2] - 1 " .col is zero-based
     " Restore (potentially adjusted) visual selection.
     call s:set_visual_marks([start, end])
+    " FIXME: Add logic similar to what's in sexp#clone to ensure we don't
+    " change visual marks for normal mode execution!
     call winrestview(win)
 endfunction
 

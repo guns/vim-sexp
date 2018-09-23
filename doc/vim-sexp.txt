@@ -213,8 +213,8 @@ ic                                             *<Plug>(sexp_inner_child_head)*
         select prev/next element commands ([e and ]e). The chief difference is
         that a child object's offset is always specified relative to the start
         or end of a compound form, whereas [e and ]e always search relative to
-        the cursor position. Depending on the use case, one form may be
-        significantly more convenient than the other.
+        the cursor position. Depending on the use case, one set of commands
+        may be significantly more convenient than the other.
 
 TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
 
@@ -424,15 +424,15 @@ CLONE COMMANDS (normal, visual)~
                 * target is at toplevel
                 * target ends in a comment
 
-        It is always possible to override the default logic, forcing either
+        It is generally possible to override the default logic, forcing either
         single or multi-line operation, as follows:
                 Single-line~
                         Use sl command variants ("_sl" suffix).
                 Multi-line~
                         Supply an explicit [count] (possibly 1) to one of the
                         non-sl command variants.
-                        Note: Vim-sexp can tell the difference between an
-                        explicit [count]==1 and a default [count] of 1.
+                        Note: Vim-sexp can tell the difference between
+                        explicit and default [count]==1.
 
 
                                                           *indent-after-clone*
@@ -443,7 +443,7 @@ CLONE COMMANDS (normal, visual)~
         single line.
 
         If indent is required, |g:sexp_indent_does_clean| determines whether
-        extra whitespace is cleaned up. (See |clean-indent| for details.)
+        extra whitespace is removed. (See |clean-indent| for details.)
 
 
 INDENT COMMANDS (normal, visual)~
@@ -451,8 +451,9 @@ INDENT COMMANDS (normal, visual)~
 ==                                                       *<Plug>(sexp_indent)*
 =-                                                   *<Plug>(sexp_indent_top)*
         In normal mode, indent [count] surrounding lists (compound FORMs) or
-        current top-level list without moving the cursor. If the cursor is not
-        in a compound FORM, the current element is indented instead.
+        visual selection (==) or current top-level list (=-) without moving
+        the cursor. If the cursor is not in a compound FORM, the current
+        element is indented instead.
 
         In visual mode, the selection is first expanded to cover all partially
         selected lists and elements.
@@ -471,8 +472,8 @@ INDENT COMMANDS (normal, visual)~
         If |g:sexp_indent_does_clean| is set (unset by default), the indent
         commands also perform "cleanup" on the indented region by removing
         extra whitespace. The rules for determining whether whitespace is
-        "extra" obey the principle of least surprise mentioned under
-        |surrounding-whitespace-rules| in the section on sexp_outer_element.
+        "extra" obey the "principle of least surprise" mentioned under
+        |surrounding-whitespace-rules| (in the section on sexp_outer_element).
         Note: Blank lines are generally removed; however, if a comment or
         toplevel element is preceded by one or more blank lines, a single
         blank line will be kept.

@@ -2834,7 +2834,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         let at_top = at_top || s:at_top(end[1], end[2])
         call s:cleanup_ws(start, at_top,
             \ s:concat_positions(ps, start, end, cursor,
-                \ a:mode ==? 'n' ? [vs, ve] : []]), end)
+                \ a:mode ==? 'n' ? [vs, ve] : []), end)
     endif
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.

@@ -2851,7 +2851,8 @@ function! sexp#indent(mode, top, count, clean, ...)
     endif
     " Position pre-adjustment
     let adj = s:indent_preadjust_positions(
-        \ s:concat_positions(ps, start, end, cursor, vs, ve))
+        \ s:concat_positions(ps, start, end, cursor,
+            \ a:mode ==? 'n' ? [vs, ve] : []))
     silent keepjumps exe "normal! " . start[1] . 'G=' . end[1] . "G"
     " Position post-adjustment
     call s:indent_postadjust_positions(adj)

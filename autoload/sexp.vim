@@ -2032,6 +2032,9 @@ function! sexp#stackop(mode, last, capture)
     if a:mode ==? 'v'
         execute "normal! \<Esc>"
         let marks = s:get_visual_marks()
+    else
+        silent! normal! ix
+        silent! normal! x
     endif
 
     " Move to element tail first so we can skip leading macro chars
@@ -2055,11 +2058,31 @@ function! sexp#stackop(mode, last, capture)
 
         if !(a:capture ? s:stackop_capture(a:last, pos, bpos)
                      \ : s:stackop_emit(a:last, pos, bpos))
-            throw 'sexp-error'
+            throw 'sexp-noop-error'
         endif
 
         if a:mode ==? 'v'
             call sexp#select_current_element('n', 1)
+        else
+            let newchar = getline(cursorline)[cursorcol - 1]
+            if newchar != char
+              let cursorcol += (a:last ? 1 : -1)
+            endif
+
+            call cursor(cursorline, cursorcol)
+        endif
+    catch /sexp-noop-error/
+        if a:mode !=? 'v'
+            silent! undo
+        endif
+
+        call sexp#move_to_nearest_bracket(a:mode, a:last)
+        call sexp#stackop(a:mode, a:last, a:capture)
+        if a:mode ==? 'v'
+            call s:set_visual_marks(marks)
+            normal! gv
+        else
+            call cursor(cursorline, cursorcol)
         endif
     catch /sexp-error/
         " Cleanup after error
@@ -2067,6 +2090,7 @@ function! sexp#stackop(mode, last, capture)
             call s:set_visual_marks(marks)
             normal! gv
         else
+            silent! undo
             call cursor(cursorline, cursorcol)
         endif
     endtry

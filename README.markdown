@@ -12,7 +12,7 @@
 
 ## Introduction
 
-Vim-sexp brings the Vim philosophy of _precision editing_ to S-expressions.
+Vim-sexp brings the Vim philosophy of _precision editing_ to [S-expressions](https://en.wikipedia.org/wiki/S-expression).
 
 ## Requirements
 

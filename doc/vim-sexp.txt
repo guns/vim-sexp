@@ -332,6 +332,7 @@ List flow commands~
         is NOT bounded by the parent list.
         Visits the same positions as the preceding command, but in reverse
         order: i.e, may be used to "rewind" a sequence of <M-]> commands.
+        Note: If your terminal doesn't recognize <M-{>, try <M-S-[> instead.
 
 <M-[>                                        *<Plug>(sexp_flow_to_prev_close)*
         [count] close brackets backward (ignoring any open brackets). Movement
@@ -344,6 +345,7 @@ List flow commands~
         is NOT bounded by the parent list.
         Visits the same positions as the preceding command, but in reverse
         order: i.e, may be used to "rewind" a sequence of <M-[> commands.
+        Note: If your terminal doesn't recognize <M-}>, try <M-S-]> instead.
 
 Note: Another way of looking at the list flow commands is that the
 square-bracket commands tend to move down into lists, whereas the

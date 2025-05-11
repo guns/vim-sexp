@@ -1060,9 +1060,6 @@ function! s:super_range(start, end)
     call s:setcursor(cursor)
     return [start, end]
 endfunction
-let Sr = function('s:super_range')
-hi Foo guifg=green guibg=red gui=bold,underline
-xmap <silent> <F8> :<C-u>silent! let rng = <SID>super_range(getpos("'<"), getpos("'>")) \| silent! let m1 = 'silent! match Foo /\%' . rng[0][1] . 'l\%' . rng[0][2] . 'c./' \| silent! let m2 = 'silent! 2match Foo /\%' . rng[1][1] . 'l\%' . rng[1][2] . 'c./' \| silent! exe m1 \| silent! exe m2 <CR>
 
 " Return a constrained range.
 function! s:constrained_range(start, end, keep_end)

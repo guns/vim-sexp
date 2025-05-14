@@ -1626,9 +1626,36 @@ endfunction
 
 """ VISUAL MARKS {{{1
 
+function! s:get_visual_beg_mark()
+    " Note: In Linewise Visual mode, getpos returns 0 for col. The rest of the plugin is
+    " not designed to handle this, so return 1 instead.
+    " TODO: Consider just returning [0, line("'<"), col("'<"), 0]. Is the offset (pos[3])
+    " used anywhere?
+    let pos = getpos("'<")
+    " Leave [0,0,0,0] (representing invalid input) alone.
+    if !pos[2] && pos[1]
+        let pos[2] = 1
+    endif
+    return pos
+endfu
+
+function! s:get_visual_end_mark()
+    " Note: In Linewise Visual mode, getpos returns v:maxcol for col. The rest of the
+    " plugin is not designed to handle this, so return last col position on end line
+    " instead.
+    " TODO: Consider just returning [0, line("'>"), col("'>"), 0]. Is the offset (pos[3])
+    " used anywhere?
+    let pos = getpos("'>")
+    if pos[2] == v:maxcol
+        " FIXME: This assumes non-mb char at end of line.
+        let pos[2] = col("'>") - 1
+    endif
+    return pos
+endfu
+
 " Return current visual marks as a list
 function! s:get_visual_marks()
-    return [getpos("'<"), getpos("'>")]
+    return [s:get_visual_beg_mark(), s:get_visual_end_mark()]
 endfunction
 
 if s:can_set_visual_marks
@@ -1676,11 +1703,11 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     let cursor_moved = 0
 
     " Prepare the entrails
-    let start = getpos("'<")
+    let start = s:get_visual_beg_mark()
     let visual = a:mode ==? 'v'
     let counting = s:countindex > 0
     let start_is_valid = start[1] > 0
-    let have_selection = start_is_valid && s:compare_pos(start, getpos("'>")) != 0
+    let have_selection = start_is_valid && s:compare_pos(start, s:get_visual_end_mark()) != 0
     let expanding = a:allow_expansion && (counting || (visual && have_selection))
 
     " When evaluating via sexp#docount the cursor position will not be updated
@@ -1874,7 +1901,7 @@ endfunction
 function! s:get_cursor_and_visual_info()
     let o = {}
 
-    let vs = getpos("'<")
+    let vs = s:get_visual_beg_mark()
     " Idiosyncrasy: In linewise visual mode, Vim returns large number for
     " getpos("'>")[2].
     let ve = [0, line("'>"), col("'>"), 0]
@@ -1950,7 +1977,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     let cursor = getpos('.')
     let curpos = cursor
     if a:mode ==? 'v'
-        let [vs_orig, ve_orig] = [getpos("'<"), getpos("'>")]
+        let [vs_orig, ve_orig] = s:get_visual_marks()
         "let dir = vs == cursor && ve != cursor ? 0 : 1
         let dir = b:sexp_cmd_cache.cvi.at_end
         " Rationalize visual range.
@@ -2089,7 +2116,7 @@ endfunction
 "         0=left side ('<), 1=right side ('>)
 "         Note: This arg is ignored if marks not set.
 function! s:select_current_marks(mode, ...)
-    if getpos("'<")[1] > 0
+    if s:get_visual_beg_mark()[1] > 0
         if mode() !=? 'v'
             " Caveat: If we're already in visual mode, gv would revert to
             " *previous* visual marks!!!
@@ -2406,7 +2433,7 @@ function! s:swap_current_selection(mode, next, pairwise)
     if visual
         call s:select_current_marks('v')
     elseif a:next
-        call s:setcursor(getpos("'<"))
+        call s:setcursor(s:get_visual_beg_mark())
     else
         call s:setcursor(bmarks[0])
     endif
@@ -2786,7 +2813,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         " Save original visual marks for restoration after adjustment.
         " Rationale: Use of visual selection to perform indent is an
         " implementation detail that should be completely transparent.
-        let [vs, ve] = [getpos("'<"), getpos("'>")]
+        let [vs, ve] = s:get_visual_marks()
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
         if getline(line)[col - 1] =~ s:closing_bracket
@@ -2813,14 +2840,15 @@ function! sexp#indent(mode, top, count, clean, ...)
             keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'n', clean, 1)
         endif
         " Cache visual start/end; end can actually be changed by s:cleanup_ws().
-        let [start, end] = [getpos("'<"), getpos("'>")]
+        let [start, end] = s:get_visual_marks()
         " We're done with visual mode. Leave it to avoid problems below (eg,
         " with function calls).
         exe "normal! \<Esc>"
     else
         " Treat visual mode specially.
         " Rationalize visual range.
-        let [start, end] = s:super_range(getpos("'<"), getpos("'>"))
+        let [vs, ve] = s:get_visual_marks()
+        let [start, end] = s:super_range(vs, ve)
     endif
     if clean
         " Always force syntax update when we're modifying the buffer.
@@ -3278,7 +3306,7 @@ function! s:get_clone_target_range(mode, after, list)
                 " Design Decision: Perform inner element selection to
                 " incorporate any adjacent macro chars.
                 call sexp#select_current_element('n', 1)
-                let [vs, ve] = [getpos("'<"), getpos("'>")]
+                let [vs, ve] = s:get_visual_marks()
                 " Make sure we're on or in the found list.
                 " Rationale: select_current_list can find list after cursor,
                 " and we're not interested in those.
@@ -3320,7 +3348,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
     let keep_vs = a:mode ==? 'n'
     if keep_vs
         " Save original selection for adjustment and subsequent restoration.
-        let [vs, ve] = [getpos("'<"), getpos("'>")]
+        let [vs, ve] = s:get_visual_marks()
     endif
 
     " Get region to be cloned.
@@ -3434,11 +3462,11 @@ function! sexp#splice_list(...)
 
     call s:set_marks_around_current_list('n', 0, 0)
 
-    let start = getpos("'<")
+    let start = s:get_visual_beg_mark()
 
     if start[1] > 0
         " Delete ending bracket first so we don't mess up '<
-        call s:setcursor(getpos("'>"))
+        call s:setcursor(s:get_visual_end_mark())
         normal! dl
         call s:setcursor(start)
         normal! dl
@@ -3550,7 +3578,7 @@ function! sexp#swap_element(mode, next, list)
         call s:set_marks_around_current_element('o', 1, 0, 0)
     endif
 
-    if getpos("'<")[1] < 1 || !s:swap_current_selection(a:mode, a:next, pairwise)
+    if s:get_visual_beg_mark()[1] < 1 || !s:swap_current_selection(a:mode, a:next, pairwise)
         " Restore visual state
         if visual
             call s:set_visual_marks(marks)

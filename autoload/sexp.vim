@@ -886,13 +886,15 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
         let [line, col] = searchpos(a:all_brackets, 'cnW')
 
         " Start next iteration at next element if in ignored scope
-        if s:syntax_match(s:ignored_region, line, col)
+        " Caveat: searchpos() returns [0,0] if no bracket found before EOF.
+        if line && s:syntax_match(s:ignored_region, line, col)
             call cursor(line, col)
             call s:move_to_adjacent_element(1, 0, 0)
             continue
         endif
 
-        let cmp = s:compare_pos([0, line, col, 0], a:end)
+        " Break if bracket found after end or EOF hit by searchpos (!line).
+        let cmp = !line ? 1 : s:compare_pos([0, line, col, 0], a:end)
         if cmp > 0 | break | endif
 
         if getline(line)[col - 1] =~# a:opening_brackets
@@ -991,36 +993,76 @@ function! s:offset_char(pos, dir, ...)
 endfunction
 let Oc = function('s:offset_char')
 
-" Return a superset range by adjusting one or both sides upward till both
-" sides are at same level and no elements are partially included in the range.
+" If input range contains non-whitespace, return new, potentially smaller range, with no
+" leading or trailing whitespace; otherwise, return input range unmodified.
+function! s:strip_range(start, end)
+    let cursor = getpos('.')
+    " Question: Should we check for reversed range?
+    " Look for non-whitespace at head, including cursor pos in search.
+    call s:setcursor(a:start)
+    let p = searchpos('\S', 'cnW', a:end[1])
+    let start = [0, p[0], p[1], 0]
+    if !start[1] || s:compare_pos(start, a:end) > 0
+        " Range is empty. Don't modify input.
+        return [a:start, a:end]
+    endif
+    " Non-empty range guaranteed.
+    " Look for non-whitespace at tail, including cursor pos in search.
+    call s:setcursor(a:end)
+    let p = searchpos('\S', 'cnbW', start[1])
+    " Note: Assuming non-reversed range, the test after the earlier searchpos() obviates
+    " need for one here.
+    let end = [0, p[0], p[1], 0]
+    " Restore saved pos.
+    call s:setcursor(cursor)
+    return [start, end]
+endfunction
+
+" Return a superset range containing no unbalanced brackets by adjusting one or both sides
+" of the input range upward till both sides are at same level (i.e., have same parent) and
+" no elements are partially included in the range. Return null positions if superset range
+" would contain unbalanced brackets.
 function! s:super_range(start, end)
     let cursor = getpos('.')
     let [start, end] = [a:start[:], a:end[:]]
 
-    " Find close bracket (if one exists) that contains both start and end
-    " Note: In this context, a bracket "contains" collocated position.
+    " Find matching pair of brackets (if one exists) that contains both start and end. Set
+    " shared_close to the close position, or null if no such pair exists.
+    " Note: In this context, a bracket "contains" itself.
     call s:setcursor(start)
-    while 1
-        " Find parent
-        let p = s:move_to_nearest_bracket(0)
-        if p[1]
-            let shared_close = s:nearest_bracket(1)
-            let cmp = s:compare_pos(shared_close, end)
-            if cmp >= 0
-                " Found shared close
-                if !cmp
-                    " End pos *is* shared close.
-                    let start = p
-                endif
-                break
-            endif
-        else
-            " Top level is shared close
-            let shared_close = [0, 0, 0, 0]
+    " Seed the loop position with an open containing start (possibly start itself).
+    let shared_open = s:is_list(start[1], start[2]) == 2 ? start : s:move_to_nearest_bracket(0)
+    while shared_open[1]
+        let shared_close = s:nearest_bracket(1)
+        " Note: Null shared close implies end at top level due to unbalanced open.
+        let cmp = !shared_close[1] ? 1 : s:compare_pos(shared_close, end)
+        if cmp >= 0
+            " Either we found shared close or we're not going to.
             break
         endif
-        let start = p
+        " Haven't yet found shared close (and haven't hit top-level trying). Adjust
+        " start to current open bracket before looking higher.
+        let start = shared_open
+        let shared_open = s:move_to_nearest_bracket(0)
     endwhile
+    " Assumptions:
+    " * Null shared_open implies null shared_close
+    " * shared_open == start implies end equal to a *non-null* shared_close.
+    " * shared_close == end implies start equal to a *non-null* shared_open.
+    " Enforce the associated constraints, with possibly redundant assignments.
+    if !shared_open[1]
+        " We hit top level looking for shared open containing end.
+        " Note: In case of unbalanced open, this assignment will be redundant.
+        let shared_close = [0, 0, 0, 0]
+    elseif shared_open == start
+        if shared_close[1]
+            let end = shared_close
+        endif
+    elseif shared_close == end
+        if shared_open[1]
+            let start = shared_open
+        endif
+    endif
     " If on element, find its start.
     " Rationale: Prefer start of macro chars to open bracket.
     call s:setcursor(start)
@@ -1028,37 +1070,52 @@ function! s:super_range(start, end)
     if p[1]
         let start = p
     endif
-
-    " Special Conditions:
-    "   (shared_close == null)   => shared close is top-level
-    "   (shared_close == end)    => end requires no adjustment
-    call s:setcursor(end)
-    " Seed prev position var.
-    let p = end
-    " Note: compare_pos() < 0 could be simplified to p != shared_close.
-    " Rationale: A non-top level shared_close is always a close bracket.
-    while !shared_close[1] || s:compare_pos(p, shared_close) < 0
-        let end = p
-        let p = s:move_to_nearest_bracket(1)
-        if !p[1]
-            " Top level is common ancestor
-            break
-        endif
-    endwhile
-    " As long as a form always ends with its closing bracket (e.g., no macro
-    " chars following close), we can skip looking for terminal whenever any
-    " adjustment was made in loop.
-    if end == a:end
+    " Is it possible we need to adjust end upward?
+    if end != shared_close
+        " Special Cases:
+        "   (shared_close == null)   => shared close is top-level
+        "       Don't look up any further; just find end terminal
+        "   (shared_close == a:end)    => end requires no adjustment
+        "       The next two loops will be skipped.
         call s:setcursor(end)
-        " Ensure adjusted position is terminal.
-        let p = s:current_element_terminal(1)
-        if p[1]
+        " Note: compare_pos() < 0 could be simplified to p != shared_close.
+        " Rationale: Prior logic guarantees that p will eventually land *on* a non-null
+        " shared_close.
+        " Seed prev position var.
+        let p = end
+        " Treat null shared close like shared close past EOF.
+        while !shared_close[1] || s:compare_pos(p, shared_close) < 0
             let end = p
+            let p = s:move_to_nearest_bracket(1)
+            if !p[1]
+                " Top level is common ancestor
+                break
+            endif
+        endwhile
+        " As long as we can assume a form always ends with a closing bracket (e.g., no macro
+        " chars following close), we can skip looking for terminal whenever the preceding loop
+        " has adjusted end to a closing bracket (i.e., end != a:end).
+        if end == a:end
+            call s:setcursor(end)
+            " Ensure end is a terminal.
+            let p = s:current_element_terminal(1)
+            if p[1]
+                let end = p
+            endif
         endif
     endif
 
+    " Finally, check for unbalanced brackets in range we plan to return.
+    let [bra, ket] = s:count_brackets(start, end, s:bracket, s:opening_bracket)
+    if bra || ket
+        let ret = [[0,0,0,0],[0,0,0,0]]
+    else
+        " Strip surrounding whitespace from range.
+        let ret = s:strip_range(start, end)
+    endif
+    " Restore saved position.
     call s:setcursor(cursor)
-    return [start, end]
+    return ret
 endfunction
 
 " Return a constrained range.
@@ -1149,8 +1206,8 @@ function! s:is_comment(line, col)
             let cursor = getpos('.')
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
-            let [cline, ccol] = s:findpos('\v\S', 1, a:line)
-            if s:syntax_match('comment', pline, pcol)
+            let [cline, ccol] = s:findpos('\v\S', 1, a:line + 1)
+            if pline && cline && s:syntax_match('comment', pline, pcol)
                 \ && s:syntax_match('comment', cline, ccol)
                 let incomment = 1
             endif
@@ -1984,6 +2041,9 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         " TODO: Should super_range adjust selection inward or no? If it did,
         " some of the subsequent end logic could go away.
         let [vs, ve] = s:super_range(vs_orig, ve_orig)
+        if !vs[1]
+            echoerr "Refusing to operate on selection containing unmatched parens!"
+        endif
         " In case actual cursor position has changed.
         " Note: Cursor will align with either '< or '>
         " Design Decision Needed: When visual selection is modified by

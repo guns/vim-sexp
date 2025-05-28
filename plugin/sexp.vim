@@ -39,6 +39,10 @@ if !exists('g:sexp_clone_does_indent')
     let g:sexp_clone_does_indent = 1
 endif
 
+if !exists('g:sexp_prefer_legacy_syntax')
+    let g:sexp_prefer_legacy_syntax = 0
+endif
+
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif

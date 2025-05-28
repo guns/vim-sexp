@@ -1,5 +1,5 @@
 
-"              o8o
+
 "              '"'
 "  oooo    ooooooo ooo. .oo.  .oo.        .oooo.o  .ooooo. oooo    ooooo.ooooo.
 "   `88.  .8' `888 `888P"Y88bP"Y88b      d88(  "8 d88' `88b `88b..8P'  888' `88b
@@ -16,6 +16,10 @@ if exists('g:sexp_autoloaded')
     finish
 endif
 let g:sexp_autoloaded = 1
+
+fu! s:Dbg(...)
+    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+endfu
 
 " TODO:
 "
@@ -38,7 +42,7 @@ let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
-let s:match_ignored_region_fn = 's:syntax_match(s:ignored_region, line("."), col("."))'
+let s:match_ignored_region_fn = 'sexp#hl#is_rgn_type("ignored", line("."), col("."))'
 let s:macro_filetype_characters = {
     \ 'clojure': "#'`~@^_=",
     \ 'scheme':  "#'`,@",
@@ -210,6 +214,17 @@ function! s:list_open()
     return ret
 endfunction
 
+" Return true iff cursor is on bracket of specified type.
+function! s:on_bracket(closing)
+    let patt = a:closing ? s:closing_bracket : s:opening_bracket
+    let [line, col] = [line('.'), col('.')]
+    if getline(line)[col - 1] =~ patt
+        " Maybe...
+        return !sexp#hl#is_rgn_type('ignored', line, col)
+    endif
+    return 0
+endfunction
+
 " Position of outermost paired bracket: 0 for opening, 1 for closing.
 " Returns [0, 0, 0, 0] if none found.
 "
@@ -281,7 +296,7 @@ endfunction
 function! s:current_string_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
 
-    if !s:syntax_match(s:string_region, cursorline, cursorcol)
+    if !sexp#hl#is_rgn_type('string', cursorline, cursorcol)
         return [0, 0, 0, 0]
     endif
 
@@ -299,7 +314,7 @@ function! s:current_string_terminal(end)
         " Beginning or end of file.
         if line < 1 | break | endif
 
-        if s:syntax_match(s:string_region, line, col)
+        if sexp#hl#is_rgn_type('string', line, col)
             let termline = line
             let termcol = col
             call cursor(line, col)
@@ -327,6 +342,8 @@ endfunction
 function! s:current_comment_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
 
+    let start = reltime()
+    call s:Dbg("Calling is_comment %d %d", cursorline, cursorcol)
     if !s:is_comment(cursorline, cursorcol)
         return [0, 0, 0, 0]
     endif
@@ -334,21 +351,25 @@ function! s:current_comment_terminal(end)
     let termline = cursorline
     let termcol = cursorcol
 
+    "call s:Dbg("Entering loop")
     while 1
         let [line, col] = s:findpos('\v\_.', a:end)
 
         if line < 1 | break | endif
 
         if s:is_comment(line, col)
+            "call s:Dbg("%d,%d: is_comment", line, col)
             let termline = line
             let termcol = col
             call cursor(line, col)
         else
+            "call s:Dbg("%d,%d: not comment!", line, col)
             break
         endif
     endwhile
 
     call cursor(cursorline, cursorcol)
+    call s:Dbg("current_comment_terminal took %s", reltimestr(reltime(start)))
     return [0, termline, termcol, 0]
 endfunction
 
@@ -439,17 +460,22 @@ function! s:current_element_terminal(end)
     let char = getline(line)[col - 1]
     let include_macro_characters = !a:end
 
-    if s:syntax_match(s:string_region, line, col)
+    call s:Dbg("current_element_terminal(%d) for %d, %d", a:end, line, col)
+    if sexp#hl#is_rgn_type('string', line, col)
+        call s:Dbg("string! %d, %d", line, col)
         let pos = s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
+        call s:Dbg("current_element_terminal(%d) is_comment true %d, %d", a:end, line, col)
         let pos = s:current_comment_terminal(a:end)
-    elseif char =~# s:bracket && !s:syntax_match(s:ignored_region, line, col)
+    elseif char =~# s:bracket && !sexp#hl#is_rgn_type('ignored', line, col)
+        call s:Dbg("string! %d, %d", line, col)
         if (a:end && char =~# s:closing_bracket) || (!a:end && char =~# s:opening_bracket)
             let pos = [0, line, col, 0]
         else
             let pos = s:nearest_bracket(a:end)
         end
     elseif s:is_macro_char(char)
+        call s:Dbg("macro char!")
         if !a:end
             " Let the rest of the function find the macro head
             let include_macro_characters = 1
@@ -475,6 +501,7 @@ function! s:current_element_terminal(end)
             endif
         endif
     else
+        call s:Dbg("else!")
         let include_macro_characters = 0
         let pos = s:current_atom_terminal(a:end)
     endif
@@ -887,7 +914,7 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
 
         " Start next iteration at next element if in ignored scope
         " Caveat: searchpos() returns [0,0] if no bracket found before EOF.
-        if line && s:syntax_match(s:ignored_region, line, col)
+        if line && sexp#hl#is_rgn_type('ignored', line, col)
             call cursor(line, col)
             call s:move_to_adjacent_element(1, 0, 0)
             continue
@@ -1194,7 +1221,7 @@ endfunction
 " Returns 1 if character at position is in a comment, or is in the whitespace
 " between two line comments.
 function! s:is_comment(line, col)
-    if s:syntax_match('comment', a:line, a:col)
+    if sexp#hl#is_rgn_type('comment', a:line, a:col)
         return 1
     else
         let incomment = 0
@@ -1206,9 +1233,9 @@ function! s:is_comment(line, col)
             let cursor = getpos('.')
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
-            let [cline, ccol] = s:findpos('\v\S', 1, a:line + 1)
-            if pline && cline && s:syntax_match('comment', pline, pcol)
-                \ && s:syntax_match('comment', cline, ccol)
+            let [cline, ccol] = s:findpos('\v\S', 1, a:line)
+            if pline && cline && sexp#hl#is_rgn_type('comment', pline, pcol)
+                \ && sexp#hl#is_rgn_type('comment', cline, ccol)
                 let incomment = 1
             endif
             call s:setcursor(cursor)
@@ -1252,7 +1279,7 @@ function! s:is_list(line, col)
         \ : chars =~# '\v^%(' . s:closing_bracket . ')' ? 3 : 0
     " Extra test needed to ensure we're not fooled by spurious brackets within
     " ignored region.
-    return maybe && !s:syntax_match(s:ignored_region, a:line, a:col)
+    return maybe && !sexp#hl#is_rgn_type('ignored', a:line, a:col)
         \ ? maybe : 0
 endfunction
 
@@ -1268,10 +1295,11 @@ function! s:is_atom(line, col)
 
     if empty(char)
         return 0
-    elseif char =~# s:delimiter && !s:syntax_match(s:ignored_region, a:line, a:col)
+    elseif char =~# s:delimiter && !sexp#hl#is_rgn_type('ignored', a:line, a:col)
         return 0
     else
-        return !s:syntax_match(s:string_region . '|comment', a:line, a:col)
+        " TODO: This is a kludge because is_rgn_type doesn't currently support bitmask.
+        return !sexp#hl#is_rgn_type('ignored_plus_character', a:line, a:col)
     endif
 endfunction
 
@@ -1785,7 +1813,7 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
         let cursor_moved = 1
     endif
 
-    let ignored = s:syntax_match(s:ignored_region, cursor[1], cursor[2])
+    let ignored = sexp#hl#is_rgn_type('ignored', cursor[1], cursor[2])
     let char = getline(cursor[1])[cursor[2] - 1]
 
     if !ignored && char =~# s:opening_bracket
@@ -2033,6 +2061,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     let cnt = a:count > 0 ? a:count : 0
     let cursor = getpos('.')
     let curpos = cursor
+    call s:Dbg("Inside set_marks_around_current_element...")
     if a:mode ==? 'v'
         let [vs_orig, ve_orig] = s:get_visual_marks()
         "let dir = vs == cursor && ve != cursor ? 0 : 1
@@ -2040,10 +2069,12 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         " Rationalize visual range.
         " TODO: Should super_range adjust selection inward or no? If it did,
         " some of the subsequent end logic could go away.
+        call s:Dbg("\nCalling super_range with %d,%d - %d,%d", vs_orig[1], vs_orig[2], ve_orig[1], ve_orig[2])
         let [vs, ve] = s:super_range(vs_orig, ve_orig)
         if !vs[1]
             echoerr "Refusing to operate on selection containing unmatched parens!"
         endif
+        call s:Dbg("super_range!!!! %d,%d - %d,%d\n", vs[1], vs[2], ve[1], ve[2])
         " In case actual cursor position has changed.
         " Note: Cursor will align with either '< or '>
         " Design Decision Needed: When visual selection is modified by
@@ -2061,6 +2092,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
     " TODO: Rework this comment... What exactly is the danger?
     " TODO: Factor into function.
+    call s:Dbg("Calling move_to_current_element_terminal(0)")
     let start = s:move_to_current_element_terminal(0)
     if !start[1]
         " We are on whitespace; check for next element
@@ -2095,6 +2127,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     " TODO: Factor into function.
     let end = s:current_element_terminal(1)
     if !end[1]
+        call s:Dbg("Calling move_to_adjacent_element(0, 1, 0)")
         " Weren't on an element. Get to end of previous (whose
         " existence is implied by existence of start).
         let end = s:move_to_adjacent_element(0, 1, 0)
@@ -2102,6 +2135,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
 
     if cnt > 0
         " Determine whether first step is cleanup or expansion.
+        call s:Dbg("Determining whether first step is cleanup or expansion")
         let [s, e] = a:inner
             \ ? [start, end]
             \ : s:terminals_with_whitespace(start, end, leading)
@@ -2255,6 +2289,7 @@ endfunction
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner, ...)
     let cnt = a:0 && a:1 ? a:1 : 1
+    call s:Dbg("Inside select_current_element...")
     call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
     return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
 endfunction
@@ -2877,7 +2912,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
         if getline(line)[col - 1] =~ s:closing_bracket
-            \ && !s:syntax_match(s:ignored_region, line, col)
+            \ && !sexp#hl#is_rgn_type('ignored', line, col)
             let pos = [0, line, col, 0]
         else
             let pos = s:move_to_nearest_bracket(1)
@@ -3674,7 +3709,7 @@ endfunction
 function! sexp#opening_insertion(bra)
     let [_b, line, col, _o] = getpos('.')
 
-    if s:syntax_match(s:ignored_region, line, col)
+    if sexp#hl#is_rgn_type('ignored', line, col)
         \ && s:compare_pos(s:current_element_terminal(0), [0, line, col, 0]) < 0
         return a:bra
     endif
@@ -3725,7 +3760,7 @@ function! sexp#closing_insertion(ket)
     let prev = curline[col - 2]
     let pprev = curline[col - 3]
 
-    if s:syntax_match(s:ignored_region, line, col)
+    if sexp#hl#is_rgn_type('ignored', line, col)
         \ && s:compare_pos(s:current_element_terminal(0), [0, line, col, 0]) < 0
         return a:ket
     elseif prev ==# '\' && pprev !=# '\'
@@ -3767,7 +3802,7 @@ endfunction
 function! sexp#quote_insertion(quote)
     let [_b, line, col, _o] = getpos('.')
 
-    if s:syntax_match(s:string_region, line, col)
+    if sexp#hl#is_rgn_type('string', line, col)
         let curline = getline(line)
 
         " User is trying to insert an escaped quote, so do it
@@ -3776,7 +3811,7 @@ function! sexp#quote_insertion(quote)
         else
             return curline[col - 1] ==# a:quote ? "\<C-G>U\<Right>" : a:quote
         endif
-    elseif s:syntax_match(s:ignored_region, line, col)
+    elseif sexp#hl#is_rgn_type('ignored', line, col)
         return a:quote
     else
         let curline = getline(line)
@@ -3827,11 +3862,11 @@ function! sexp#backspace_insertion()
     let escaped = pprev ==# '\' && ppprev !=# '\'
 
     if prev ==# '"' && cur ==# '"'
-        \ && s:syntax_match(s:string_region, line, col)
+        \ && sexp#hl#is_rgn_type('string', line, col)
         \ && !escaped
         \ && pprev !~# '"'
         return "\<BS>\<Del>"
-    elseif !s:syntax_match(s:ignored_region, line, col)
+    elseif !sexp#hl#is_rgn_type('ignored', line, col)
         \ && !escaped
         \ && prev =~# s:opening_bracket
         \ && cur ==# s:pairs[prev]

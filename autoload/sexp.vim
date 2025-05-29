@@ -1108,7 +1108,8 @@ function! s:super_range(start, end)
     " Finally, check for unbalanced brackets in range we plan to return.
     let [bra, ket] = s:count_brackets(start, end, s:bracket, s:opening_bracket)
     if bra || ket
-        let ret = [[0,0,0,0],[0,0,0,0]]
+        " Err on the side of caution: don't modify input range.
+        let ret = [a:start, a:end]
     else
         " Strip surrounding whitespace from range.
         let ret = s:strip_range(start, end)
@@ -2038,12 +2039,9 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         "let dir = vs == cursor && ve != cursor ? 0 : 1
         let dir = b:sexp_cmd_cache.cvi.at_end
         " Rationalize visual range.
-        " TODO: Should super_range adjust selection inward or no? If it did,
-        " some of the subsequent end logic could go away.
+        " TODO: Now that super_range strips leading/trailing whitespace, re-examine
+        " subsequent logic, looking for redundancies.
         let [vs, ve] = s:super_range(vs_orig, ve_orig)
-        if !vs[1]
-            echoerr "Refusing to operate on selection containing unmatched parens!"
-        endif
         " In case actual cursor position has changed.
         " Note: Cursor will align with either '< or '>
         " Design Decision Needed: When visual selection is modified by

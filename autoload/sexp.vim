@@ -1206,7 +1206,7 @@ function! s:is_comment(line, col)
             let cursor = getpos('.')
             call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
-            let [cline, ccol] = s:findpos('\v\S', 1, a:line + 1)
+            let [cline, ccol] = s:findpos('\v\S', 1, a:line)
             if pline && cline && s:syntax_match('comment', pline, pcol)
                 \ && s:syntax_match('comment', cline, ccol)
                 let incomment = 1

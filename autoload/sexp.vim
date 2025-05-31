@@ -2071,9 +2071,6 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         " some of the subsequent end logic could go away.
         call s:Dbg("\nCalling super_range with %d,%d - %d,%d", vs_orig[1], vs_orig[2], ve_orig[1], ve_orig[2])
         let [vs, ve] = s:super_range(vs_orig, ve_orig)
-        if !vs[1]
-            echoerr "Refusing to operate on selection containing unmatched parens!"
-        endif
         call s:Dbg("super_range!!!! %d,%d - %d,%d\n", vs[1], vs[2], ve[1], ve[2])
         " In case actual cursor position has changed.
         " Note: Cursor will align with either '< or '>

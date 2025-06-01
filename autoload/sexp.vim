@@ -18,7 +18,7 @@ endif
 let g:sexp_autoloaded = 1
 
 fu! s:Dbg(...)
-    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
 " TODO:

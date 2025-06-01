@@ -1,3 +1,5 @@
+local prof = require'sexp.prof'
+
 ---@class ApiPos
 ---@field row integer
 ---@field col integer
@@ -33,7 +35,11 @@ function ApiPos:positions()
 end
 
 function ApiPos:__tostring()
-  return "[" .. self.row .. ", " .. self.col .. "]"
+  -- FIXME
+  local ts = vim.fn.reltime()
+  local ret = "[" .. self.row .. ", " .. self.col .. "]"
+  prof:add("__tostring", vim.fn.reltimestr(vim.fn.reltime(ts)))
+  return ret
 end
 
 return ApiPos

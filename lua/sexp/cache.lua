@@ -2,7 +2,10 @@
 local ApiPos = require'sexp.pos'
 local prof = require'sexp.prof'
 
-local dbg = require'dp':get('sexp', {enabled=false})
+local reltime = vim.fn.reltime
+local reltimestr = vim.fn.reltimestr
+
+local dbg = require'dp':get('sexp', {enabled=true})
 
 ---@alias TSNodeId string
 ---@alias PosKey string
@@ -32,7 +35,7 @@ end
 
 ---@param node TSNode
 ---@param key string
-function BufCache:add_hit_faster(node, key)
+function BufCache:add_hit(node, key)
   local beg, end_ = ApiPos:range_of_tsnode(node)
   -- This may overwrite existing.
   -- TODO: Consider making a Range type.
@@ -45,7 +48,7 @@ end
 
 ---@param node TSNode
 ---@param key string
-function BufCache:add_hit(node, key)
+function BufCache:add_hit_real(node, key)
   local beg, end_ = ApiPos:range_of_tsnode(node)
   -- This may overwrite existing.
   -- TODO: Consider making a Range type.
@@ -63,21 +66,25 @@ end
 ---@param pos ApiPos
 ---@param keys string[]? # keys of interest (nil for all keys)
 ---@return string|false|nil
-function BufCache:lookup_faster(pos, keys)
+function BufCache:lookup(pos, keys)
   --dbg:logf("BufCache:lookup pos=%s keys=%s", pos, vim.inspect(keys))
   -- Return will be nil if pos not in any range.
-  --local ts = vim.fn.reltime()
+  --local ts = reltime()
   local x = self.misses[pos:__tostring()]
-  --dbg:logf("Miss check: %s", vim.fn.reltimestr(vim.fn.reltime(ts)))
+  --prof:add("check_misses", reltimestr(reltime(ts)))
+  --dbg:logf("Miss check: %s", reltimestr(reltime(ts)))
   if x then
     return false
   end
+  --ts = reltime()
   if self.hit and self.hit.beg <= pos and self.hit.end_ > pos then
-    return self.hit.key
+    -- FIXME
+    local ret = self.hit.key
   end
-  return nil
+  --prof:add("Hit check", reltimestr(reltime(ts)))
+  return ret
 end
-function BufCache:lookup(pos, keys)
+function BufCache:lookup_real(pos, keys)
   --dbg:logf("BufCache:lookup pos=%s keys=%s", pos, vim.inspect(keys))
   -- Return will be nil if pos not in any range.
   return self.misses[pos:__tostring()] and false or
@@ -143,10 +150,18 @@ end
 ---@param keys string[]?
 ---@return string|false|nil
 function Cache:lookup(pos, keys)
-  --local ts = vim.fn.reltime()
+  --local ts = reltime()
   local bcache = self:get_buf_cache()
-  --dbg:logf("Get bcache took %s", vim.fn.reltimestr(vim.fn.reltime(ts)))
-  return bcache and bcache:lookup(pos, keys)
+  --prof:add("get_buf_cache", reltimestr(reltime(ts)))
+  --dbg:logf("Get bcache took %s", reltimestr(reltime(ts)))
+  --ts = reltime()
+  local ret = bcache and bcache:lookup(pos, keys)
+  --prof:add("bcache:lookup", reltimestr(reltime(ts)))
+  return ret
+end
+
+function Cache:show()
+  dbg:logf("cache: %s", vim.inspect(self))
 end
 
 return Cache

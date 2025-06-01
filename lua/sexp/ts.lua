@@ -4,6 +4,9 @@ local ApiPos = require'sexp.pos'
 local dbg = require'dp':get('sexp', {enabled=true})
 local prof = require'sexp.prof'
 
+local reltime = vim.fn.reltime
+local reltimestr = vim.fn.reltimestr
+
 ---@type Cache
 local cache = require'sexp.cache':new()
 
@@ -44,6 +47,10 @@ local function is_primitive(typ)
   end):next()
 end
 
+function M:show_cache()
+  cache:show()
+end
+
 -- Return true iff at least one of the captures at line/col matches the input pattern.
 ---@param rgn string # One of the keys in regions[]
 ---@param line integer # 1-based line number
@@ -60,10 +67,13 @@ function M.is_rgn_type(rgn, line, col)
   -- Grab api-indexed pos that supports comparison operators.
   local pos = ApiPos:new(line-1, col-1)
   ---@type string|false|nil
-  local ts = vim.fn.reltime()
-  local cstat = cache:lookup(pos, regions[rgn])
-  prof:add("lookup", vim.fn.reltimestr(vim.fn.reltime(ts)))
-  --dbg:logf("Cache lookup took %s !!!!!!!!!!", vim.fn.reltimestr(vim.fn.reltime(ts)))
+  local ts = reltime()
+  local lookup_key = regions[rgn]
+  prof:add("getkey", reltimestr(reltime(ts)))
+  ts = reltime()
+  local cstat = cache:lookup(pos, lookup_key)
+  prof:add("lookup", reltimestr(reltime(ts)))
+  --dbg:logf("Cache lookup took %s !!!!!!!!!!", reltimestr(reltime(ts)))
 
   if type(cstat) == "string" then
     -- Cache hit! But does the matching primitive satisfy rgn?
@@ -77,10 +87,10 @@ function M.is_rgn_type(rgn, line, col)
   -- Cache not useful. Get the node.
   -- TODO: Probably get_parser (and parse()?) first? Could at least cache whether those
   -- calls are necessary if they're expensive...
-  ts = vim.fn.reltime()
+  ts = reltime()
   local node = vim.treesitter.get_node({pos = pos:positions()})
-  prof:add("get_node", vim.fn.reltimestr(vim.fn.reltime(ts)))
-  --dbg:logf("Got node in %s !!!!!", vim.fn.reltimestr(vim.fn.reltime(ts)))
+  prof:add("get_node", reltimestr(reltime(ts)))
+  --dbg:logf("Got node in %s !!!!!", reltimestr(reltime(ts)))
   -- Look for matching primitive.
   if not node then
     -- This really shouldn't happen, since most file types have a top-level node.

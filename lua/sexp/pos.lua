@@ -34,6 +34,11 @@ function ApiPos:positions()
   return {self.row, self.col}
 end
 
+---@return integer[]
+function ApiPos:positions4()
+  return {0, self.row, self.col, 0}
+end
+
 function ApiPos:__tostring()
   -- FIXME
   local ts = vim.fn.reltime()

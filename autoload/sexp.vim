@@ -300,28 +300,7 @@ function! s:current_string_terminal(end)
         return [0, 0, 0, 0]
     endif
 
-    let termline = cursorline
-    let termcol = cursorcol
-
-    " We can't rely on va" or on searchpairpos() because they don't work well
-    " on symmetric patterns.
-    "
-    " We also use s:findpos() while moving the cursor because using simple
-    " column arithmetic breaks on multibyte characters.
-    while 1
-        let [line, col] = s:findpos('\v.', a:end)
-
-        " Beginning or end of file.
-        if line < 1 | break | endif
-
-        if sexp#hl#is_rgn_type('string', line, col)
-            let termline = line
-            let termcol = col
-            call cursor(line, col)
-        else
-            break
-        endif
-    endwhile
+    let [_, termline, termcol, _] = sexp#hl#current_region_terminal('string', a:end)
 
     " We may be on leading macro characters if they have been defined as part
     " of the string region by the syntax engine
@@ -342,66 +321,17 @@ endfunction
 function! s:current_comment_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
 
+    let ret = [0, 0, 0, 0]
     let start = reltime()
-    call s:Dbg("Calling is_comment %d %d", cursorline, cursorcol)
-    if !s:is_comment(cursorline, cursorcol)
-        return [0, 0, 0, 0]
+    "call s:Dbg("Calling is_comment %d %d", cursorline, cursorcol)
+    " TODO: Is this test necessary?
+    if s:is_comment(cursorline, cursorcol)
+        let ret = sexp#hl#current_region_terminal('comment', a:end)
     endif
-
-    let termline = cursorline
-    let termcol = cursorcol
-
-    "call s:Dbg("Entering loop")
-    while 1
-        let [line, col] = s:findpos('\v\_.', a:end)
-
-        if line < 1 | break | endif
-
-        if s:is_comment(line, col)
-            "call s:Dbg("%d,%d: is_comment", line, col)
-            let termline = line
-            let termcol = col
-            call cursor(line, col)
-        else
-            "call s:Dbg("%d,%d: not comment!", line, col)
-            break
-        endif
-    endwhile
-
     call cursor(cursorline, cursorcol)
-    call s:Dbg("current_comment_terminal took %s", reltimestr(reltime(start)))
-    return [0, termline, termcol, 0]
-endfunction
-
-" Position of start/end of current atom: 0 for start, 1 for end. Returns
-" [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
-" lines.
-function! s:current_atom_terminal(end)
-    let [_b, cursorline, cursorcol, _o] = getpos('.')
-
-    if !s:is_atom(cursorline, cursorcol)
-        return [0, 0, 0, 0]
-    endif
-
-    let termline = cursorline
-    let termcol = cursorcol
-
-    while 1
-        let [line, col] = s:findpos('\v.', a:end, cursorline)
-
-        if line < 1 | break | endif
-
-        if s:is_atom(line, col)
-            let termline = line
-            let termcol = col
-            call cursor(line, col)
-        else
-            break
-        endif
-    endwhile
-
-    call cursor(cursorline, cursorcol)
-    return [0, termline, termcol, 0]
+    call s:Dbg("current_comment_terminal(%d) took %s returning %s", a:end, reltimestr(reltime(start)),
+                \ string(ret))
+    return ret
 endfunction
 
 " Position of start/end of current sequence of macro characters: 0 for start,
@@ -465,8 +395,8 @@ function! s:current_element_terminal(end)
         call s:Dbg("string! %d, %d", line, col)
         let pos = s:current_string_terminal(a:end)
     elseif s:is_comment(line, col)
-        call s:Dbg("current_element_terminal(%d) is_comment true %d, %d", a:end, line, col)
         let pos = s:current_comment_terminal(a:end)
+        call s:Dbg("current_element_terminal(%d) for %d, %d returned %s", a:end, line, col, string(pos))
     elseif char =~# s:bracket && !sexp#hl#is_rgn_type('ignored', line, col)
         call s:Dbg("string! %d, %d", line, col)
         if (a:end && char =~# s:closing_bracket) || (!a:end && char =~# s:opening_bracket)
@@ -481,7 +411,7 @@ function! s:current_element_terminal(end)
             let include_macro_characters = 1
             " If the macro character is at the tail of an atom, treat it as
             " part of the atom and return the head of the preceding element.
-            if !s:is_atom(line, col + 1) && s:is_atom(line, col - 1)
+            if !sexp#hl#is_atom(line, col + 1) && sexp#hl#is_atom(line, col - 1)
                 call cursor(line, col - 1)
                 let pos = s:current_element_terminal(0)
             else
@@ -503,7 +433,7 @@ function! s:current_element_terminal(end)
     else
         call s:Dbg("else!")
         let include_macro_characters = 0
-        let pos = s:current_atom_terminal(a:end)
+        let pos = sexp#hl#current_atom_terminal(a:end)
     endif
 
     if !include_macro_characters || pos[1] < 1 || pos[2] <= 1
@@ -1281,26 +1211,6 @@ function! s:is_list(line, col)
     " ignored region.
     return maybe && !sexp#hl#is_rgn_type('ignored', a:line, a:col)
         \ ? maybe : 0
-endfunction
-
-" Returns 1 if character at position is an atom.
-"
-" An atom is defined as:
-"
-"   * A contiguous region of non-whitespace, non-bracket characters that are
-"     not part of a string or comment.
-"
-function! s:is_atom(line, col)
-    let char = getline(a:line)[a:col - 1]
-
-    if empty(char)
-        return 0
-    elseif char =~# s:delimiter && !sexp#hl#is_rgn_type('ignored', a:line, a:col)
-        return 0
-    else
-        " TODO: This is a kludge because is_rgn_type doesn't currently support bitmask.
-        return !sexp#hl#is_rgn_type('ignored_plus_character', a:line, a:col)
-    endif
 endfunction
 
 " Returns 1 if vmode is blank or equals 'v', 0 otherwise. Vim defaults to 'v'
@@ -2176,6 +2086,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     if !a:no_sel
         call s:set_visual_marks([start, end])
     endif
+    call s:Dbg("set_marks_around_current_element returning start%s end=%s", string(start), string(end))
     return [start, end]
 endfunction
 

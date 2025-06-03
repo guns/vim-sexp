@@ -7,13 +7,19 @@ local reltime = vim.fn.reltime
 local reltimestr = vim.fn.reltimestr
 local dbg = require'dp':get('sexp', {enabled=true})
 
+---@class CacheHit
+---@field node TSNode
+---@field key string
+---@field beg ApiPos
+---@field end_ ApiPos
+
 ---@alias PosKey string
 ---@alias TSNodeType string
 ---@alias RgnKey string
 
 ---@class BufCache
 ---@field changedtick integer?
----@field hit {beg: ApiPos, end_: ApiPos}
+---@field hit CacheHit
 local BufCache = {}
 BufCache.__index = BufCache
 
@@ -36,6 +42,7 @@ function BufCache:add_hit(node, key)
   -- This may overwrite existing.
   -- TODO: Consider making a Range type.
   self.hit = {
+    node = node,
     beg = beg,
     end_ = end_,
     key = key,
@@ -43,13 +50,11 @@ function BufCache:add_hit(node, key)
 end
 
 ---@param pos ApiPos
----@param keys string[]? # keys of interest (nil for all keys)
----@return string|false|nil
-function BufCache:lookup(pos, keys)
+---@return CacheHit?
+function BufCache:lookup(pos)
   --ts = reltime()
-  local ret = self.hit and self.hit.beg <= pos and self.hit.end_ > pos or nil
+  return self.hit and self.hit.beg <= pos and self.hit.end_ > pos and self.hit or nil
   --prof:add("Hit check", reltimestr(reltime(ts)))
-  return ret
 end
 
 -- TODO: Consider putting this in separate file.
@@ -94,17 +99,24 @@ function Cache:add_hit(node, key)
 end
 
 ---@param pos ApiPos
----@param keys string[]?
----@return string|false|nil
-function Cache:lookup(pos, keys)
+---@return string?
+---@return TSNode?
+function Cache:lookup(pos)
+  return nil
+  --[=[
   --local ts = reltime()
   local bcache = self:get_buf_cache()
   --prof:add("get_buf_cache", reltimestr(reltime(ts)))
   --dbg:logf("Get bcache took %s", reltimestr(reltime(ts)))
   --ts = reltime()
-  local ret = bcache and bcache:lookup(pos, keys)
+  local ret = bcache and bcache:lookup(pos)
   --prof:add("bcache:lookup", reltimestr(reltime(ts)))
-  return ret
+  if ret then
+    return ret.key, ret.node
+  else
+    return nil
+  end
+  ]=]
 end
 
 function Cache:show()

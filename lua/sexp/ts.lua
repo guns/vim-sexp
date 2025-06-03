@@ -1,10 +1,11 @@
 local M = {}
 local ApiPos = require'sexp.pos'
 
-local dbg = require'dp':get('sexp', {enabled=false})
+local dbg = require'dp':get('sexp', {enabled=true})
 local prof = require'sexp.prof'
 
 local reltime = vim.fn.reltime
+local reltimefloat = vim.fn.reltimefloat
 local reltimestr = vim.fn.reltimestr
 
 local bracket = [[\v\(|\)|\[|\]|\{|\}]]
@@ -81,37 +82,32 @@ function M.is_rgn_type(rgn, line, col)
   end
   -- Grab api-indexed pos that supports comparison operators.
   local pos = ApiPos:new(line-1, col-1)
-  ---@type string|false|nil
   local ts = reltime()
-  local lookup_key = regions[rgn]
-  prof:add("getkey", reltimestr(reltime(ts)))
-  ts = reltime()
-  local cstat = cache:lookup(pos, lookup_key)
-  prof:add("lookup", reltimestr(reltime(ts)))
-  --dbg:logf("Cache lookup took %s !!!!!!!!!!", reltimestr(reltime(ts)))
+  ---@type string?, TSNode?
+  local key, node = cache:lookup(pos)
 
-  if type(cstat) == "string" then
+  local tsstr = reltimefloat(reltime(ts))
+  if key then
+      --dbg:logf("found cached %s", vim.inspect(cstat))
+      prof:add(string.format("lookup found %s", key), tsstr)
     -- Cache hit! But does the matching primitive satisfy rgn?
     --dbg:logf("Cache hit: returning %s", primitives[cstat][rgn])
-    return primitives[cstat][rgn]
-  elseif cstat == false then
-    -- Cache miss! Can't match rgn.
-    --dbg:logf("Cache miss!")
-    return false
+    -- TODO: Probably cache node and return it and key.
+    return primitives[key][rgn], node, key
   end
   -- Cache not useful. Get the node.
   -- TODO: Probably get_parser (and parse()?) first? Could at least cache whether those
   -- calls are necessary if they're expensive...
   ts = reltime()
-  local node = vim.treesitter.get_node({pos = pos:positions()})
-  prof:add("get_node", reltimestr(reltime(ts)))
+  node = vim.treesitter.get_node({pos = pos:positions()})
+  prof:add("get_node", reltimefloat(reltime(ts)))
   --dbg:logf("Got node in %s !!!!!", reltimestr(reltime(ts)))
   -- Look for matching primitive.
   if not node then
     return false
   end
   -- See whether node is a primitive.
-  local key = is_primitive(node:type())
+  key = is_primitive(node:type())
   if key then
     -- Add as cache hit unconditionally, returning true only if primitive corresponds to rgn.
     --dbg:logf("Caching %s at %s", key, pos)
@@ -196,7 +192,7 @@ function M.is_atom(line, col)
   local linetext = vim.fn.getline(line)
   if #linetext == 0 then
     return false
-  elseif re_delimiter:match_str(linetext:sub(col, co+1)) and not M.is_rgn_type('ignored', line, col) then
+  elseif re_delimiter:match_str(linetext:sub(col, col+1)) and not M.is_rgn_type('ignored', line, col) then
     return false
   end
   --local node = vim.treesitter.get_node({pos = {line-1, col-1}})
@@ -224,26 +220,25 @@ function M.current_atom_terminal(dir)
   local eol = vim.fn.col({line, '$'})
   while fwd and col < (limcol or eol) or not fwd and col > (limcol or 0) do
     -- Check col position.
-    dbg:logf("Checking %s at %d, %d", linetext:sub(col, col), line, col)
+    --dbg:logf("Checking %s at %d, %d", linetext:sub(col, col), line, col)
     if re_delimiter:match_str(linetext:sub(col, col)) and not M.is_rgn_type('ignored', line, col) then
-      dbg:logf("bracket matched!")
       -- Unignored bracket is not part of atom.
       break
     end
     -- Get ts node at current position.
-    dbg:logf("limcol: %s", limcol)
+    --dbg:logf("limcol: %s", limcol)
     local node = vim.treesitter.get_node({pos = {line-1, col-1}})
     if node and not is_node_rgn_type(node, 'ignored_no_char') then
       -- Still within atom. If node is leaf, skip to its end (limit permitting).
       if node:child_count() == 0 then
         -- Get [1,1] indexed pos.
         local sr, sc, er, ec = convert_node_range(node)
-        dbg:logf("Leaf! %d, %d, %d, %d", sr, sc, er, ec)
+        --dbg:logf("Leaf! %d, %d, %d, %d", sr, sc, er, ec)
         if fwd and er ~= line or not fwd and sr ~= line then
           -- This really shouldn't happen; use whitespace as limit.
           termcol = fwd and (limcol and limcol - 1 or eol - 1) --[[@as integer]] or
             not fwd and (limcol and limcol + 1 or 1)
-            dbg:logf("Breaking in the off-nominal case termcol=%d", termcol)
+            --dbg:logf("Breaking in the off-nominal case termcol=%d", termcol)
           break
         else
           -- Use node terminal as limit, provided it's within whitespace limit.
@@ -257,9 +252,9 @@ function M.current_atom_terminal(dir)
       end
       -- Note: Don't worry about redundant iterations in multi-byte chars.
       col = termcol + (fwd and 1 or -1)
-      dbg:logf("Updated col to %d", col)
+      --dbg:logf("Updated col to %d", col)
     else
-      dbg:logf("Breaking because no node termcol=%d col=%d", termcol, col)
+      --dbg:logf("Breaking because no node termcol=%d col=%d", termcol, col)
       break
     end
   end

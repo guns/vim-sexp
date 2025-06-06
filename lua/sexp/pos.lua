@@ -29,14 +29,14 @@ function ApiPos:__eq(rhs)
   return self.row == rhs.row and self.col == rhs.col
 end
 
----@return integer[]
+---@return integer, integer
 function ApiPos:positions()
-  return {self.row, self.col}
+  return self.row, self.col
 end
 
----@return integer[]
+---@return integer, integer, integer, integer
 function ApiPos:positions4()
-  return {0, self.row, self.col, 0}
+  return 0, self.row, self.col, 0
 end
 
 function ApiPos:__tostring()

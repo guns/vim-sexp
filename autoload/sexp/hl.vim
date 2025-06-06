@@ -2,6 +2,10 @@
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:delimiter = s:bracket . '|\s'
 
+fu! s:Dbg(...)
+    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+endfu
+
 " Function that returns list of syntax groups at the specified position.
 " Note: Version 7.2.446 introduced synstack(), which returns the entire stack
 " of syntax groups for a given position, as well as the syntax groups of the
@@ -32,7 +36,7 @@ fu! s:check_syntax(patt, line, col)
         return v:null
     end
     for capture in captures
-        if capture =~ patt
+        if capture =~ a:patt
             return 1
         endif
     endfor
@@ -49,9 +53,9 @@ fu! s:get_rgn_patt(rgn)
                 \ ? '\vstring|str_lit|regex|pattern'
                 \ : a:rgn == 'comment'
                     \ ? 'comment'
-                    \ : a:rgn == 'ignored'
+                    \ : a:rgn == 'str_com_chr'
                         \ ? '\vstring|str_lit|regex|pattern|comment|character'
-                        \ : a:rgn == 'ignored_no_char'
+                        \ : a:rgn == 'str_com'
                             \ ? '\vstring|str_lit|regex|pattern|comment'
                             \ : ''
 endfu
@@ -69,7 +73,8 @@ fu! s:current_region_terminal_legacy(rgn, dir)
     " Assumption: Caller has verified currently in region.
     let [termline, termcol] = [0, 0]
     let maxline = line('$')
-    while line <= maxline && line >= 1
+    let in_rgn = 1
+    while in_rgn && line <= maxline && line >= 1
         " Loop over bytes on line.
         let eol = col([line, '$'])
         while col < eol && col >= 1
@@ -78,11 +83,13 @@ fu! s:current_region_terminal_legacy(rgn, dir)
                 let [termline, termcol] = [line, col]
             else
                 "call s:Dbg("%d,%d: not comment!", line, col)
+                let in_rgn = 0
                 break
             endif
             " Note: Don't worry about redundant iterations in multi-byte chars.
             let col += a:dir ? 1 : -1
         endwhile
+        if !in_rgn | break | endif
         let line += a:dir ? 1 : -1
     endwhile
     return [0, termline, termcol, 0]
@@ -114,29 +121,27 @@ fu! s:is_rgn_type_legacy(rgn, line, col)
     return s:check_syntax(patt, a:line, a:col)
 endfu
 
-" Rationale: 'ignored_no_char' is a bit of a kludge and also a misnomer: should be
+" Rationale: 'str_com' is a bit of a kludge and also a misnomer: should be
 " ignored_minus_character.
 fu! sexp#hl#is_rgn_type(rgn, line, col)
-    if !s:prefer_treesitter()
-        " Try legacy syntax first (either due to preference or because it's all we have).
-        let match = s:is_rgn_type_legacy(a:rgn, a:line, a:col)
-        if !match && has('nvim')
-            " No legacy syntax regions found, but treesitter is available, so try it.
-            let match = s:is_rgn_type_ts(a:rgn, a:line, a:col)
-        endif
-    else
+    if s:prefer_treesitter()
         " We definitely have nvim.
-        " Try treesitter first, falling back to legacy iff no treesitter captures found.
-        " Design Decision: is_rgn_type() distinguishes between empty captures list ([])
-        " and no captures list (v:null) (e.g., because buffer is unparsed), but the logic
-        " here intentionally makes no distinction, catching both cases with empty().
-        " Rationale: Falling back to legacy syntax is not harmful and probably safest.
+        " Try treesitter first, falling back to legacy iff no treesitter tree.
         let match = s:is_rgn_type_ts(a:rgn, a:line, a:col)
-        if !match && !empty(&syntax)
-            let match = s:is_rgn_type_legacy(a:rgn, a:line, a:col)
-        endif
+        call s:Dbg("match=%s rgn=%s line=%d col=%d", string(match), a:rgn, a:line, a:col)
+        if match != v:null
+            return match
+        end
+    end
+    " Arrival here means we won't or can't use treesitter.
+    " Try legacy syntax first (either due to preference or because it's all we have).
+    if empty(&syntax) && !get(b:, 'sexp_did_warn_no_syntax', 0)
+        let b:sexp_did_warn_no_syntax = 1
+        " TODO: Spruce this up...
+        echoerr "vim-sexp: Warning: No syntax available" 
+        return
     endif
-    return match
+    return s:is_rgn_type_legacy(a:rgn, a:line, a:col)
 endfu
 
 fu! s:current_atom_terminal_ts(dir)
@@ -180,10 +185,10 @@ function! sexp#hl#is_atom(line, col)
 
     if empty(char)
         return 0
-    elseif char =~# s:delimiter && !sexp#hl#is_rgn_type('ignored', a:line, a:col)
+    elseif char =~# s:delimiter && !sexp#hl#is_rgn_type('str_com_chr', a:line, a:col)
         return 0
     else
-        return !sexp#hl#is_rgn_type('ignored_no_char', a:line, a:col)
+        return !sexp#hl#is_rgn_type('str_com', a:line, a:col)
     endif
 endfunction
 

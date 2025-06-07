@@ -1,18 +1,18 @@
 
 local ApiPos = require'sexp.pos'
+local ApiRange = require'sexp.range'
 
 -- DEBUG/PROFILING
 local prof = require'sexp.prof'
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
 local reltimestr = vim.fn.reltimestr
-local dbg = require'dp':get('sexp', {enabled=true})
+local dbg = require'dp':get('sexp', {enabled=false})
 
 ---@class CacheHit
 ---@field node TSNode
 ---@field key string
----@field beg ApiPos
----@field end_ ApiPos
+---@field range ApiRange
 
 ---@alias PosKey string
 ---@alias TSNodeType string
@@ -68,13 +68,10 @@ end
 ---@param node TSNode
 ---@param key string # the key to cache with the node
 function BufCache:add_hit(node, key)
-  local beg, end_ = ApiPos:range_of_tsnode(node)
   -- This may overwrite existing.
-  -- TODO: Consider making a Range type.
   self.hit = {
     node = node,
-    beg = beg,
-    end_ = end_,
+    range = ApiRange:from_node(node),
     key = key,
   }
 end
@@ -85,7 +82,7 @@ end
 function BufCache:lookup(pos)
   --ts = reltime()
   -- self.root check would be superfluous.
-  if self.hit and self.hit.beg <= pos and self.hit.end_ > pos then
+  if self.hit and self.hit.range:contains(pos) then
     -- Match!
     return self.hit.key, self.hit.node
   end
@@ -149,6 +146,9 @@ function Cache:add_hit(node, key)
 end
 
 ---TODO: Consider removing the 'create' arg, whose purpose is to allow check for root.
+---Keeping it makes sense only if we might want to use this method only to check whether
+---we've already cached something for this buffer, without actually attempting to parse if
+---not. Not sure there would be a reason for that.
 ---@param create boolean? # true to create cache if it doesn't already exist
 ---@return TSNode? root # the root node of current buffer, else nil
 function Cache:get_root(create)

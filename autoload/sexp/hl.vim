@@ -3,7 +3,7 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:delimiter = s:bracket . '|\s'
 
 fu! s:Dbg(...)
-    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
 " Function that returns list of syntax groups at the specified position.
@@ -45,6 +45,10 @@ endfu
 
 fu! s:prefer_treesitter()
     return (!g:sexp_prefer_legacy_syntax || empty(&syntax)) && has('nvim')
+endfu
+
+fu! s:ts_or_legacy()
+    return s:prefer_treesitter() ? "ts" : "legacy"
 endfu
 
 " This is for legacy syntax.
@@ -96,11 +100,7 @@ fu! s:current_region_terminal_legacy(rgn, dir)
 endfu
 
 fu! sexp#hl#current_region_terminal(rgn, end)
-    if s:prefer_treesitter()
-        return s:current_region_terminal_ts(a:rgn, a:end)
-    else
-        return s:current_region_terminal_legacy(a:rgn, a:end)
-    endif
+    return s:current_region_terminal_{s:ts_or_legacy()}(a:rgn, a:end)
 endfu
 
 fu! s:is_rgn_type_ts(rgn, line, col)
@@ -119,6 +119,12 @@ fu! s:is_rgn_type_legacy(rgn, line, col)
         return 0
     endif
     return s:check_syntax(patt, a:line, a:col)
+endfu
+
+fu! s:get_node_ts(line, col)
+    return luaeval(
+                \ "require'sexp.ts'.get_node(_A[1], _A[2]",
+                \ [a:line, a:col])
 endfu
 
 " Rationale: 'str_com' is a bit of a kludge and also a misnomer: should be
@@ -196,17 +202,125 @@ endfunction
 " [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
 " lines.
 function! sexp#hl#current_atom_terminal(end)
-    let [_b, cursorline, cursorcol, _o] = getpos('.')
+    let [_, cursorline, cursorcol, _] = getpos('.')
 
-    let [termline, termcol] = [cursorline, cursorcol]
-    if s:prefer_treesitter()
-        let ret = s:current_atom_terminal_ts(a:end)
-    else
-        let ret = s:current_atom_terminal_legacy(a:end)
-    endif
+    let ret = s:current_atom_terminal_{s:ts_or_legacy()}(a:end)
 
     " TODO: Save/restore probably won't be needed after I refactor the legacy version.
     call cursor(cursorline, cursorcol)
+    return ret
+endfunction
+
+function! s:super_range_ts(start, end)
+    return luaeval(
+                \ "require'sexp.ts'.super_range_ts(_A[1], _A[2])", [a:start, a:end])
+endfunction
+
+function! s:super_range_legacy(start, end)
+    let cursor = getpos('.')
+    let [start, end] = [a:start[:], a:end[:]]
+
+    " Find matching pair of brackets (if one exists) that contains both start and end. Set
+    " shared_close to the close position, or null if no such pair exists.
+    " Note: In this context, a bracket "contains" itself.
+    call s:setcursor(start)
+    " Seed the loop position with an open containing start (possibly start itself).
+    let shared_open = s:is_list(start[1], start[2]) == 2 ? start : s:move_to_nearest_bracket(0)
+    while shared_open[1]
+        let shared_close = s:nearest_bracket(1)
+        " Note: Null shared close implies end at top level due to unbalanced open.
+        let cmp = !shared_close[1] ? 1 : s:compare_pos(shared_close, end)
+        if cmp >= 0
+            " Either we found shared close or we're not going to.
+            break
+        endif
+        " Haven't yet found shared close (and haven't hit top-level trying). Adjust
+        " start to current open bracket before looking higher.
+        let start = shared_open
+        let shared_open = s:move_to_nearest_bracket(0)
+    endwhile
+    " Assumptions:
+    " * Null shared_open implies null shared_close
+    " * shared_open == start implies end equal to a *non-null* shared_close.
+    " * shared_close == end implies start equal to a *non-null* shared_open.
+    " Enforce the associated constraints, with possibly redundant assignments.
+    if !shared_open[1]
+        " We hit top level looking for shared open containing end.
+        " Note: In case of unbalanced open, this assignment will be redundant.
+        let shared_close = [0, 0, 0, 0]
+    elseif shared_open == start
+        if shared_close[1]
+            let end = shared_close
+        endif
+    elseif shared_close == end
+        if shared_open[1]
+            let start = shared_open
+        endif
+    endif
+    " If on element, find its start.
+    " Rationale: Prefer start of macro chars to open bracket.
+    call s:setcursor(start)
+    let p = sexp#current_element_terminal(0)
+    if p[1]
+        let start = p
+    endif
+    " Is it possible we need to adjust end upward?
+    if end != shared_close
+        " Special Cases:
+        "   (shared_close == null)   => shared close is top-level
+        "       Don't look up any further; just find end terminal
+        "   (shared_close == a:end)    => end requires no adjustment
+        "       The next two loops will be skipped.
+        call s:setcursor(end)
+        " Note: compare_pos() < 0 could be simplified to p != shared_close.
+        " Rationale: Prior logic guarantees that p will eventually land *on* a non-null
+        " shared_close.
+        " Seed prev position var.
+        let p = end
+        " Treat null shared close like shared close past EOF.
+        while !shared_close[1] || s:compare_pos(p, shared_close) < 0
+            let end = p
+            let p = s:move_to_nearest_bracket(1)
+            if !p[1]
+                " Top level is common ancestor
+                break
+            endif
+        endwhile
+        " As long as we can assume a form always ends with a closing bracket (e.g., no macro
+        " chars following close), we can skip looking for terminal whenever the preceding loop
+        " has adjusted end to a closing bracket (i.e., end != a:end).
+        if end == a:end
+            call s:setcursor(end)
+            " Ensure end is a terminal.
+            let p = sexp#current_element_terminal(1)
+            if p[1]
+                let end = p
+            endif
+        endif
+    endif
+
+    " Finally, check for unbalanced brackets in range we plan to return.
+    let [bra, ket] = s:count_brackets(start, end, s:bracket, s:opening_bracket)
+    if bra || ket
+        let ret = [[0,0,0,0],[0,0,0,0]]
+    else
+        " Strip surrounding whitespace from range.
+        let ret = s:strip_range(start, end)
+    endif
+    " Restore saved position.
+    call s:setcursor(cursor)
+    return ret
+endfunction
+
+" Return a superset range containing no unbalanced brackets by adjusting one or both sides
+" of the input range upward till both sides are at same level (i.e., have same parent) and
+" no elements are partially included in the range. Return null positions if superset range
+" would contain unbalanced brackets.
+function! sexp#hl#super_range(start, end)
+    let ret = s:super_range_{s:ts_or_legacy()}(a:start, a:end)
+    if ret is v:null || !ret[0][1]
+        echoerr "FIXME!!!! null super range!"
+    endif
     return ret
 endfunction
 

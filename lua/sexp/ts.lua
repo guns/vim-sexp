@@ -1,7 +1,8 @@
 local M = {}
 local ApiPos = require'sexp.pos'
+local ApiRange = require'sexp.range'
 
-local dbg = require'dp':get('sexp', {enabled=true})
+local dbg = require'dp':get('sexp', {enabled=false})
 local prof = require'sexp.prof'
 
 local reltime = vim.fn.reltime
@@ -67,6 +68,21 @@ end
 
 function M:show_cache()
   cache:show()
+end
+
+---@param line integer # 1-based line number
+---@param col integer # 1-based col number
+---@return TSNode? node # node at line, col, else nil
+function M.get_node(line, col)
+  local pos = ApiPos:new(line-1, col-1)
+  -- TODO: Another cache function get_node() that returns only node?
+  local _, node = cache:lookup(pos, true)
+  return node
+end
+
+---@return TSNode?
+function M.get_root()
+  return cache:get_root(true)
 end
 
 -- Return true (and matched node) iff region key matches at input line/col.
@@ -149,6 +165,7 @@ local function find_last_comment_node(node, dir)
   while true do
     local n = node[fwd and 'next_named_sibling' or 'prev_named_sibling'](node)
     if n and is_primitive(n:type()) == 'comment' then
+      -- FIXME: Get rid of convert_node_range.
       local sr, _, er, _ = convert_node_range(node)
       local sr_, _, er_, _ = convert_node_range(n)
       if fwd and er + 1 < sr_ or not fwd and er_ + 1 < sr then
@@ -256,6 +273,75 @@ function M.current_atom_terminal(dir)
     end
   end
   return {0, termcol ~= 0 and line or 0, termcol, 0}
+end
+
+-- See description of sexp#hl#super_range_ts.
+---@param beg VimPos
+---@param end_ VimPos
+---@return [VimPos, VimPos]?
+function M.super_range_ts(beg, end_)
+  local save_curpos = vim.fn.getcurpos()
+  dbg:logf("Foo")
+  dbg:logf("super_range_ts(%s, %s)", vim.inspect(beg), vim.inspect(end_))
+  dbg:logf("Bar")
+  -- Short-circuit optimization
+  if not vim.fn['sexp#util#non_empty'](beg, end_) then
+    dbg:logf("Baz")
+    -- Both ends of selection in same blank/whitespace
+    dbg:logf("Short-circuiting for empty range")
+    return {beg, end_}
+  end
+  dbg:logf("Blammo")
+  -- Grab the active treesitter root.
+  local root = cache:get_root(true)
+  if not root then return nil end
+  -- Grab nodes containing both ends of initial range.
+  local s = ApiPos:from_vim4(beg)
+  local e, e_ = ApiPos:from_vim4(end_), ApiPos:from_vim4(end_, true)
+  local snode = root:named_descendant_for_range(s.r, s.c, s.r, s.c)
+  -- Note: Could use e or e_ for end of range.
+  local enode = root:named_descendant_for_range(e.r, e.c, e_.r, e_.c)
+  if not snode or not enode then
+    dbg:logf("Returning nil: snode=%s enode=%s", vim.inspect(snode), vim.inspect(enode))
+    return nil
+  end
+  dbg:logf("Getting container node")
+  -- Get node that contains *both* start and end.
+  -- Note: Important to use e_ (not e) for end of rnage
+  local ct_node = root:named_descendant_for_range(s.r, s.c, e_.r, e_.c)
+  -- Loop upward from both start and end nodes until the containing node is reached.
+  -- Note: Default terminals are beg/end_, with an upwards adjustment upon each loop
+  -- iteration; thus, initial positions are unchanged if loop not entered.
+  ---@type [TSNode, TSNode]
+  local nodes = {snode, enode}
+  ---@type [TSNode?, TSNode?]
+  local nodes_ = {}
+  for i = 1, 2 do
+    ---@type TSNode? # starting point for upwards traversal
+    local n = nodes[i]
+    while n and n ~= ct_node do
+      nodes_[i] = n
+      n = n:parent()
+    end
+  end
+  -- Initialize return positions, accounting for any upwards movement in loops above.
+  local svp = nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or vim.list_slice(beg)
+  local evp = nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or vim.list_slice(end_)
+  -- Make sure start and end do not contain *partial* elements.
+  vim.fn.setpos('.', svp)
+  dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))
+  svp = vim.fn['sexp#current_element_terminal'](0)
+  dbg:logf("Found current_element_terminal(0) for svp: %s", vim.inspect(svp))
+  vim.fn.setpos('.', evp)
+  dbg:logf("Finding current_element_terminal(1) for evp: %s", vim.inspect(evp))
+  evp = vim.fn['sexp#current_element_terminal'](1)
+  dbg:logf("Found current_element_terminal(1) for evp: %s", vim.inspect(evp))
+  -- Restore position.
+  vim.fn.setpos('.', save_curpos)
+  -- At this point, snode and enode could be the same or different nodes. It's also
+  -- possible one or both are not within an element (i.e., blank or whitespace).
+  dbg:logf("super_range_ts returning %s-%s", vim.inspect(svp), vim.inspect(evp))
+  return {svp, evp}
 end
 
 return M

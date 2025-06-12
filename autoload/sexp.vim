@@ -27,7 +27,9 @@ fu! s:prof_start()
 endfu
 
 fu! s:prof_end(key)
-    call luaeval("require'sexp.prof':add(_A[1], _A[2])", [a:key, reltimefloat(reltime(s:prof_ts))])
+    if has('nvim')
+        call luaeval("require'sexp.prof':add(_A[1], _A[2])", [a:key, reltimefloat(reltime(s:prof_ts))])
+    endif
 endfu
 
 " TODO:
@@ -52,6 +54,7 @@ let s:delimiter = s:bracket . '|\s'
 let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
 let s:match_ignored_region_fn = 'sexp#hl#is_rgn_type("str_com_chr", line("."), col("."))'
+let s:nomatch_ignored_region_fn = '!sexp#hl#is_rgn_type("str_com_chr", line("."), col("."))'
 let s:macro_filetype_characters = {
     \ 'clojure': "#'`~@^_=",
     \ 'scheme':  "#'`,@",
@@ -172,7 +175,7 @@ endfunction
 "
 " This has since been fixed in 7.3.779, but this function remains for
 " convenience.
-function! s:findpos(pattern, next, ...)
+function! sexp#findpos(pattern, next, ...)
     return searchpos(a:pattern, a:next ? 'nW' : 'bnW', a:0 ? a:1 : 0)
 endfunction
 
@@ -210,7 +213,7 @@ function! s:list_open()
     elseif isl == 1
         call s:setcursor(s:current_macro_character_terminal(1))
         " Find the open.
-        let [l, c] = s:findpos('\S', 1)
+        let [l, c] = sexp#findpos('\S', 1)
         call s:setcursor(cursor)
         return [0, l, c, 0]
     elseif isl == 2
@@ -354,7 +357,7 @@ function! s:current_macro_character_terminal(end)
     let termcol = cursorcol
 
     while 1
-        let [line, col] = s:findpos('\v.', a:end, cursorline)
+        let [line, col] = sexp#findpos('\v.', a:end, cursorline)
 
         if line < 1 | break | endif
 
@@ -467,7 +470,7 @@ function! s:nearest_element_terminal(next, tail)
             endif
         endif
 
-        let [l, c] = s:findpos('\v\S', a:next)
+        let [l, c] = sexp#findpos('\v\S', a:next)
         let adjacent = [0, l, c, 0]
 
         " We are at the beginning or end of file
@@ -504,35 +507,6 @@ function! s:pos_with_col_offset(pos, offset)
     return [b, l, c + a:offset, o]
 endfunction
 
-" Return case insensitive match of the syntax group at position with pat.
-"
-" Version 7.2.446 introduced synstack(), which shows the entire stack of
-" syntax groups for a given position. It also shows the syntax groups of the
-" position under the cursor, even if on a blank line, unlike synIDattr, which
-" returns 0 on a blank line.
-"
-" This also solves the problem of "contained" syntax groups. For example,
-" a syntax file or colorscheme may define custom groups like todo items or
-" trailing whitespace in a comment. In these regions the top syntax group name
-" will not match 'comment', even though they are semantically still comments.
-" If we know the underlying syntax group name however, we will be able to
-" successfully match it.
-"
-" Instead of requiring that synstack() exist, we will simply use synIDattr in
-" that case, even though it will return false values for empty lines within
-" strings, etc.
-if exists('*synstack')
-    function! s:syntax_match(pat, line, col)
-        let stack = synstack(a:line, a:col)
-        return (synIDattr(get(stack, -1, ''), 'name') =~? a:pat) ||
-             \ (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
-    endfunction
-else
-    function! s:syntax_match(pat, line, col)
-        return synIDattr(synID(a:line, a:col, 0), 'name') =~? a:pat
-    endfunction
-endif
-
 " Return start of leading (0) or end of trailing (1) whitespace from pos.
 " Returns pos if no such whitespace exists.
 function! s:adjacent_whitespace_terminal(pos, trailing)
@@ -543,7 +517,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
 
     while 1
         " Include empty lines
-        let [line, col] = s:findpos('\v\_.', a:trailing)
+        let [line, col] = sexp#findpos('\v\_.', a:trailing)
 
         if line < 1 | break | endif
 
@@ -1061,8 +1035,8 @@ function! s:is_comment(line, col)
         if getline(a:line)[a:col - 1] =~# '\v\s'
             let cursor = getpos('.')
             call cursor(a:line, a:col)
-            let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
-            let [cline, ccol] = s:findpos('\v\S', 1, a:line)
+            let [pline, pcol] = sexp#findpos('\v\S', 0, a:line - 1)
+            let [cline, ccol] = sexp#findpos('\v\S', 1, a:line)
             if pline && cline && sexp#hl#is_rgn_type('comment', pline, pcol)
                 \ && sexp#hl#is_rgn_type('comment', cline, ccol)
                 let incomment = 1
@@ -1131,6 +1105,102 @@ function! s:compare_pos(a, b)
     endif
 endfunction
 
+" FIXME: Relocate this to util???
+function! sexp#compare_pos(a, b)
+    return s:compare_pos(a, b)
+endfunction
+
+" Return true iff inclusive VimPos range contains only whitespace/blank that's not part of
+" an ignored region.
+" FIXME: This will spuriously consider whitespace within ignored region empty!
+fu! sexp#range_empty(beg, end)
+    let ret = 0
+    let save_cursor = getcurpos()
+    call setpos('.', a:beg)
+    let pos = searchpos('\S', 'ncz', a:end[1])
+    if !pos[0] || pos[1] > a:end[2]
+        " No non-ws in range, but need to check for *ignored* ws.
+        let pos = searchpos('.', 'ncz', a:end[1], 0, s:nomatch_ignored_region_fn)
+        " If we found ignored ws char within range, return false.
+        let ret = !pos[0] || pos[1] > a:end[2]
+        call setpos('.', save_cursor)
+    endif
+    return ret
+endfu
+
+" Return true iff specified SexpPos is on whitespace (or blank if allow_blank).
+" FIXME: Take "ignoredness" of region into account!
+fu! sexp#in_whitespace(pos, allow_blank)
+    local save_cursor = getcurpos()
+    call setpos('.', a:pos)
+    " Anchor search at cursor in case line is long.
+    let re = a:allow_blank ? '\v%.c\s|^$' : '\s'
+    let pos = searchpos(re, 'nczW', a:pos[1], 0, s:match_ignored_region_fn)
+    let ret = pos[0] && pos == save_cursor[1:2]
+    call setpos('.', save_cursor)
+    return ret
+endfu
+
+" Return input range adjusted inward such that start/end are both on non-whitespace.
+" If this can't be done (e.g., because start/end within same run of whitespace), return
+" unadjusted input position.
+" Design Decision: Don't complicate by considering whether the whitespace is ignored.
+" Rationale: This function is intended to be used to get a "starting point" only; ignored
+" whitespace is invariably within some region of which subsequent logic can find the
+" terminals.
+fu! sexp#trim_range(beg, end)
+    let save_cursor = getcurpos()
+    " Find first non-white
+    call setpos('.', a:beg)
+    let s = searchpos('\S', 'nczW', a:end[1])
+    " Find last non-white
+    call setpos('.', a:end)
+    let e = searchpos('\S', 'ncbW', a:start[1])
+    " Restore cursor.
+    call setpos('.', save_cursor)
+    " If s/e are reversed (and/or no non-whitespace found), original positions were in run
+    " of whitespace.
+    if !s[0] || !e[0] || sexp#compare_pos(s, e) > 0
+        " Return original, unmodified positions.
+        " TODO: Consider returning [beg, beg].
+        return [a:beg, a:end]
+    endif
+    return [s, e]
+endfu
+
+" Return true iff there's *any* whitespace (without considering whether it's part of an
+" ignored region) in the range [beg,end].
+" Rationale: Provide fast check when caller takes responsibility for checking ignoredness.
+fu! sexp#range_has_ws(beg, end)
+    let save_cursor = getcurpos()
+    call setpos('.', a:beg)
+    let pos = searchpos('\s', 'nczW', a:end[1])
+    let ret = pos[0] && pos[1] <= a:end[2]
+    call setpos('.', save_cursor)
+    return ret
+endfu
+
+" Return true iff there's *any* non-whitespace in the range [beg,end].
+fu! sexp#range_has_non_ws(beg, end)
+    let save_cursor = getcurpos()
+    call setpos('.', a:beg)
+    let pos = searchpos('\S', 'nczW', a:end[1])
+    let ret = pos[0] && pos[1] <= a:end[2]
+    call setpos('.', save_cursor)
+    return ret
+endfu
+
+let s:MAX_CHARLEN = 8 " actually, 4 for utf-8, but no reason to cut it close.
+" Return number of bytes in char at specified VimPos4.
+fu! sexp#char_bytes(p)
+    let c = nvim_buf_get_text(0, a:p[1]-1, a:p[2]-1, a:p[1]-1, a:p[2]-1 + s:MAX_CHARLEN, {})[0]
+    let [cidx, n] = [0, 0]
+    while !cidx
+        let n += 1
+        let cidx = charidx(c, n)
+    endwhile
+    return n
+endfu
 """ CURSOR MOVEMENT {{{1
 
 " Calls cursor(pos[1], pos[2]). Used in favor of setpos(), which is lower
@@ -1265,7 +1335,7 @@ function! sexp#move_to_nearest_bracket(mode, next)
     elseif a:mode ==? 'o' && !a:next
         let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
         if l > 0
-            let [l, c] = s:findpos('\v\_.', 1)
+            let [l, c] = sexp#findpos('\v\_.', 1)
             call cursor(l, c)
         endif
         return [0, l, c, 0]
@@ -2214,7 +2284,7 @@ function! s:stackop_emit(last, spos, bpos)
     " element, which will become the ultimate element after the move
     call s:setcursor(a:bpos)
 
-    let [l, c] = s:findpos('\v\S', !a:last)
+    let [l, c] = sexp#findpos('\v\S', !a:last)
     if l < 1 | return 0 | endif
 
     call cursor(l, c)
@@ -2322,12 +2392,12 @@ function! s:swap_current_selection(mode, next, pairwise)
     if a:next
         call s:setcursor(amarks[0])
 
-        let [sl, sc] = s:findpos(nr2char(0x02), 1)
+        let [sl, sc] = sexp#findpos(nr2char(0x02), 1)
         call cursor(sl, sc)
         normal! x
         let s = [0, sl, sc, 0]
 
-        let [el, ec] = s:findpos(nr2char(0x03), 1)
+        let [el, ec] = sexp#findpos(nr2char(0x03), 1)
         call cursor(el, ec)
         normal! x
         let e = [0, el, ec - 1, 0]
@@ -2874,7 +2944,7 @@ function! s:list_head()
     let close = s:current_element_terminal(1)
     let ret = [0, 0, 0, 0]
     " Attempt move to first non-whitespace.
-    let [l, c] = s:findpos('\S', 1)
+    let [l, c] = sexp#findpos('\S', 1)
     if [0, l, c, 0] == close
         " Empty form
         return ret

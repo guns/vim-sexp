@@ -2,7 +2,7 @@ local M = {}
 local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
-local dbg = require'dp':get('sexp', {enabled=false})
+local dbg = require'dp':get('sexp', {enabled=true})
 local prof = require'sexp.prof'
 
 local reltime = vim.fn.reltime
@@ -157,23 +157,25 @@ end
 
 -- From input node, find last of consecutive comment nodes in specified direction,
 -- starting with input.
+-- Note: In keeping with legacy behavior, only comments on adjacent lines are combined:
+-- i.e., sequences of comments separated by blank lines are distinct elements.
 ---@param node TSNode
 ---@param dir 0|1
 ---@return TSNode
 local function find_last_comment_node(node, dir)
   local fwd = dir == 1
+  local sr, _, er, _ = ApiRange:from_node(node):to_vim_positions()
   while true do
     local n = node[fwd and 'next_named_sibling' or 'prev_named_sibling'](node)
     if n and is_primitive(n:type()) == 'comment' then
-      -- FIXME: Get rid of convert_node_range.
-      local sr, _, er, _ = convert_node_range(node)
-      local sr_, _, er_, _ = convert_node_range(n)
+      local sr_, _, er_, _ = ApiRange:from_node(n):to_vim_positions()
       if fwd and er + 1 < sr_ or not fwd and er_ + 1 < sr then
-        -- Design Decision: For now, keep legacy behavior by not combining comments
-        -- that aren't on adjacent lines.
+        -- End comment.
         break
       end
+      -- Accumulate the node.
       node = n
+      sr, _, er, _ = ApiRange:from_node(node):to_vim_positions()
     else
       break
     end
@@ -186,16 +188,22 @@ end
 ---@param dir 0|1
 ---@return [integer, integer, integer, integer]?
 function M.current_region_terminal(rgn, dir)
-  local pos = vim.api.nvim_win_get_cursor(0)
-  local line, col = pos[1], pos[2] + 1
+  local _, line, col = unpack(vim.fn.getpos('.'))
   local m, node, key = M.is_rgn_type(rgn, line, col)
   if m and node and key then
+    -- Current node is of desired rgn type; find its end.
+    -- Special Case: Treat run of line comments (each of which is distinct Treesitter
+    -- node) as a single unit, provided they're not separated by blank lines.
     if key == 'comment' then
       node = find_last_comment_node(node, dir)
     end
-    local sr, sc, er, ec = convert_node_range(node)
-    return dir == 1 and {0, er, ec, 0} or {0, sr, sc, 0}
+    --local sr, sc, er, ec = ApiRange:from_node(node):to_positions()
+    --return dir == 1 and {0, er, ec, 0} or {0, sr, sc, 0}
+    dbg:logf("current_region_terminal returning %s",
+      dir == 1 and ApiPos:new(node:end_()) or ApiPos:new(node:start()))
+    return dir == 1 and ApiPos:new(node:end_()):to_vim4(true) or ApiPos:new(node:start()):to_vim4()
   else
+    -- Caller is responsible for ensuring this doesn't happen!
     return {0, 0, 0, 0}
   end
 end
@@ -281,52 +289,52 @@ end
 ---@return [VimPos, VimPos]?
 function M.super_range_ts(beg, end_)
   local save_curpos = vim.fn.getcurpos()
-  dbg:logf("Foo")
   dbg:logf("super_range_ts(%s, %s)", vim.inspect(beg), vim.inspect(end_))
-  dbg:logf("Bar")
-  -- Short-circuit optimization
-  if not vim.fn['sexp#util#non_empty'](beg, end_) then
-    dbg:logf("Baz")
-    -- Both ends of selection in same blank/whitespace
-    dbg:logf("Short-circuiting for empty range")
-    return {beg, end_}
-  end
-  dbg:logf("Blammo")
-  -- Grab the active treesitter root.
-  local root = cache:get_root(true)
-  if not root then return nil end
-  -- Grab nodes containing both ends of initial range.
-  local s = ApiPos:from_vim4(beg)
-  local e, e_ = ApiPos:from_vim4(end_), ApiPos:from_vim4(end_, true)
-  local snode = root:named_descendant_for_range(s.r, s.c, s.r, s.c)
-  -- Note: Could use e or e_ for end of range.
-  local enode = root:named_descendant_for_range(e.r, e.c, e_.r, e_.c)
-  if not snode or not enode then
-    dbg:logf("Returning nil: snode=%s enode=%s", vim.inspect(snode), vim.inspect(enode))
-    return nil
-  end
-  dbg:logf("Getting container node")
-  -- Get node that contains *both* start and end.
-  -- Note: Important to use e_ (not e) for end of rnage
-  local ct_node = root:named_descendant_for_range(s.r, s.c, e_.r, e_.c)
-  -- Loop upward from both start and end nodes until the containing node is reached.
-  -- Note: Default terminals are beg/end_, with an upwards adjustment upon each loop
-  -- iteration; thus, initial positions are unchanged if loop not entered.
-  ---@type [TSNode, TSNode]
-  local nodes = {snode, enode}
+  -- In case of upwards traversal, this tuple will hold the found start/end nodes.
   ---@type [TSNode?, TSNode?]
   local nodes_ = {}
-  for i = 1, 2 do
-    ---@type TSNode? # starting point for upwards traversal
-    local n = nodes[i]
-    while n and n ~= ct_node do
-      nodes_[i] = n
-      n = n:parent()
+  -- Short-circuit optimization: skip upwards traversals for common case of single-char region.
+  -- Rationale: Think vie.
+  if beg[2] ~= end_[2] or beg[3] ~= end_[3] then
+    -- Grab the active treesitter root.
+    local root = cache:get_root(true)
+    if not root then return nil end
+    -- Grab nodes containing both ends of initial range.
+    local s = ApiPos:from_vim4(beg)
+    local e, e_ = ApiPos:from_vim4(end_), ApiPos:from_vim4(end_, true)
+    local snode = root:named_descendant_for_range(s.r, s.c, s.r, s.c)
+    -- Note: Could use e or e_ for end of range.
+    local enode = root:named_descendant_for_range(e.r, e.c, e_.r, e_.c)
+    if not snode or not enode then
+      dbg:logf("Returning nil: snode=%s enode=%s", vim.inspect(snode), vim.inspect(enode))
+      return nil
+    end
+    dbg:logf("Getting container node")
+    -- Get node that contains *both* start and end.
+    -- Note: Important to use e_ (not e) for end of rnage
+    local ct_node = root:named_descendant_for_range(s.r, s.c, e_.r, e_.c)
+    -- Loop upward from both start and end nodes until the containing node is reached.
+    -- Note: Default terminals are beg/end_, with an upwards adjustment upon each loop
+    -- iteration; thus, initial positions are unchanged if loop not entered.
+    ---@type [TSNode, TSNode]
+    local nodes = {snode, enode}
+    for i = 1, 2 do
+      ---@type TSNode? # starting point for upwards traversal
+      local n = nodes[i]
+      while n and n ~= ct_node do
+        nodes_[i] = n
+        n = n:parent()
+      end
     end
   end
   -- Initialize return positions, accounting for any upwards movement in loops above.
   local svp = nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or vim.list_slice(beg)
   local evp = nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or vim.list_slice(end_)
+  dbg:logf("---------------------")
+  dbg:logf("spos=%s epos=%s svp=%d,%d evp=%d,%d", nodes_[1] and ApiPos:new(nodes_[1]:start()) or "<nil>",
+    nodes_[2] and ApiPos:new(nodes_[2]:end_()) or "<nil>", svp[2], svp[3], evp[2], evp[3])
+  dbg:logf("s to_vim4: %s", nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or "<nil>")
+  dbg:logf("e to_vim4: %s", nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or "<nil>")
   -- Make sure start and end do not contain *partial* elements.
   vim.fn.setpos('.', svp)
   dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))

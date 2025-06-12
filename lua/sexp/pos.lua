@@ -19,7 +19,7 @@ end
 
 function ApiPos.vim_to_api(r, c, is_end)
   -- Ensure inclusive->exclusive conversion is multi-byte safe.
-  return r-1, is_end and c-1 + vim.fn['sexp#util#char_bytes']({0, r, c, 0}) or c-1
+  return r-1, is_end and c-1 + vim.fn['sexp#char_bytes']({0, r, c, 0}) or c-1
 end
 
 -- TODO: Consider caching the vim position for speed; doing so might obviate the need for
@@ -63,13 +63,13 @@ end
 function ApiPos:vim_adjust(is_end)
   if is_end and self.c == 0 then
     -- Convert exclusive end at SOL to inclusive end at EOL of previous line.
-    local r = self.r - 2
-    return r, vim.fn.col({r, '$'}) - 1
+    -- Note: Row is unchanged because the indexing and line pullback adjustments cancel.
+    return self.r, vim.fn.col({self.r, '$'}) - 1
   else
     -- No special BOL end logic (though may still be normal end).
-    -- Note: is_end case needs to account for fact that [0,0) col position is already
-    -- inclusive in a [1,1] sense.
-    return self.r - 1, is_end and self.c or self.c - 1
+    -- Note: Col is unchanged in is_end case because [0,0) col position is identical to
+    -- the corresponding [1,1] position.
+    return self.r + 1, is_end and self.c or self.c + 1
   end
 end
 

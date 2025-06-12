@@ -3,22 +3,39 @@ let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:delimiter = s:bracket . '|\s'
 
 fu! s:Dbg(...)
-    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
-" Function that returns list of syntax groups at the specified position.
-" Note: Version 7.2.446 introduced synstack(), which returns the entire stack
-" of syntax groups for a given position, as well as the syntax groups of the
-" position under the cursor, even if on a blank line (unlike synID(), which
-" returns 0 on a blank line).
+" Return case insensitive match of the syntax group at position with pat.
 "
-" Using synstack() solves the problem of "contained" syntax groups. For example,
+" Version 7.2.446 introduced synstack(), which shows the entire stack of
+" syntax groups for a given position. It also shows the syntax groups of the
+" position under the cursor, even if on a blank line, unlike synIDattr, which
+" returns 0 on a blank line.
+"
+" This also solves the problem of "contained" syntax groups. For example,
 " a syntax file or colorscheme may define custom groups like todo items or
-" trailing whitespace in a comment. A test using synID() alone would fail to
-" recognize a comment or string if the tested position happened to be inside one
-" of these contained groups. Thus, we use synstack() if it exists, falling
-" back to synID(), with the caveat that it will find no regions on a blank
-" line.
+" trailing whitespace in a comment. In these regions the top syntax group name
+" will not match 'comment', even though they are semantically still comments.
+" If we know the underlying syntax group name however, we will be able to
+" successfully match it.
+"
+" Instead of requiring that synstack() exist, we will simply use synIDattr in
+" that case, even though it will return false values for empty lines within
+" strings, etc.
+if exists('*synstack')
+    function! s:syntax_match(pat, line, col)
+        let stack = synstack(a:line, a:col)
+        return (synIDattr(get(stack, -1, ''), 'name') =~? a:pat) ||
+             \ (synIDattr(get(stack, -2, ''), 'name') =~? a:pat)
+    endfunction
+else
+    function! s:syntax_match(pat, line, col)
+        return synIDattr(synID(a:line, a:col, 0), 'name') =~? a:pat
+    endfunction
+endif
+
+" TODO: Probably remove these 2...
 function! s:get_syntax_groups(line, col)
     if exists('*synstack')
         let stack = synstack(a:line, a:col)
@@ -36,7 +53,7 @@ fu! s:check_syntax(patt, line, col)
         return v:null
     end
     for capture in captures
-        if capture =~ a:patt
+        if capture =~? a:patt
             return 1
         endif
     endfor
@@ -79,14 +96,20 @@ fu! s:current_region_terminal_legacy(rgn, dir)
     let maxline = line('$')
     let in_rgn = 1
     while in_rgn && line <= maxline && line >= 1
-        " Loop over bytes on line.
+        " Loop over *bytes* on line.
+        " Design Decision: The following byte-based approach should be safe in the
+        " presence of multi-byte because we're using the col positions only as arguments
+        " to synstack() and friends, *not* using them to access individual bytes/chars.
+        " The only drawback to this approach is that it will result in redundant calls
+        " within multi-byte chars, but this will almost always be faster than the old
+        " approach, which iterated the chars by searching for '.'.
         let eol = col([line, '$'])
         while col < eol && col >= 1
             if s:is_rgn_type_legacy(a:rgn, line, col)
-                "call s:Dbg("%d,%d: is_comment", line, col)
+                call s:Dbg("%d,%d: is_comment", line, col)
                 let [termline, termcol] = [line, col]
             else
-                "call s:Dbg("%d,%d: not comment!", line, col)
+                call s:Dbg("%d,%d: not comment!", line, col)
                 let in_rgn = 0
                 break
             endif
@@ -95,7 +118,9 @@ fu! s:current_region_terminal_legacy(rgn, dir)
         endwhile
         if !in_rgn | break | endif
         let line += a:dir ? 1 : -1
+        let col = a:dir ? 1 : col([line, '$']) - 1
     endwhile
+    call s:Dbg("current_region_terminal_legacy returning %d, %d", termline, termcol)
     return [0, termline, termcol, 0]
 endfu
 
@@ -118,7 +143,7 @@ fu! s:is_rgn_type_legacy(rgn, line, col)
         echoerr "Internal error! Empty pattern in s:is_rgn_type_legacy"
         return 0
     endif
-    return s:check_syntax(patt, a:line, a:col)
+    return s:syntax_match(patt, a:line, a:col)
 endfu
 
 fu! s:get_node_ts(line, col)
@@ -156,20 +181,21 @@ fu! s:current_atom_terminal_ts(dir)
 endfu
 
 fu! s:current_atom_terminal_legacy(end)
-    if !s:is_atom(cursorline, cursorcol)
+    let [_, cursorline, cursorcol, _] = getpos('.')
+    if !sexp#hl#is_atom(cursorline, cursorcol)
         return [0, 0, 0, 0]
     endif
 
     let termline = cursorline
     let termcol = cursorcol
 
-    " FIXME: Don't use s:findpos.
+    " FIXME: Don't use sexp#findpos like this; there are faster ways to handle multi-byte.
     while 1
-        let [line, col] = s:findpos('\v.', a:end, cursorline)
+        let [line, col] = sexp#findpos('\v.', a:end, cursorline)
 
         if line < 1 | break | endif
 
-        if s:is_atom(line, col)
+        if sexp#hl#is_atom(line, col)
             let termline = line
             let termcol = col
             call cursor(line, col)
@@ -177,6 +203,7 @@ fu! s:current_atom_terminal_legacy(end)
             break
         endif
     endwhile
+    call cursor(cursorline, cursorcol)
 endfu
 
 " Returns 1 if character at position is an atom.
@@ -202,13 +229,7 @@ endfunction
 " [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
 " lines.
 function! sexp#hl#current_atom_terminal(end)
-    let [_, cursorline, cursorcol, _] = getpos('.')
-
-    let ret = s:current_atom_terminal_{s:ts_or_legacy()}(a:end)
-
-    " TODO: Save/restore probably won't be needed after I refactor the legacy version.
-    call cursor(cursorline, cursorcol)
-    return ret
+    return s:current_atom_terminal_{s:ts_or_legacy()}(a:end)
 endfunction
 
 function! s:super_range_ts(start, end)
@@ -219,7 +240,26 @@ endfunction
 function! s:super_range_legacy(start, end)
     let cursor = getpos('.')
     let [start, end] = [a:start[:], a:end[:]]
-
+    " Short-circuit optimizations
+    if !sexp#range_empty(start, end)
+        " Both ends of selection in same blank/whitespace
+        return [start, end]
+    endif
+    let [start, end] = sexp#trim_range(start, end)
+    if !sexp#range_contains_whitespace(start, end)
+        " See whether start and end are within same atom.
+        call s:setcursor(start)
+        let s = s:current_element_terminal(0)
+        let e1 = s:current_element_terminal(1)
+        call s:setcursor(end)
+        let e2 = s:current_element_terminal(1)
+        if e1 == e2
+            " start/end within same atom!
+            " Caveat: Restore cursor before return!
+            call s:setcursor(cursor)
+            return [s, e1]
+        endif
+    endif
     " Find matching pair of brackets (if one exists) that contains both start and end. Set
     " shared_close to the close position, or null if no such pair exists.
     " Note: In this context, a bracket "contains" itself.

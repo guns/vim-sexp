@@ -1,5 +1,7 @@
 " FIXME: Consolidate this.
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
+let s:opening_bracket = '\v\(|\[|\{'
+let s:closing_bracket = '\v\)|\]|\}'
 let s:delimiter = s:bracket . '|\s'
 
 fu! s:Dbg(...)
@@ -10,7 +12,7 @@ endfu
 "
 " Version 7.2.446 introduced synstack(), which shows the entire stack of
 " syntax groups for a given position. It also shows the syntax groups of the
-" position under the cursor, even if on a blank line, unlike synIDattr, which
+" position under the cursor, even if on a blank line, unlike synID, which
 " returns 0 on a blank line.
 "
 " This also solves the problem of "contained" syntax groups. For example,
@@ -61,7 +63,7 @@ fu! s:check_syntax(patt, line, col)
 endfu
 
 fu! s:prefer_treesitter()
-    return (!g:sexp_prefer_legacy_syntax || empty(&syntax)) && has('nvim')
+    return (!g:sexp_prefer_legacy_syntax || empty(&syn) || &syn ==? "off") && has('nvim')
 endfu
 
 fu! s:ts_or_legacy()
@@ -91,7 +93,8 @@ endfu
 fu! s:current_region_terminal_legacy(rgn, dir)
     " Need to find end of region in direction indicated by end
     let [_, line, col, _] = getpos('.')
-    " Assumption: Caller has verified currently in region.
+    " Note: Most likely, caller has already verified cursor in region, but if it isn't, we
+    " should return null pos.
     let [termline, termcol] = [0, 0]
     let maxline = line('$')
     let in_rgn = 1
@@ -102,9 +105,14 @@ fu! s:current_region_terminal_legacy(rgn, dir)
         " to synstack() and friends, *not* using them to access individual bytes/chars.
         " The only drawback to this approach is that it will result in redundant calls
         " within multi-byte chars, but this will almost always be faster than the old
-        " approach, which iterated the chars by searching for '.'.
+        " approach, which iterated the chars by searching for '\_.'.
         let eol = col([line, '$'])
-        while col < eol && col >= 1
+        " Note: The col == 1 condition ensures we'll perform a single check on a blank
+        " line. Rationale: Failing to check on a blank line would cause (eg) comments to
+        " continue across blank lines (which might make sense, but would break with legacy
+        " behavior).
+        while (col < eol || col == 1) && col >= 1
+            call s:Dbg("%d,%d: is_comment", line, col)
             if s:is_rgn_type_legacy(a:rgn, line, col)
                 call s:Dbg("%d,%d: is_comment", line, col)
                 let [termline, termcol] = [line, col]
@@ -118,7 +126,8 @@ fu! s:current_region_terminal_legacy(rgn, dir)
         endwhile
         if !in_rgn | break | endif
         let line += a:dir ? 1 : -1
-        let col = a:dir ? 1 : col([line, '$']) - 1
+        " Caveat: Don't let col go below 1 on empty line.
+        let col = a:dir ? 1 : max([col([line, '$']) - 1, 1])
     endwhile
     call s:Dbg("current_region_terminal_legacy returning %d, %d", termline, termcol)
     return [0, termline, termcol, 0]
@@ -146,14 +155,6 @@ fu! s:is_rgn_type_legacy(rgn, line, col)
     return s:syntax_match(patt, a:line, a:col)
 endfu
 
-fu! s:get_node_ts(line, col)
-    return luaeval(
-                \ "require'sexp.ts'.get_node(_A[1], _A[2]",
-                \ [a:line, a:col])
-endfu
-
-" Rationale: 'str_com' is a bit of a kludge and also a misnomer: should be
-" ignored_minus_character.
 fu! sexp#hl#is_rgn_type(rgn, line, col)
     if s:prefer_treesitter()
         " We definitely have nvim.
@@ -204,6 +205,7 @@ fu! s:current_atom_terminal_legacy(end)
         endif
     endwhile
     call cursor(cursorline, cursorcol)
+    return [0, termline, termcol, 0]
 endfu
 
 " Returns 1 if character at position is an atom.
@@ -233,43 +235,49 @@ function! sexp#hl#current_atom_terminal(end)
 endfunction
 
 function! s:super_range_ts(start, end)
-    return luaeval(
-                \ "require'sexp.ts'.super_range_ts(_A[1], _A[2])", [a:start, a:end])
+    let ret = luaeval(
+                \ "require'sexp.ts'.super_range(_A[1], _A[2])", [a:start, a:end])
+    " Note: Convert nil returned by lua function to null pos tuple.
+    return !empty(ret) ? ret : [[0, 0, 0, 0], [0, 0, 0, 0]]
 endfunction
 
 function! s:super_range_legacy(start, end)
     let cursor = getpos('.')
     let [start, end] = [a:start[:], a:end[:]]
     " Short-circuit optimizations
-    if !sexp#range_empty(start, end)
+    " Are both ends of selection in run of whitespace?
+    if !sexp#range_has_non_ws(start, end, 1)
         " Both ends of selection in same blank/whitespace
+        call s:Dbg("Both ends in same whitespace optimization!")
         return [start, end]
     endif
+    " Are both ends of selection in same atom?
     let [start, end] = sexp#trim_range(start, end)
-    if !sexp#range_contains_whitespace(start, end)
+    if !sexp#range_has_ws(start, end, 1)
         " See whether start and end are within same atom.
-        call s:setcursor(start)
-        let s = s:current_element_terminal(0)
-        let e1 = s:current_element_terminal(1)
-        call s:setcursor(end)
-        let e2 = s:current_element_terminal(1)
+        call sexp#setcursor(start)
+        let s = sexp#current_element_terminal(0)
+        let e1 = sexp#current_element_terminal(1)
+        call sexp#setcursor(end)
+        let e2 = sexp#current_element_terminal(1)
         if e1 == e2
             " start/end within same atom!
             " Caveat: Restore cursor before return!
-            call s:setcursor(cursor)
+            call sexp#setcursor(cursor)
+            call s:Dbg("Same atom optimization!")
             return [s, e1]
         endif
     endif
     " Find matching pair of brackets (if one exists) that contains both start and end. Set
     " shared_close to the close position, or null if no such pair exists.
     " Note: In this context, a bracket "contains" itself.
-    call s:setcursor(start)
+    call sexp#setcursor(start)
     " Seed the loop position with an open containing start (possibly start itself).
-    let shared_open = s:is_list(start[1], start[2]) == 2 ? start : s:move_to_nearest_bracket(0)
+    let shared_open = sexp#is_list(start[1], start[2]) == 2 ? start : sexp#move_to_nearest_bracket_impl(0)
     while shared_open[1]
-        let shared_close = s:nearest_bracket(1)
+        let shared_close = sexp#nearest_bracket(1)
         " Note: Null shared close implies end at top level due to unbalanced open.
-        let cmp = !shared_close[1] ? 1 : s:compare_pos(shared_close, end)
+        let cmp = !shared_close[1] ? 1 : sexp#compare_pos(shared_close, end)
         if cmp >= 0
             " Either we found shared close or we're not going to.
             break
@@ -277,7 +285,7 @@ function! s:super_range_legacy(start, end)
         " Haven't yet found shared close (and haven't hit top-level trying). Adjust
         " start to current open bracket before looking higher.
         let start = shared_open
-        let shared_open = s:move_to_nearest_bracket(0)
+        let shared_open = sexp#move_to_nearest_bracket_impl(0)
     endwhile
     " Assumptions:
     " * Null shared_open implies null shared_close
@@ -299,7 +307,7 @@ function! s:super_range_legacy(start, end)
     endif
     " If on element, find its start.
     " Rationale: Prefer start of macro chars to open bracket.
-    call s:setcursor(start)
+    call sexp#setcursor(start)
     let p = sexp#current_element_terminal(0)
     if p[1]
         let start = p
@@ -311,16 +319,16 @@ function! s:super_range_legacy(start, end)
         "       Don't look up any further; just find end terminal
         "   (shared_close == a:end)    => end requires no adjustment
         "       The next two loops will be skipped.
-        call s:setcursor(end)
+        call sexp#setcursor(end)
         " Note: compare_pos() < 0 could be simplified to p != shared_close.
         " Rationale: Prior logic guarantees that p will eventually land *on* a non-null
         " shared_close.
         " Seed prev position var.
         let p = end
         " Treat null shared close like shared close past EOF.
-        while !shared_close[1] || s:compare_pos(p, shared_close) < 0
+        while !shared_close[1] || sexp#compare_pos(p, shared_close) < 0
             let end = p
-            let p = s:move_to_nearest_bracket(1)
+            let p = sexp#move_to_nearest_bracket_impl(1)
             if !p[1]
                 " Top level is common ancestor
                 break
@@ -330,7 +338,7 @@ function! s:super_range_legacy(start, end)
         " chars following close), we can skip looking for terminal whenever the preceding loop
         " has adjusted end to a closing bracket (i.e., end != a:end).
         if end == a:end
-            call s:setcursor(end)
+            call sexp#setcursor(end)
             " Ensure end is a terminal.
             let p = sexp#current_element_terminal(1)
             if p[1]
@@ -340,15 +348,11 @@ function! s:super_range_legacy(start, end)
     endif
 
     " Finally, check for unbalanced brackets in range we plan to return.
+    " TODO: Consider moving this to shim for both legacy and lua cases.
     let [bra, ket] = s:count_brackets(start, end, s:bracket, s:opening_bracket)
-    if bra || ket
-        let ret = [[0,0,0,0],[0,0,0,0]]
-    else
-        " Strip surrounding whitespace from range.
-        let ret = s:strip_range(start, end)
-    endif
+    let ret = bra || ket ? [[0,0,0,0],[0,0,0,0]] : [start, end]
     " Restore saved position.
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return ret
 endfunction
 
@@ -357,11 +361,7 @@ endfunction
 " no elements are partially included in the range. Return null positions if superset range
 " would contain unbalanced brackets.
 function! sexp#hl#super_range(start, end)
-    let ret = s:super_range_{s:ts_or_legacy()}(a:start, a:end)
-    if ret is v:null || !ret[0][1]
-        echoerr "FIXME!!!! null super range!"
-    endif
-    return ret
+    return s:super_range_{s:ts_or_legacy()}(a:start, a:end)
 endfunction
 
 " vim:ts=4:sw=4:et

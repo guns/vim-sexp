@@ -193,7 +193,7 @@ endfunction
 " a good argument for why this is not a good tradeoff, contact me.
 "
 " Accepts alternate beginning and ending patterns as optional parameters.
-function! s:nearest_bracket(closing, ...)
+function! sexp#nearest_bracket(closing, ...)
     let flags = a:closing ? 'nW' : 'bnW'
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
@@ -207,22 +207,22 @@ endfunction
 function! s:list_open()
     let cursor = getpos('.')
     let ret = [0, 0, 0, 0]
-    let isl = s:is_list(cursor[1], cursor[2])
+    let isl = sexp#is_list(cursor[1], cursor[2])
     if !isl
         return ret
     elseif isl == 1
-        call s:setcursor(s:current_macro_character_terminal(1))
+        call sexp#setcursor(s:current_macro_character_terminal(1))
         " Find the open.
         let [l, c] = sexp#findpos('\S', 1)
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
         return [0, l, c, 0]
     elseif isl == 2
         return cursor
     else " 3
-        return s:nearest_bracket(0)
+        return sexp#nearest_bracket(0)
     endif
     " Restore original position.
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return ret
 endfunction
 
@@ -256,7 +256,7 @@ endfunction
 function! s:current_top_list_bracket_by_first_column(closing)
     let cursor = getpos('.')
     let at_top = 0
-    let [_b, line, col, _o] = s:current_element_terminal(0)
+    let [_b, line, col, _o] = sexp#current_element_terminal(0)
 
     if line > 0
         call cursor(line, col)
@@ -264,7 +264,7 @@ function! s:current_top_list_bracket_by_first_column(closing)
     endif
 
     while !at_top
-        let [_b, line, col, _o] = s:move_to_nearest_bracket(0)
+        let [_b, line, col, _o] = sexp#move_to_nearest_bracket_impl(0)
 
         if line > 0 && col == 1
             let at_top = 1
@@ -274,10 +274,10 @@ function! s:current_top_list_bracket_by_first_column(closing)
     endwhile
 
     let pos = (at_top && getline(line)[col - 1] =~# s:opening_bracket)
-              \ ? (a:closing ? s:nearest_bracket(1) : [0, line, col, 0])
+              \ ? (a:closing ? sexp#nearest_bracket(1) : [0, line, col, 0])
               \ : [0, 0, 0, 0]
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
 
     return pos
 endfunction
@@ -297,7 +297,7 @@ function! s:current_top_list_bracket_by_maxlines(closing)
     " searchpairpos() fails to find the matching closing bracket when on the
     " outermost opening bracket and vice versa
     elseif getline(cursorline)[cursorcol - 1] =~# (a:closing ? s:opening_bracket : s:closing_bracket)
-        return s:nearest_bracket(a:closing)
+        return sexp#nearest_bracket(a:closing)
     else
         return [0, 0, 0, 0]
     endif
@@ -388,7 +388,7 @@ endfunction
 "   * Current atom otherwise
 "
 " An element always includes leading macro characters.
-function! s:current_element_terminal(end)
+function! sexp#current_element_terminal(end)
     let [_b, line, col, _o] = getpos('.')
     let char = getline(line)[col - 1]
     let include_macro_characters = !a:end
@@ -401,7 +401,7 @@ function! s:current_element_terminal(end)
         if (a:end && char =~# s:closing_bracket) || (!a:end && char =~# s:opening_bracket)
             let pos = [0, line, col, 0]
         else
-            let pos = s:nearest_bracket(a:end)
+            let pos = sexp#nearest_bracket(a:end)
         end
     elseif s:is_macro_char(char)
         if !a:end
@@ -411,7 +411,7 @@ function! s:current_element_terminal(end)
             " part of the atom and return the head of the preceding element.
             if !sexp#hl#is_atom(line, col + 1) && sexp#hl#is_atom(line, col - 1)
                 call cursor(line, col - 1)
-                let pos = s:current_element_terminal(0)
+                let pos = sexp#current_element_terminal(0)
             else
                 let pos = [0, line, col, 0]
             endif
@@ -424,7 +424,7 @@ function! s:current_element_terminal(end)
                 let pos = macro_tail
             else
                 call cursor(macro_tail[1], macro_tail[2] + 1)
-                let pos = s:current_element_terminal(1)
+                let pos = sexp#current_element_terminal(1)
                 call cursor(line, col)
             endif
         endif
@@ -445,11 +445,6 @@ function! s:current_element_terminal(end)
     endif
 endfunction
 
-" FIXME: Relocate!!!
-function! sexp#current_element_terminal(end)
-    return s:current_element_terminal(a:end)
-endfunction
-
 " Returns position of previous/next element's head/tail.
 " Returns current element's terminal if no adjacent element exists.
 function! s:nearest_element_terminal(next, tail)
@@ -457,11 +452,11 @@ function! s:nearest_element_terminal(next, tail)
     let pos = cursor
 
     try
-        let terminal = s:current_element_terminal(a:next)
+        let terminal = sexp#current_element_terminal(a:next)
 
         if terminal[1] > 0 && s:compare_pos(pos, terminal) != 0
             let pos = terminal
-            call s:setcursor(pos)
+            call sexp#setcursor(pos)
             " b moves to the head of the current word if not already on the
             " head and e moves to the tail if not on the tail. However, ge
             " does not!
@@ -487,15 +482,15 @@ function! s:nearest_element_terminal(next, tail)
         if (a:next && !a:tail) || (!a:next && a:tail)
             throw 'sexp-error'
         else
-            call s:setcursor(pos)
-            let final = s:current_element_terminal(a:tail)
+            call sexp#setcursor(pos)
+            let final = sexp#current_element_terminal(a:tail)
             if final[1] > 0
                 let pos = final
             endif
         endif
     catch /sexp-error/
     finally
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
         return pos
     endtry
 endfunction
@@ -511,7 +506,7 @@ endfunction
 " Returns pos if no such whitespace exists.
 function! s:adjacent_whitespace_terminal(pos, trailing)
     let cursor = getpos('.')
-    call s:setcursor(a:pos)
+    call sexp#setcursor(a:pos)
 
     let [_b, termline, termcol, _o] = a:pos
 
@@ -532,7 +527,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
         endif
     endwhile
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return [0, termline, termcol, 0]
 endfunction
 
@@ -547,23 +542,23 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let o.bol = bol_text =~ '^\s*$'
     let o.eol = eol_text =~ '^.\s*$'
     " Are we at beginning of sexp?
-    call s:setcursor(a:start)
+    call sexp#setcursor(a:start)
     let p = s:nearest_element_terminal(0, 1)
     let o.bos = s:compare_pos(p, a:start) >= 0
     " Do we follow a comment?
     let o.follows_com = !o.bos && s:is_comment(p[1], p[2])
     " Do we follow a list?
     " TODO: May not need this anymore.
-    let o.follows_list = !o.bos && s:is_list(p[1], p[2])
+    let o.follows_list = !o.bos && sexp#is_list(p[1], p[2])
     " Is current element a comment?
     " Make sure we're on an element.
-    let p = s:current_element_terminal(0)
+    let p = sexp#current_element_terminal(0)
     if !p[1]
         let p = s:nearest_element_terminal(1, 0)
     endif
     let o.is_com = s:is_comment(p[1], p[2])
     " Are we at end of sexp?
-    call s:setcursor(a:end)
+    call sexp#setcursor(a:end)
     let p = s:nearest_element_terminal(1, 0)
     if s:compare_pos(p, a:end) <= 0
         let o.eos = 1
@@ -608,7 +603,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let o.eflags.spc = o.eflags.real && getline(o.ws_e[1])[o.ws_e[2] - 1] == ' '
     let o.eflags.chr = getline(o.ws_e[1])[o.ws_e[2] - 1]
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return o
 endfunction
 
@@ -774,43 +769,43 @@ function! s:positions_with_element_terminals(positions)
     let [start, end] = a:positions
 
     call s:move_to_element_near_position(start)
-    let head = s:current_element_terminal(0)
+    let head = sexp#current_element_terminal(0)
 
     call s:move_to_element_near_position(end)
-    let tail = s:current_element_terminal(1)
+    let tail = sexp#current_element_terminal(1)
 
     if head[1] > 0 && tail[1] > 0
         " Find any unbalanced brackets in our selection
-        let [bra, ket] = s:count_brackets(head, tail, s:bracket, s:opening_bracket)
+        let [bra, ket] = sexp#count_brackets(head, tail, s:bracket, s:opening_bracket)
 
         " Extend head for every ket
         if ket > 0
-            call s:setcursor(head)
-            call sexp#docount(ket, 's:move_to_nearest_bracket', 0)
+            call sexp#setcursor(head)
+            call sexp#docount(ket, 'sexp#move_to_nearest_bracket_impl', 0)
             let head = getpos('.')
         endif
 
         " And tail for every bra
         if bra > 0
-            call s:setcursor(tail)
-            call sexp#docount(bra, 's:move_to_nearest_bracket', 1)
+            call sexp#setcursor(tail)
+            call sexp#docount(bra, 'sexp#move_to_nearest_bracket_impl', 1)
             let tail = getpos('.')
         endif
     endif
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return [head, tail]
 endfunction
 
 " Returns [bra, ket], which indicates the number of unpaired opening brackets
 " ('bra') and the number of unpaired closing brackets ('ket') in the selection
 " from start to end.
-function! s:count_brackets(start, end, all_brackets, opening_brackets)
+function! sexp#count_brackets(start, end, all_brackets, opening_brackets)
     let cursor = getpos('.')
     let bra = 0
     let ket = 0
 
-    call s:setcursor(a:start)
+    call sexp#setcursor(a:start)
 
     while 1
         let [line, col] = searchpos(a:all_brackets, 'cnW')
@@ -819,7 +814,7 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
         " Caveat: searchpos() returns [0,0] if no bracket found before EOF.
         if line && sexp#hl#is_rgn_type('str_com_chr', line, col)
             call cursor(line, col)
-            call s:move_to_adjacent_element(1, 0, 0)
+            call sexp#move_to_adjacent_element_impl(1, 0, 0)
             continue
         endif
 
@@ -846,7 +841,7 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
         endif
     endwhile
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return [bra, ket]
 endfunction
 
@@ -856,17 +851,17 @@ function! s:count_elements(start, end)
     let pos = a:start
     let n = 1
 
-    call s:setcursor(pos)
+    call sexp#setcursor(pos)
 
     while 1
-        let nextpos = s:move_to_adjacent_element(1, 0, 0)
+        let nextpos = sexp#move_to_adjacent_element_impl(1, 0, 0)
         if s:compare_pos(nextpos, a:end) > 0 | break | endif
         let n += 1
         if s:compare_pos(pos, nextpos) == 0 | break | endif
         let pos = nextpos
     endwhile
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return n
 endfunction
 
@@ -918,35 +913,10 @@ function! s:offset_char(pos, dir, ...)
         endif
     endwhile
     " Restore original position.
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return [0, l, c, 0]
 endfunction
 let Oc = function('s:offset_char')
-
-" If input range contains non-whitespace, return new, potentially smaller range, with no
-" leading or trailing whitespace; otherwise, return input range unmodified.
-function! s:strip_range(start, end)
-    let cursor = getpos('.')
-    " Question: Should we check for reversed range?
-    " Look for non-whitespace at head, including cursor pos in search.
-    call s:setcursor(a:start)
-    let p = searchpos('\S', 'cnW', a:end[1])
-    let start = [0, p[0], p[1], 0]
-    if !start[1] || s:compare_pos(start, a:end) > 0
-        " Range is empty. Don't modify input.
-        return [a:start, a:end]
-    endif
-    " Non-empty range guaranteed.
-    " Look for non-whitespace at tail, including cursor pos in search.
-    call s:setcursor(a:end)
-    let p = searchpos('\S', 'cnbW', start[1])
-    " Note: Assuming non-reversed range, the test after the earlier searchpos() obviates
-    " need for one here.
-    let end = [0, p[0], p[1], 0]
-    " Restore saved pos.
-    call s:setcursor(cursor)
-    return [start, end]
-endfunction
 
 " Return a constrained range.
 function! s:constrained_range(start, end, keep_end)
@@ -957,14 +927,14 @@ function! s:constrained_range(start, end, keep_end)
     " Set to [0, 0, 0, 0] if we determine definitively no limit needed.
     let lim = []
     " Find 'that'-side bracket containing position we know will be kept.
-    call s:setcursor(this)
-    let ket = s:move_to_nearest_bracket(that_dir)
+    call sexp#setcursor(this)
+    let ket = sexp#move_to_nearest_bracket_impl(that_dir)
     if ket[1]
         " If we found bracket matching 'this', move one level higher.
-        let isl = s:is_list(this[1], this[2])
+        let isl = sexp#is_list(this[1], this[2])
         if that_dir && isl == 2 || this_dir && isl == 3
             " Go a level higher if possible...
-            let ket = s:move_to_nearest_bracket(that_dir)
+            let ket = sexp#move_to_nearest_bracket_impl(that_dir)
         endif
     endif
     " Did we find a containing bracket?
@@ -975,7 +945,7 @@ function! s:constrained_range(start, end, keep_end)
             " Limiting *may* be required. In any case, we need to determine
             " exclusivity of limit: even if cmp alone guarantees we'll be
             " limiting, exclusivity will determine the limiting position.
-            let exc = s:nearest_bracket(this_dir) != this
+            let exc = sexp#nearest_bracket(this_dir) != this
             if exc || cmp
                 let lim = exc ? s:offset_char(ket, this_dir) : ket
             else
@@ -991,10 +961,10 @@ function! s:constrained_range(start, end, keep_end)
         " bracket (if any) will be at the same level as 'this' and is the
         " sought limit. If no brackets were found, 'that' was already at same
         " level as 'this' and no limiting is required.
-        call s:setcursor(that)
+        call sexp#setcursor(that)
         let pos = []
         while 1
-            let p = s:move_to_nearest_bracket(that_dir)
+            let p = sexp#move_to_nearest_bracket_impl(that_dir)
             if !p[1] || p == ket
                 " We've hit either top or bracket containing this.
                 if !empty(pos)
@@ -1009,7 +979,7 @@ function! s:constrained_range(start, end, keep_end)
     if !empty(lim) && lim[1]
         let ret[that_dir] = lim
     endif
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return ret
 endfunction
 
@@ -1041,7 +1011,7 @@ function! s:is_comment(line, col)
                 \ && sexp#hl#is_rgn_type('comment', cline, ccol)
                 let incomment = 1
             endif
-            call s:setcursor(cursor)
+            call sexp#setcursor(cursor)
         endif
 
         return incomment
@@ -1052,8 +1022,8 @@ endfunction
 function! s:at_top(line, col)
     let cursor = getpos('.')
     call cursor(a:line, a:col)
-    let ret = !s:nearest_bracket(0)[1] || !s:nearest_bracket(1)[1]
-    call s:setcursor(cursor)
+    let ret = !sexp#nearest_bracket(0)[1] || !sexp#nearest_bracket(1)[1]
+    call sexp#setcursor(cursor)
     return ret
 endfunction
 
@@ -1074,7 +1044,7 @@ endfunction
 "  1 => on macro chars preceding opening bracket
 "  2 => on list opening bracket
 "  3 => on list closing bracket
-function! s:is_list(line, col)
+function! sexp#is_list(line, col)
     let chars = getline(a:line)[a:col - 1:]
     let maybe = chars =~#
         \ '\v^' . s:vm_cc(s:macro_chars()) . '*%(' . s:opening_bracket . ')'
@@ -1106,36 +1076,52 @@ function! s:compare_pos(a, b)
 endfunction
 
 " FIXME: Relocate this to util???
+" In any case, don't keep this wrapper!
 function! sexp#compare_pos(a, b)
-    return s:compare_pos(a, b)
+    return s:compare_pos(a:a, a:b)
 endfunction
 
-" Return true iff inclusive VimPos range contains only whitespace/blank that's not part of
-" an ignored region.
-" FIXME: This will spuriously consider whitespace within ignored region empty!
-fu! sexp#range_empty(beg, end)
+" Return true iff there's *any* whitespace in the range [beg,end].
+" Note: If 'check_ignored' set, differentiate between whitespace in ignored region and
+" whitespace that separates tokens.
+fu! sexp#range_has_ws(beg, end, check_ignored)
+    let save_cursor = getcurpos()
+    call setpos('.', a:beg)
+    " Note: Empty 'skip' skips nothing.
+    let pos = searchpos('\s', 'nczW', a:end[1], a:check_ignored ? s:match_ignored_region_fn : '')
+    let ret = pos[0] && pos[1] <= a:end[2]
+    call setpos('.', save_cursor)
+    return ret
+endfu
+
+" Return true iff there's *any* non-whitespace in the range [beg,end].
+" Note: See previous function comment for usage of 'check_ignored'.
+fu! sexp#range_has_non_ws(beg, end, check_ignored)
     let ret = 0
     let save_cursor = getcurpos()
     call setpos('.', a:beg)
-    let pos = searchpos('\S', 'ncz', a:end[1])
-    if !pos[0] || pos[1] > a:end[2]
-        " No non-ws in range, but need to check for *ignored* ws.
-        let pos = searchpos('.', 'ncz', a:end[1], 0, s:nomatch_ignored_region_fn)
-        " If we found ignored ws char within range, return false.
-        let ret = !pos[0] || pos[1] > a:end[2]
-        call setpos('.', save_cursor)
+    let pos = searchpos('\S', 'nczW', a:end[1])
+    let ret = pos[0] && pos[1] <= a:end[2]
+    if !ret && a:check_ignored
+        " No true non-ws, but check for "ignored" ws, which counts as the same thing...
+        let pos = searchpos('\s', 'nczW', a:end[1], s:nomatch_ignored_region_fn)
+        " Return true iff we found ignored ws within region.
+        let ret = pos[0] && pos[1] <= a:end[2]
     endif
+    call setpos('.', save_cursor)
     return ret
 endfu
 
 " Return true iff specified SexpPos is on whitespace (or blank if allow_blank).
-" FIXME: Take "ignoredness" of region into account!
-fu! sexp#in_whitespace(pos, allow_blank)
+" Note: See previous function comment for usage of 'check_ignored'.
+fu! sexp#in_whitespace(pos, allow_blank, check_ignored)
     local save_cursor = getcurpos()
     call setpos('.', a:pos)
-    " Anchor search at cursor in case line is long.
-    let re = a:allow_blank ? '\v%.c\s|^$' : '\s'
-    let pos = searchpos(re, 'nczW', a:pos[1], 0, s:match_ignored_region_fn)
+    " Anchor search at cursor for efficiency (in case line is long).
+    " TODO: Consider different approach: e.g., grabbing and testing the char in lieu of
+    " search().
+    let re = '\v%.c\s' . (a:allow_blank ? '|^$' : '')
+    let pos = searchpos(re, 'nczW', a:pos[1], 0, a:check_ignored ? s:match_ignored_region_fn : '')
     let ret = pos[0] && pos == save_cursor[1:2]
     call setpos('.', save_cursor)
     return ret
@@ -1144,50 +1130,31 @@ endfu
 " Return input range adjusted inward such that start/end are both on non-whitespace.
 " If this can't be done (e.g., because start/end within same run of whitespace), return
 " unadjusted input position.
-" Design Decision: Don't complicate by considering whether the whitespace is ignored.
+" Design Decision: Don't slow down by considering whether the whitespace is ignored.
 " Rationale: This function is intended to be used to get a "starting point" only; ignored
 " whitespace is invariably within some region of which subsequent logic can find the
 " terminals.
 fu! sexp#trim_range(beg, end)
     let save_cursor = getcurpos()
     " Find first non-white
-    call setpos('.', a:beg)
+    call sexp#setcursor(a:beg)
     let s = searchpos('\S', 'nczW', a:end[1])
-    " Find last non-white
-    call setpos('.', a:end)
-    let e = searchpos('\S', 'ncbW', a:start[1])
-    " Restore cursor.
-    call setpos('.', save_cursor)
-    " If s/e are reversed (and/or no non-whitespace found), original positions were in run
-    " of whitespace.
-    if !s[0] || !e[0] || sexp#compare_pos(s, e) > 0
-        " Return original, unmodified positions.
-        " TODO: Consider returning [beg, beg].
-        return [a:beg, a:end]
+    let s = [0, s[0], s[1], 0]
+    if s[1] && sexp#compare_pos(s, a:end) <= 0
+        " We have at least one non-ws within range; find the last.
+        " Note: Previous search guarantees success of this one.
+        call sexp#setcursor(a:end)
+        let e = searchpos('\S', 'ncbW', a:beg[1])
+        let e = [0, e[0], e[1], 0]
+    else
+        " No non-ws in range; return original range.
+        let [s, e] = [a:beg[:], a:end[:]]
     endif
+    " TODO: Find out what the performance penalty is for :try..finally; if not signficant,
+    " I would put the cursor restoration in a finally and simplify this function.
+    " Restore cursor.
+    call sexp#setcursor(save_cursor)
     return [s, e]
-endfu
-
-" Return true iff there's *any* whitespace (without considering whether it's part of an
-" ignored region) in the range [beg,end].
-" Rationale: Provide fast check when caller takes responsibility for checking ignoredness.
-fu! sexp#range_has_ws(beg, end)
-    let save_cursor = getcurpos()
-    call setpos('.', a:beg)
-    let pos = searchpos('\s', 'nczW', a:end[1])
-    let ret = pos[0] && pos[1] <= a:end[2]
-    call setpos('.', save_cursor)
-    return ret
-endfu
-
-" Return true iff there's *any* non-whitespace in the range [beg,end].
-fu! sexp#range_has_non_ws(beg, end)
-    let save_cursor = getcurpos()
-    call setpos('.', a:beg)
-    let pos = searchpos('\S', 'nczW', a:end[1])
-    let ret = pos[0] && pos[1] <= a:end[2]
-    call setpos('.', save_cursor)
-    return ret
 endfu
 
 let s:MAX_CHARLEN = 8 " actually, 4 for utf-8, but no reason to cut it close.
@@ -1205,27 +1172,28 @@ endfu
 
 " Calls cursor(pos[1], pos[2]). Used in favor of setpos(), which is lower
 " level than cursor(), omitting some UI niceties.
-function! s:setcursor(pos)
+" TODO: Re-examine this rationale...
+function! sexp#setcursor(pos)
     call cursor(a:pos[1], a:pos[2])
 endfunction
 
 " TODO: Remove...
 function! s:move_char(dir)
     let pos = s:offset_char(getpos('.'), a:dir)
-    call s:setcursor(pos)
+    call sexp#setcursor(pos)
 endfunction
 
 " Tries to move cursor to nearest paired bracket, returning its position.
-function! s:move_to_nearest_bracket(closing)
-    let pos = s:nearest_bracket(a:closing)
-    if pos[1] > 0 | call s:setcursor(pos) | endif
+function! sexp#move_to_nearest_bracket_impl(closing)
+    let pos = sexp#nearest_bracket(a:closing)
+    if pos[1] > 0 | call sexp#setcursor(pos) | endif
     return pos
 endfunction
 
 " Move from list apparata to list open. Return [0, 0, 0, 0] if not on list.
 function! s:move_to_list_open()
     let pos = s:list_open()
-    if pos[1] | call s:setcursor(pos) | endif
+    if pos[1] | call sexp#setcursor(pos) | endif
     return pos
 endfunction
 
@@ -1234,14 +1202,14 @@ endfunction
 " if not in a list.
 function! s:move_to_top_bracket(closing)
     let pos = s:current_top_list_bracket(a:closing)
-    if pos[1] > 0 | call s:setcursor(pos) | endif
+    if pos[1] > 0 | call sexp#setcursor(pos) | endif
     return pos
 endfunction
 
 " Tries to move cursor to current element terminal, returning its position.
 function! s:move_to_current_element_terminal(closing)
-    let pos = s:current_element_terminal(a:closing)
-    if pos[1] > 0 | call s:setcursor(pos) | endif
+    let pos = sexp#current_element_terminal(a:closing)
+    if pos[1] > 0 | call sexp#setcursor(pos) | endif
     return pos
 endfunction
 
@@ -1252,7 +1220,9 @@ endfunction
 "
 " If no such adjacent element exists, moves to beginning or end of element
 " respectively. Analogous to native w, e, and b commands.
-function! s:move_to_adjacent_element(next, tail, top)
+" FIXME: Move this (or the api sexp#move_to_adjacent_element we're trying to deconflict)
+" and get rid of the kludgy suffix.
+function! sexp#move_to_adjacent_element_impl(next, tail, top)
     let cursor = getpos('.')
 
     if a:top
@@ -1269,16 +1239,16 @@ function! s:move_to_adjacent_element(next, tail, top)
         let pos = s:nearest_element_terminal(a:next, a:tail)
     endif
 
-    if pos[1] > 0 | call s:setcursor(pos) | endif
+    if pos[1] > 0 | call sexp#setcursor(pos) | endif
     return pos
 endfunction
 
 " Move cursor to pos, and then to the next element if in whitespace.
 " FIXME: Blank line not treated like whitespace.
 function! s:move_to_element_near_position(pos)
-    call s:setcursor(a:pos)
+    call sexp#setcursor(a:pos)
     return getline('.')[col('.') - 1] =~# '\v\s'
-           \ ? s:move_to_adjacent_element(1, 0, 0)
+           \ ? sexp#move_to_adjacent_element_impl(1, 0, 0)
            \ : a:pos
 endfunction
 
@@ -1331,9 +1301,9 @@ endfunction
 " returned.
 function! sexp#move_to_nearest_bracket(mode, next)
     if a:mode ==? 'v'
-        return s:move_cursor_extending_selection('s:move_to_nearest_bracket', a:next)
+        return s:move_cursor_extending_selection('sexp#move_to_nearest_bracket_impl', a:next)
     elseif a:mode ==? 'o' && !a:next
-        let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
+        let [_b, l, c, _o] = sexp#move_to_nearest_bracket_impl(0)
         if l > 0
             let [l, c] = sexp#findpos('\v\_.', 1)
             call cursor(l, c)
@@ -1344,12 +1314,12 @@ function! sexp#move_to_nearest_bracket(mode, next)
         let bracket = getline(cursor[1])[cursor[2] - 1]
 
         call s:move_to_current_element_terminal(1)
-        let pos = s:nearest_bracket(1)
+        let pos = sexp#nearest_bracket(1)
 
         if pos[1] < 1 || (bracket =~# s:closing_bracket
                           \ && cursor[1] == pos[1]
                           \ && cursor[2] == pos[2] - 1)
-            call s:setcursor(cursor)
+            call sexp#setcursor(cursor)
             return [0, 0, 0, 0]
         endif
 
@@ -1360,11 +1330,11 @@ function! sexp#move_to_nearest_bracket(mode, next)
         call s:select_current_marks('o')
         return pos
     else
-        return s:move_to_nearest_bracket(a:next)
+        return sexp#move_to_nearest_bracket_impl(a:next)
     endif
 endfunction
 
-" Calls s:move_to_adjacent_element count times, with the following additional
+" Calls sexp#move_to_adjacent_element_impl count times, with the following additional
 " behaviours:
 "
 " * If mode == 'v', the current visual selection is extended
@@ -1378,12 +1348,12 @@ endfunction
 "   bounded by the parent list.
 function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
     if a:mode ==? 'n'
-        return sexp#docount(a:count, 's:move_to_adjacent_element', a:next, a:tail, a:top)
+        return sexp#docount(a:count, 'sexp#move_to_adjacent_element_impl', a:next, a:tail, a:top)
     elseif a:mode ==? 'v'
-        return sexp#docount(a:count, 's:move_cursor_extending_selection', 's:move_to_adjacent_element', a:next, a:tail, a:top)
+        return sexp#docount(a:count, 's:move_cursor_extending_selection', 'sexp#move_to_adjacent_element_impl', a:next, a:tail, a:top)
     elseif a:mode ==? 'o'
         let cursor = getpos('.')
-        call sexp#docount(a:count, 's:move_to_adjacent_element', a:next, a:tail, a:top)
+        call sexp#docount(a:count, 'sexp#move_to_adjacent_element_impl', a:next, a:tail, a:top)
         let pos = getpos('.')
         let nomove = s:compare_pos(cursor, pos) == 0
 
@@ -1395,7 +1365,7 @@ function! sexp#move_to_adjacent_element(mode, count, next, tail, top)
         "   * Moving forward to head but ending on tail because we are bounded
         "   * Same as above, but element is a single character so head == tail
         elseif a:tail
-            \ || (a:next && s:compare_pos(pos, s:current_element_terminal(0)) != 0)
+            \ || (a:next && s:compare_pos(pos, sexp#current_element_terminal(0)) != 0)
             \ || (a:next && nomove)
             " We make selections inclusive by entering visual mode
             call s:set_visual_marks([cursor, pos])
@@ -1443,10 +1413,10 @@ function! sexp#list_flow(mode, count, next, close)
     endwhile
     if a:mode == 'v'
         if cnt < a:count
-            \ || s:is_list(line('.'), col('.')) == (a:close ? 3 : 2)
+            \ || sexp#is_list(line('.'), col('.')) == (a:close ? 3 : 2)
             " Either we performed at least 1 jump, or we started on desired
             " bracket type. Either way, find other bracket and select list.
-            let bpos = s:nearest_bracket(!a:close)
+            let bpos = sexp#nearest_bracket(!a:close)
             " Re-enter visual mode with cursor on the desired side.
             " Note: No need to sort the marks, as Vim will swap as needed, and
             " we're about to set cursor pos with select_current_marks.
@@ -1501,7 +1471,7 @@ function! sexp#leaf_flow(mode, count, next, tail)
     " Values: =-1, near=0, far=1
     let nf = -1
     " Are we starting on list (macro chars or brackets)?
-    if !s:is_list(cursor[1], cursor[2])
+    if !sexp#is_list(cursor[1], cursor[2])
         " The current element (if any) is not a list (or macro chars), and
         " hence *could* be target. If inside element, position on far side in
         " preparation for subsequent search (which may or may not be needed,
@@ -1527,7 +1497,7 @@ function! sexp#leaf_flow(mode, count, next, tail)
         " in list_flow function.
         let pos = searchpair('a\&b', '\S', 'a\&b',
             \ 'W' . (a:next ? '' : 'b'),
-            \ 's:is_list(line("."), col("."))')
+            \ 'sexp#is_list(line("."), col("."))')
         if pos <= 0
             " We've gone as far as we can.
             break
@@ -1549,9 +1519,9 @@ function! sexp#leaf_flow(mode, count, next, tail)
         if nf >= 0
             " Set near pos if we started past it.
             if !exists('l:npos')
-                let npos = s:current_element_terminal(!a:next)
+                let npos = sexp#current_element_terminal(!a:next)
             endif
-            let fpos = nf ? getpos('.') : s:current_element_terminal(a:next)
+            let fpos = nf ? getpos('.') : sexp#current_element_terminal(a:next)
             " Select target visually, placing cursor on target end.
             " Note: No need to sort the marks, as Vim will swap as needed, and
             " we're about to set cursor pos with select_current_marks.
@@ -1570,7 +1540,7 @@ endfunction
 " a leading space after opening bracket if inserting at head, unless there
 " already is one.
 function! sexp#insert_at_list_terminal(end)
-    let pos = s:move_to_nearest_bracket(a:end)
+    let pos = sexp#move_to_nearest_bracket_impl(a:end)
 
     " Handle opening bracket edge cases
     if !a:end && pos[1] > 0
@@ -1640,12 +1610,12 @@ else
         let cursor = getpos('.')
 
         if mode() ==? 'v' | execute "normal! \<Esc>" | endif
-        call s:setcursor(a:marks[0])
+        call sexp#setcursor(a:marks[0])
         normal! v
-        call s:setcursor(a:marks[1])
+        call sexp#setcursor(a:marks[1])
         execute "normal! \<Esc>"
 
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
     endfunction
 endif
 
@@ -1682,7 +1652,7 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     " to '<, so do it now.
     if counting && start_is_valid
         if mode() ==? 'v' | execute "normal! \<Esc>" | endif
-        call s:setcursor(start)
+        call sexp#setcursor(start)
         let cursor = start
         let cursor_moved = 1
     endif
@@ -1701,22 +1671,22 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
 
     if !ignored && char =~# s:opening_bracket
         if expanding
-            if s:move_to_nearest_bracket(1)[1] > 0
+            if sexp#move_to_nearest_bracket_impl(1)[1] > 0
                 let cursor_moved = 1
-                call s:move_to_nearest_bracket(1) " Expansion step
+                call sexp#move_to_nearest_bracket_impl(1) " Expansion step
             endif
-            let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
+            let open = s:pos_with_col_offset(sexp#nearest_bracket(0), a:offset)
             let close = s:pos_with_col_offset(getpos('.'), -a:offset)
         else
             let open = s:pos_with_col_offset(getpos('.'), a:offset)
-            let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
+            let close = s:pos_with_col_offset(sexp#nearest_bracket(1), -a:offset)
         endif
     elseif !ignored && char =~# s:closing_bracket
-        let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
+        let open = s:pos_with_col_offset(sexp#nearest_bracket(0), a:offset)
         let close = s:pos_with_col_offset(getpos('.'), -a:offset)
     else
-        let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
-        let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
+        let open = s:pos_with_col_offset(sexp#nearest_bracket(0), a:offset)
+        let close = s:pos_with_col_offset(sexp#nearest_bracket(1), -a:offset)
     endif
 
     let success = 0
@@ -1732,7 +1702,7 @@ function! s:set_marks_around_current_list(mode, offset, allow_expansion)
     endif
 
     if cursor_moved
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
     endif
 
     return success
@@ -1749,9 +1719,9 @@ function! s:set_marks_around_current_top_list(mode, offset)
     if closing[1] > 0
         " Calling searchpairpos() is faster when you start from an end
         let cursor = getpos('.')
-        call s:setcursor(closing)
-        let opening = s:nearest_bracket(0)
-        call s:setcursor(cursor)
+        call sexp#setcursor(closing)
+        let opening = sexp#nearest_bracket(0)
+        call sexp#setcursor(cursor)
 
         " Don't delete adjacent brackets with an inner motion
         if a:offset > 0 && opening[1] == closing[1] && opening[2] == closing[2] - 1
@@ -1787,13 +1757,14 @@ function! s:set_marks_around_current_string(mode, offset)
 endfunction
 
 " TODO: Document...
-function! s:select_child(mode, count, next, inner)
+" FIXME: Get rid of the suffix after refactoring namespaces.
+function! sexp#select_child_impl(mode, count, next, inner)
     let cursor = getpos('.')
     " Are we on a list?
-    let isl = s:is_list(cursor[1], cursor[2])
+    let isl = sexp#is_list(cursor[1], cursor[2])
     if !isl
         " Find parent list head or tail
-        let p = s:move_to_nearest_bracket(!a:next)
+        let p = sexp#move_to_nearest_bracket_impl(!a:next)
         if !p[1]
             " At top level. Move to buffer head/tail
             exe 'normal!' (a:next ? 'gg0' : 'G$')
@@ -1804,11 +1775,11 @@ function! s:select_child(mode, count, next, inner)
             if isl == 1
                 " Move to open
                 " Get to tail of macro chars.
-                call s:setcursor(s:current_macro_character_terminal(1))
+                call sexp#setcursor(s:current_macro_character_terminal(1))
                 call s:move_char(1)
             elseif isl == 3
                 " Move to open
-                call s:move_to_nearest_bracket(0)
+                call sexp#move_to_nearest_bracket_impl(0)
             endif
         elseif isl != 3
             " Move to close
@@ -1817,7 +1788,7 @@ function! s:select_child(mode, count, next, inner)
     endif
     " On list open/close.
     " Get opposite bracket's position so we can detect null list.
-    let p = s:nearest_bracket(a:next)
+    let p = sexp#nearest_bracket(a:next)
     " Move inside bracket.
     call s:move_char(a:next)
     if p == getpos('.')
@@ -1833,7 +1804,7 @@ function! s:select_child(mode, count, next, inner)
         let pp = getpos('.')
         " TODO: Fold this into the list perhaps, but need to differentiate
         " case in which nothing found.
-        let p = s:move_to_adjacent_element(a:next, !a:next, 0)
+        let p = sexp#move_to_adjacent_element_impl(a:next, !a:next, 0)
         if p == pp
             " No elements in list.
             " TODO: How to handle...
@@ -1845,7 +1816,7 @@ function! s:select_child(mode, count, next, inner)
     let cnt = a:count ? a:count - 1 : 0
     while cnt
         let pp = p
-        let p = s:move_to_adjacent_element(a:next, !a:next, 0)
+        let p = sexp#move_to_adjacent_element_impl(a:next, !a:next, 0)
         if p == pp
             " We've gone as far as we can go.
             break
@@ -1910,7 +1881,7 @@ function! s:get_cursor_and_visual_info()
         if mode !=? 'v'
             exe "normal! \<Esc>"
             call winrestview(wsv)
-            "call s:setcursor(cursor)
+            "call sexp#setcursor(cursor)
         endif
         let o.cursor = o.at_end ? ve : vs
     else
@@ -1964,7 +1935,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         let curpos = dir ? ve : vs
         "echomsg 'dir=' . dir . ' vs=' . string(vs) . ' ve=' . string(ve) . ' c=' . string(cursor)
         " Position at start of range.
-        call s:setcursor(vs)
+        call sexp#setcursor(vs)
     else
         let dir = 1
     endif
@@ -1976,7 +1947,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     if !start[1]
         " We are on whitespace; check for next element
         let p = getpos('.')
-        let next = s:move_to_adjacent_element(1, 0, 0)
+        let next = sexp#move_to_adjacent_element_impl(1, 0, 0)
         if next == p
             " No next element!
             if a:mode !=? 'v'
@@ -1998,17 +1969,17 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     endif
 
     " Position ourselves to look for (first) end.
-    call s:setcursor(a:mode ==? 'v' &&
+    call sexp#setcursor(a:mode ==? 'v' &&
                 \ s:compare_pos(ve, start) > 0 ? ve : start)
 
     " Find first end, looking backwards if necessary.
     " TODO: Consider changing this logic when counts involved...
     " TODO: Factor into function.
-    let end = s:current_element_terminal(1)
+    let end = sexp#current_element_terminal(1)
     if !end[1]
         " Weren't on an element. Get to end of previous (whose
         " existence is implied by existence of start).
-        let end = s:move_to_adjacent_element(0, 1, 0)
+        let end = sexp#move_to_adjacent_element_impl(0, 1, 0)
     endif
 
     if cnt > 0
@@ -2030,11 +2001,11 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     " We've now established a 'current' *inner* selection. Consider pulling in
     " more, taking direction into account.
     let p = dir ? end : start
-    if cnt > 0 | call s:setcursor(p) | endif
+    if cnt > 0 | call sexp#setcursor(p) | endif
     while cnt > 0
         let pp = p
         " Assumption: Can't get here in legacy case.
-        let p = s:move_to_adjacent_element(dir, dir, 0)
+        let p = sexp#move_to_adjacent_element_impl(dir, dir, 0)
         if p == pp
             " We've gone as far as possible.
             break
@@ -2052,7 +2023,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
             \ : s:terminals_with_whitespace(start, end, leading)
     endif
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     if !a:no_sel
         call s:set_visual_marks([start, end])
     endif
@@ -2075,9 +2046,9 @@ function! s:set_marks_around_adjacent_element(mode, next)
         call s:move_to_current_element_terminal(0)
     endif
 
-    call s:move_to_adjacent_element(a:next, 0, 0)
+    call sexp#move_to_adjacent_element_impl(a:next, 0, 0)
     call s:set_marks_around_current_element('n', 1, 0, 0)
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
 endfunction
 
 " Enter characterwise visual mode with current visual marks, unless '< is
@@ -2186,7 +2157,7 @@ endfunction
 " count backwards from tail, 1 to count forwards from head. If no such child
 " element exists, selects closest one (i.e., last in the specified direction).
 function! sexp#select_child(mode, count, next, rev)
-    call s:select_child(a:mode, a:count, a:next, a:rev)
+    call sexp#select_child_impl(a:mode, a:count, a:next, a:rev)
     return s:select_current_marks(a:mode)
 endfunction
 
@@ -2209,18 +2180,18 @@ function! s:insert_brackets_around_visual_marks(bra, ket, at_tail, headspace)
     if start[1] < 1
         execute 'normal! i' . a:bra . a:ket
     elseif a:at_tail
-        call s:setcursor(start)
+        call sexp#setcursor(start)
         execute 'normal! i' . a:bra
         " Did we just insert a character on the same line?
         if start[1] == end[1]
             let end = s:pos_with_col_offset(end, len(a:bra))
         endif
-        call s:setcursor(end)
+        call sexp#setcursor(end)
         execute 'normal! a' . a:ket
     else
-        call s:setcursor(end)
+        call sexp#setcursor(end)
         execute 'normal! a' . a:ket
-        call s:setcursor(start)
+        call sexp#setcursor(start)
         execute 'normal! i' . a:bra . (a:headspace ? ' ' : '')
     endif
 endfunction
@@ -2244,11 +2215,11 @@ endfunction
 " enclosing list's bracket minus leading macro characters (spos) and the
 " position of the bracket itself (bpos).
 function! s:stackop_capture(last, spos, bpos)
-    call s:setcursor(a:spos)
-    let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
+    call sexp#setcursor(a:spos)
+    let nextpos = sexp#move_to_adjacent_element_impl(a:last, 0, 0)
 
     " Ensure we are not trying to capture a parent list
-    if nextpos[1] < 1 || s:compare_pos(a:spos, s:current_element_terminal(!a:last)) == (a:last ? 1 : -1)
+    if nextpos[1] < 1 || s:compare_pos(a:spos, sexp#current_element_terminal(!a:last)) == (a:last ? 1 : -1)
         return 0
     endif
 
@@ -2259,16 +2230,16 @@ function! s:stackop_capture(last, spos, bpos)
     " Insertion and deletion must be done from the bottom up to avoid
     " recalculating our marks
     if a:last
-        let nextpos = s:current_element_terminal(1)
-        call s:setcursor(nextpos)
+        let nextpos = sexp#current_element_terminal(1)
+        call sexp#setcursor(nextpos)
         execute 'silent! normal! "bp'
-        call s:setcursor(a:spos)
+        call sexp#setcursor(a:spos)
         execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(s:pos_with_col_offset(nextpos, 1 + -(a:spos[1] == nextpos[1])))
+        call sexp#setcursor(s:pos_with_col_offset(nextpos, 1 + -(a:spos[1] == nextpos[1])))
     else
-        call s:setcursor(a:spos)
+        call sexp#setcursor(a:spos)
         execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(nextpos)
+        call sexp#setcursor(nextpos)
         execute 'silent! normal! "bP'
     endif
 
@@ -2282,7 +2253,7 @@ endfunction
 function! s:stackop_emit(last, spos, bpos)
     " Move inwards onto the terminal element, then find the penultimate
     " element, which will become the ultimate element after the move
-    call s:setcursor(a:bpos)
+    call sexp#setcursor(a:bpos)
 
     let [l, c] = sexp#findpos('\v\S', !a:last)
     if l < 1 | return 0 | endif
@@ -2293,16 +2264,16 @@ function! s:stackop_emit(last, spos, bpos)
         call s:move_to_current_element_terminal(0)
     endif
 
-    let nextpos = s:move_to_adjacent_element(!a:last, 0, 0)
+    let nextpos = sexp#move_to_adjacent_element_impl(!a:last, 0, 0)
     if nextpos[1] < 1 | return 0 | end
 
-    let nextpos = s:current_element_terminal(a:last)
+    let nextpos = sexp#current_element_terminal(a:last)
 
     " Ensure that this new ultimate element is different than the last and
     " that it is actually contained
     if s:compare_pos(nextpos, [0, l, c, 0]) == 0
         \ || s:compare_pos(nextpos, a:spos) != (a:last ? -1 : 1)
-        \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
+        \ || s:compare_pos(nextpos, sexp#nearest_bracket(!a:last)) != (a:last ? 1 : -1)
         return 0
     endif
 
@@ -2313,16 +2284,16 @@ function! s:stackop_emit(last, spos, bpos)
     " Insertion and deletion must be done from the bottom up to avoid
     " recalculating our marks
     if a:last
-        call s:setcursor(a:spos)
+        call sexp#setcursor(a:spos)
         execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(nextpos)
+        call sexp#setcursor(nextpos)
         execute 'silent! normal! "bp'
     else
-        call s:setcursor(nextpos)
+        call sexp#setcursor(nextpos)
         execute 'silent! normal! "bP'
-        call s:setcursor(a:spos)
+        call sexp#setcursor(a:spos)
         execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(a:spos[1] == nextpos[1] ? s:pos_with_col_offset(nextpos, -1) : nextpos)
+        call sexp#setcursor(a:spos[1] == nextpos[1] ? s:pos_with_col_offset(nextpos, -1) : nextpos)
     endif
 
     let @b = reg_save
@@ -2346,11 +2317,11 @@ function! s:swap_current_selection(mode, next, pairwise)
     let amarks = s:get_visual_marks()
 
     " Record the sibling element
-    call s:setcursor(amarks[!!a:next])
+    call sexp#setcursor(amarks[!!a:next])
     call s:set_marks_around_adjacent_element('n', a:next)
     if a:pairwise && s:can_set_visual_marks
         let mark = a:next ? "'>" : "'<"
-        call s:setcursor(getpos(mark))
+        call sexp#setcursor(getpos(mark))
         call setpos(mark, s:nearest_element_terminal(a:next, a:next))
         call s:set_visual_marks(s:positions_with_element_terminals(s:get_visual_marks()))
     endif
@@ -2390,7 +2361,7 @@ function! s:swap_current_selection(mode, next, pairwise)
 
     " Set marks around next element using the ^B and ^C markers
     if a:next
-        call s:setcursor(amarks[0])
+        call sexp#setcursor(amarks[0])
 
         let [sl, sc] = sexp#findpos(nr2char(0x02), 1)
         call cursor(sl, sc)
@@ -2408,9 +2379,9 @@ function! s:swap_current_selection(mode, next, pairwise)
     if visual
         call s:select_current_marks('v')
     elseif a:next
-        call s:setcursor(s:get_visual_beg_mark())
+        call sexp#setcursor(s:get_visual_beg_mark())
     else
-        call s:setcursor(bmarks[0])
+        call sexp#setcursor(bmarks[0])
     endif
 
     let [@a, @b] = reg_save
@@ -2620,7 +2591,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
             endif
             " Perform the yank/del/splice.
             if spl_put
-                call s:setcursor(a:start)
+                call sexp#setcursor(a:start)
             else
                 " Select text to be yanked/deleted
                 call s:set_visual_marks([start, end])
@@ -2664,7 +2635,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
     finally
         " Restore options/regs/cursor...
         let [@a, @"] = reg_save
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
     endtry
 
     return ret
@@ -2688,7 +2659,7 @@ fu! s:put_at(text, before, cursor_after, ...)
         if a:0
             " FIXME: Probably need to save/restore ve=onemore if we're not going
             " to do it at higher level.
-            call s:setcursor(a:1)
+            call sexp#setcursor(a:1)
         endif
         let [reg_save, @a] = [@a, a:text]
         " Caveat: Vim's treatment of -1 string index doesn't obey POLS; use range.
@@ -2722,7 +2693,7 @@ fu! s:put_at(text, before, cursor_after, ...)
             " Note: In cursor_after case, position is already correct.
             if !a:cursor_after
                 " Position at start of operation.
-                call s:setcursor(start)
+                call sexp#setcursor(start)
             endif
         endif
     finally
@@ -2795,7 +2766,7 @@ function! sexp#indent(mode, top, count, clean, ...)
             \ && !sexp#hl#is_rgn_type('str_com_chr', line, col)
             let pos = [0, line, col, 0]
         else
-            let pos = s:move_to_nearest_bracket(1)
+            let pos = sexp#move_to_nearest_bracket_impl(1)
         endif
 
         normal! v
@@ -2941,7 +2912,7 @@ endfunction
 " Assumption: We're on an open (but no guarantee form contains elements).
 function! s:list_head()
     let cursor = getpos('.')
-    let close = s:current_element_terminal(1)
+    let close = sexp#current_element_terminal(1)
     let ret = [0, 0, 0, 0]
     " Attempt move to first non-whitespace.
     let [l, c] = sexp#findpos('\S', 1)
@@ -2951,9 +2922,9 @@ function! s:list_head()
     endif
     call cursor(l, c) 
     " Just to be sure...
-    let ret = s:current_element_terminal(0)
+    let ret = sexp#current_element_terminal(0)
     " Restore original position.
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
     return ret
 endfunction
 
@@ -2966,7 +2937,7 @@ function! s:cleanup_ws(start, at_top, ps, ...)
     if !end[1]
         let open = a:start[:]
         " Cleanup a list.
-        call s:setcursor(open)
+        call sexp#setcursor(open)
         " Descend into list.
         let next = s:list_head()
     else
@@ -2974,8 +2945,8 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         " Set things up as though loop processing is already in progress:
         " e.g., set open, prev and next (if non-null).
         " Note: eff_* will be set in loop pre-update, so no need to set here.
-        call s:setcursor(a:start)
-        let next = s:current_element_terminal(0)
+        call sexp#setcursor(a:start)
+        let next = sexp#current_element_terminal(0)
         if !next[1]
             " Not in element.
             let next = s:nearest_element_terminal(1, 0)
@@ -2992,13 +2963,13 @@ function! s:cleanup_ws(start, at_top, ps, ...)
             let prev = [0, 0, 0, 0]
         endif
         if !prev[1]
-            let open = s:nearest_bracket(0)
+            let open = sexp#nearest_bracket(0)
         endif
     endif
     let done = 0
     while 1
         " Note: next and close are mutually exclusive.
-        let close = next[1] ? [0, 0, 0, 0] : s:nearest_bracket(1)
+        let close = next[1] ? [0, 0, 0, 0] : sexp#nearest_bracket(1)
         " Distinction: Non-null prev/next always represent actual elements at
         " current level; eff_prev/next can be either element or open/close.
         " TODO: Consider handling eff_prev in post-update (or some other way).
@@ -3096,12 +3067,12 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         " Assumption: eff_next and next are the same except that the former
         " has been adjusted.
         call cursor(eff_next[1], eff_next[2])
-        if s:is_list(eff_next[1], eff_next[2])
+        if sexp#is_list(eff_next[1], eff_next[2])
             let next = s:move_to_list_open()
             call s:cleanup_ws(next, 0, a:ps)
             " Assumption: Restore cursor pos (potentially changed by
             " recursion) to next (which can't be invalidated by recursion).
-            call s:setcursor(next)
+            call sexp#setcursor(next)
         endif
         " Now that we've recursed (if possible), attempt to advance.
         let prev = s:move_to_current_element_terminal(1)
@@ -3116,7 +3087,7 @@ function! s:cleanup_ws(start, at_top, ps, ...)
             " after final element.
             let done = 1
         else
-            call s:setcursor(next)
+            call sexp#setcursor(next)
         endif
     endwhile
 endfunction
@@ -3177,24 +3148,24 @@ fu! sexp#convolute(count, ...)
     " Note: v:count1 would really be better-suited to stuff like this.
     let [idx, n] = [0, a:count ? a:count + 1 : 2]
     while idx < n
-        let p = s:move_to_nearest_bracket(0)
+        let p = sexp#move_to_nearest_bracket_impl(0)
         if !p[1]
             " Warn and return without changing anything.
             call s:warnmsg("Convolute impossible with count given: insufficient nesting")
-            call s:setcursor(cursor)
+            call sexp#setcursor(cursor)
             return
         endif
         if !idx
             let bpos_i = p
             " Caveat: Don't change cursor pos.
-            let spos_i = s:current_element_terminal(0)
-            let tpos_i = s:nearest_bracket(1)
+            let spos_i = sexp#current_element_terminal(0)
+            let tpos_i = sexp#nearest_bracket(1)
         endif
         let idx += 1
     endwhile
     let bpos_o = p
-    let spos_o = s:current_element_terminal(0)
-    let tpos_o = s:nearest_bracket(1)
+    let spos_o = sexp#current_element_terminal(0)
+    let tpos_o = sexp#nearest_bracket(1)
 
     " Determine dividing point for convolution: either...
     " 1. start of current element (when inside element)
@@ -3205,8 +3176,8 @@ fu! sexp#convolute(count, ...)
         let pos = tpos_i
     else
         " Try to position on head of current element (including macro chars).
-        call s:setcursor(cursor)
-        let pos = s:current_element_terminal(0)
+        call sexp#setcursor(cursor)
+        let pos = sexp#current_element_terminal(0)
         if !pos[1]
             " Not on an element; move to next one's head.
             " Note: Returns current pos if no adjacent el, which is probably
@@ -3241,8 +3212,8 @@ fu! sexp#convolute(count, ...)
     endif
 
     " Note: Deletion above may have invalidated tpos_o; use bpos_o to find it.
-    call s:setcursor(bpos_o)
-    let tpos_o = s:nearest_bracket(1)
+    call sexp#setcursor(bpos_o)
+    let tpos_o = sexp#nearest_bracket(1)
     call s:put_at(ket, 0, 0, tpos_o)
     call s:put_at(del, 1, 0, spos_o)
     call s:put_at(bra, 1, 0, spos_o)
@@ -3261,7 +3232,7 @@ fu! sexp#convolute(count, ...)
     " convolution will decrease number of close brackets after pos by 1.
     " Assumption: Closing brackets always a single byte.
     let pos[2] = col([pos[1], '$']) - pos_edist + edist_changing
-    call s:setcursor(pos)
+    call sexp#setcursor(pos)
 endfu
 
 " Return [start, end] of region to be cloned.
@@ -3293,7 +3264,7 @@ function! s:get_clone_target_range(mode, after, list)
             return [[0, 0, 0, 0], [0, 0, 0, 0]]
         else
             " Are we on an element?
-            let p = s:current_element_terminal(0)
+            let p = sexp#current_element_terminal(0)
             let found = p[1]
             " Consider an element past the cursor.
             " Rationale: Feels right.
@@ -3301,7 +3272,7 @@ function! s:get_clone_target_range(mode, after, list)
                 let p = getpos('.')
                 " Not on an element. Find adjacent (if one exists in applicable
                 " direction).
-                call s:move_to_adjacent_element(1, 0, 0)
+                call sexp#move_to_adjacent_element_impl(1, 0, 0)
                 let found = p != getpos('.')
             endif
             return found
@@ -3357,7 +3328,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
             \ || s:at_bol(start[1], start[2]) && s:at_eol(end[1], end[2]))
     " Get the text to be copied.
     let copy = s:yankdel_range(start, end, 0, 1)
-    call s:setcursor(a:after ? end : start)
+    call sexp#setcursor(a:after ? end : start)
     let repl = multi
         \ ? a:after ? ["\n", copy] : [copy, "\n"]
         \ : a:after ? [" ", copy] : [copy, " "]
@@ -3402,7 +3373,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
             " Indent parent
             " Note: Because of the way sexp#indent works, we need to know
             " whether cursor is on an open or close.
-            let isl = s:is_list(line('.'), col('.'))
+            let isl = sexp#is_list(line('.'), col('.'))
             " Caveat: Failure to set optional force_syntax flag in call to
             " indent may result in incorrect indentation.
             call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1,
@@ -3410,7 +3381,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
         endif
     endif
 
-    call s:setcursor(cursor)
+    call sexp#setcursor(cursor)
 
     " Adjust visual marks. See note in header on what vs/ve represent.
     call s:set_visual_marks([vs, ve])
@@ -3430,7 +3401,7 @@ function! sexp#splice_list(...)
         let idx = a:1
         let dir = getline(cursor[1])[cursor[2] - 1] =~ s:opening_bracket
         while idx > 0
-            call s:move_to_nearest_bracket(dir)
+            call sexp#move_to_nearest_bracket_impl(dir)
             let idx -= 1
         endwhile
     endif
@@ -3441,12 +3412,12 @@ function! sexp#splice_list(...)
 
     if start[1] > 0
         " Delete ending bracket first so we don't mess up '<
-        call s:setcursor(s:get_visual_end_mark())
+        call sexp#setcursor(s:get_visual_end_mark())
         normal! dl
-        call s:setcursor(start)
+        call sexp#setcursor(start)
         normal! dl
     else
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
     endif
 
     call s:set_visual_marks(marks)
@@ -3472,7 +3443,7 @@ function! sexp#stackop(mode, last, capture)
 
     " Move to closing bracket unless we are on one
     if !(pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
-        let pos = s:move_to_nearest_bracket(1)
+        let pos = sexp#move_to_nearest_bracket_impl(1)
     endif
 
     try
@@ -3482,7 +3453,7 @@ function! sexp#stackop(mode, last, capture)
         if a:last
             let bpos = pos
         else
-            let bpos = s:move_to_nearest_bracket(0)
+            let bpos = sexp#move_to_nearest_bracket_impl(0)
             let pos = s:move_to_current_element_terminal(0)
         endif
 
@@ -3539,14 +3510,14 @@ function! sexp#swap_element(mode, next, list)
     " Otherwise select the current list or element (with leading macro chars)
     elseif a:list
         " Move to element end first in case we are on leading macro chars
-        let pos = s:current_element_terminal(1)
+        let pos = sexp#current_element_terminal(1)
         let tail = (pos[1] > 0 && getline(pos[1])[pos[2] - 1] =~# s:closing_bracket)
                    \ ? pos
-                   \ : s:nearest_bracket(1)
+                   \ : sexp#nearest_bracket(1)
         if tail[1] < 1
             delmarks < >
         else
-            call s:setcursor(tail)
+            call sexp#setcursor(tail)
             call s:set_marks_around_current_element('o', 1, 0, 0)
         endif
     else
@@ -3559,7 +3530,7 @@ function! sexp#swap_element(mode, next, list)
             call s:set_visual_marks(marks)
             normal! gv
         endif
-        call s:setcursor(cursor)
+        call sexp#setcursor(cursor)
     endif
 endfunction
 
@@ -3590,7 +3561,7 @@ function! sexp#opening_insertion(bra)
     let [_b, line, col, _o] = getpos('.')
 
     if sexp#hl#is_rgn_type('str_com_chr', line, col)
-        \ && s:compare_pos(s:current_element_terminal(0), [0, line, col, 0]) < 0
+        \ && s:compare_pos(sexp#current_element_terminal(0), [0, line, col, 0]) < 0
         return a:bra
     endif
 
@@ -3641,7 +3612,7 @@ function! sexp#closing_insertion(ket)
     let pprev = curline[col - 3]
 
     if sexp#hl#is_rgn_type('str_com_chr', line, col)
-        \ && s:compare_pos(s:current_element_terminal(0), [0, line, col, 0]) < 0
+        \ && s:compare_pos(sexp#current_element_terminal(0), [0, line, col, 0]) < 0
         return a:ket
     elseif prev ==# '\' && pprev !=# '\'
         return a:ket
@@ -3653,14 +3624,14 @@ function! sexp#closing_insertion(ket)
     let ket = '\V' . a:ket
     let open = cur =~# s:opening_bracket
                \ ? [0, line, col, 0]
-               \ : s:nearest_bracket(0, bra, ket)
+               \ : sexp#nearest_bracket(0, bra, ket)
 
     " No enclosing list; insert nothing
     if open[1] < 1
         return ''
     endif
 
-    let close = s:nearest_bracket(1, bra, ket)
+    let close = sexp#nearest_bracket(1, bra, ket)
 
     " Brackets are balanced, jump to closing bracket
     if close[1] > 0

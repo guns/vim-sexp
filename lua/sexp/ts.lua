@@ -283,13 +283,13 @@ function M.current_atom_terminal(dir)
   return {0, termcol ~= 0 and line or 0, termcol, 0}
 end
 
--- See description of sexp#hl#super_range_ts.
+-- See description of sexp#hl#super_range.
 ---@param beg VimPos
 ---@param end_ VimPos
 ---@return [VimPos, VimPos]?
-function M.super_range_ts(beg, end_)
+function M.super_range(beg, end_)
   local save_curpos = vim.fn.getcurpos()
-  dbg:logf("super_range_ts(%s, %s)", vim.inspect(beg), vim.inspect(end_))
+  dbg:logf("super_range(%s, %s)", vim.inspect(beg), vim.inspect(end_))
   -- In case of upwards traversal, this tuple will hold the found start/end nodes.
   ---@type [TSNode?, TSNode?]
   local nodes_ = {}
@@ -348,7 +348,7 @@ function M.super_range_ts(beg, end_)
   vim.fn.setpos('.', save_curpos)
   -- At this point, snode and enode could be the same or different nodes. It's also
   -- possible one or both are not within an element (i.e., blank or whitespace).
-  dbg:logf("super_range_ts returning %s-%s", vim.inspect(svp), vim.inspect(evp))
+  dbg:logf("super_range returning %s-%s", vim.inspect(svp), vim.inspect(evp))
   return {svp, evp}
 end
 

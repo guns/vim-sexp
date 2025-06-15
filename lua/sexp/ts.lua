@@ -13,7 +13,6 @@ local bracket = [[\v\(|\)|\[|\]|\{|\}]]
 local delimiter = bracket .. [[|\s]]
 local re_delimiter = vim.regex(delimiter)
 
----@type Cache
 local cache = require'sexp.cache':new()
 
 -- Compile the primitive regexes.
@@ -66,7 +65,7 @@ local function is_node_rgn_type(node, rgn)
   return vim.iter(regions[rgn]):any(function (prim) return regexes[prim]:match_str(typ) end)
 end
 
-function M:show_cache()
+function M.show_cache()
   cache:show()
 end
 

@@ -7,7 +7,7 @@ local prof = require'sexp.prof'
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
 local reltimestr = vim.fn.reltimestr
-local dbg = require'dp':get('sexp', {enabled=false})
+local dbg = require'dp':get('sexp', {enabled=true})
 
 ---@class CacheHit
 ---@field node TSNode
@@ -108,11 +108,18 @@ end
 local Cache = {}
 Cache.__index = Cache
 
--- TODO: BufUnload autocommand to free a BufCache
 function Cache:new()
   local o = {
     bcaches = {}
   }
+  -- Note: No need for an augroup: there should never be more than one Cache instance, and
+  -- there's no reason to unregister it before Vim shutdown.
+  vim.api.nvim_create_autocmd({"BufUnload"}, {
+    callback = function(ev)
+      -- Make sure unloaded buffer isn't cached.
+      o.bcaches[ev.buf] = nil
+    end
+  })
   return setmetatable(o, Cache)
 end
 
@@ -163,9 +170,6 @@ end
 function Cache:lookup(pos, create)
   --local ts = reltime()
   local bcache = self:get_buf_cache(create)
-  --prof:add("get_buf_cache", reltimestr(reltime(ts)))
-  --dbg:logf("Get bcache took %s", reltimestr(reltime(ts)))
-  --ts = reltime()
   if bcache then
     return bcache:lookup(pos)
   end

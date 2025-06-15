@@ -85,7 +85,8 @@ function M.get_root()
   return cache:get_root(true)
 end
 
--- Return true (and matched node) iff region key matches at input line/col.
+-- Determine whether virtual region key matches at input line/col, returning a multi (see
+-- annotation).
 ---@param rgn string # One of the keys in regions[]
 ---@param line integer # 1-based line number
 ---@param col integer # 1-based col number
@@ -254,6 +255,7 @@ function M.current_atom_terminal(dir)
       -- Still within atom. If node is leaf, skip to its end (limit permitting).
       if node:child_count() == 0 then
         -- Get [1,1] indexed pos.
+        -- FIXME: Remove this in favor of ApiRange methods.
         local sr, sc, er, ec = convert_node_range(node)
         --dbg:logf("Leaf! %d, %d, %d, %d", sr, sc, er, ec)
         if fwd and er ~= line or not fwd and sr ~= line then
@@ -283,7 +285,7 @@ function M.current_atom_terminal(dir)
   return {0, termcol ~= 0 and line or 0, termcol, 0}
 end
 
--- See description of sexp#hl#super_range.
+-- See description of sexp#super_range.
 ---@param beg VimPos
 ---@param end_ VimPos
 ---@return [VimPos, VimPos]?
@@ -331,18 +333,18 @@ function M.super_range(beg, end_)
   local svp = nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or vim.list_slice(beg)
   local evp = nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or vim.list_slice(end_)
   dbg:logf("---------------------")
-  dbg:logf("spos=%s epos=%s svp=%d,%d evp=%d,%d", nodes_[1] and ApiPos:new(nodes_[1]:start()) or "<nil>",
-    nodes_[2] and ApiPos:new(nodes_[2]:end_()) or "<nil>", svp[2], svp[3], evp[2], evp[3])
-  dbg:logf("s to_vim4: %s", nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or "<nil>")
-  dbg:logf("e to_vim4: %s", nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or "<nil>")
+  dbg:logf("svp=%d,%d evp=%d,%d", svp[2], svp[3], evp[2], evp[3])
   -- Make sure start and end do not contain *partial* elements.
   vim.fn.setpos('.', svp)
   dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))
-  svp = vim.fn['sexp#current_element_terminal'](0)
+  ---@type [VimPos4, VimPos4]
+  local p = vim.fn['sexp#current_element_terminal'](0)
+  if p[2] ~= 0 then svp = p end
   dbg:logf("Found current_element_terminal(0) for svp: %s", vim.inspect(svp))
   vim.fn.setpos('.', evp)
   dbg:logf("Finding current_element_terminal(1) for evp: %s", vim.inspect(evp))
-  evp = vim.fn['sexp#current_element_terminal'](1)
+  p = vim.fn['sexp#current_element_terminal'](1)
+  if p[2] ~= 0 then evp = p end
   dbg:logf("Found current_element_terminal(1) for evp: %s", vim.inspect(evp))
   -- Restore position.
   vim.fn.setpos('.', save_curpos)

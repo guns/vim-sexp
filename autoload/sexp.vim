@@ -1906,11 +1906,13 @@ endfunction
 function! s:get_visual_beg_mark()
     " Note: In Linewise Visual mode, getpos returns 0 for col. The rest of the plugin is
     " not designed to handle this, so return 1 instead.
-    " TODO: Consider just returning [0, line("'<"), col("'<"), 0]. Is the offset (pos[3])
-    " used anywhere?
+    " Design Decision: A call site contained logic to adjust an end of line *start* to the
+    " beginning of the subsequent line. Considered subsuming that logic here, but I don't
+    " think it's really needed, as Vim handles end of line visual starts just fine, even
+    " without ve=onemore.
     let pos = getpos("'<")
     " Leave [0,0,0,0] (representing invalid input) alone.
-    if !pos[2] && pos[1]
+    if pos[1] && !pos[2]
         let pos[2] = 1
     endif
     return pos
@@ -1920,12 +1922,11 @@ function! s:get_visual_end_mark()
     " Note: In Linewise Visual mode, getpos returns v:maxcol for col. The rest of the
     " plugin is not designed to handle this, so return last col position on end line
     " instead.
-    " TODO: Consider just returning [0, line("'>"), col("'>"), 0]. Is the offset (pos[3])
-    " used anywhere?
     let pos = getpos("'>")
     if pos[2] == v:maxcol
-        " FIXME: This assumes non-mb char at end of line.
-        let pos[2] = col("'>") - 1
+        " Caveat: max() prevents problems on empty lines, for which both col('.') and
+        " col('$') return 1.
+        let pos[2] = max([1, col("'>") - 1])
     endif
     return pos
 endfu
@@ -2176,36 +2177,25 @@ endfunction
 "           reason for the de-normalization, remove one or the other.
 " Note: No point in calling if there's not visual selection, but handle
 " gracefully if we're not.
+" Important Note and TODO: Ideally, this function would use 'v' and '.' with getpos() to
+" get both ends of visual selection; however, this works only when you're truly in visual
+" mode, which, in turn, entails use of <cmd> (not :<c-u>) for visual mappings. Thus, as
+" long as we support Vim versions prior to v9 (when <Cmd> was added), this function is
+" inherently more complex than it should be.
 function! s:get_cursor_and_visual_info()
     let o = {}
 
-    let vs = s:get_visual_beg_mark()
-    " Idiosyncrasy: In linewise visual mode, Vim returns large number for
-    " getpos("'>")[2].
-    let ve = [0, line("'>"), col("'>"), 0]
-    " Save raw visual marks before possible adjustment.
-    let [o.raw_vs, o.raw_ve] = [vs, ve]
-    " Note: Since we don't really know what the command's mode was (and don't
-    " really care), differentiate solely on whether visual sel exists; if it
-    " doesn't, we'll return cursor pos along with some innocuous sentinel
-    " values for range.
+    let [vs, ve] = s:get_visual_marks()
+    " Note: Since we don't really know what the command's mode was (and don't really
+    " care), differentiate solely on whether visual sel exists; if it doesn't, we'll
+    " return cursor pos along with some innocuous sentinel values for range.
     if vs[1] && ve[1]
-        " Check for visual range beginning past eol
-        if vs[2] > 1 && vs[2] >= col([vs[1], '$'])
-            let vs = [0, vs[1] + 1, 1, 0]
-        endif
-        " Check for visual range ending past eol
-        if ve[2] > 1 && ve[2] >= col([ve[1], '$'])
-            " Assumption: Will work even if multi-byte...
-            let ve[2] -= 1
-        endif
         " Ascertain (normalized) cursor position.
         " Note: If we're not in visual mode, we'll have to enter it to
         " determine which end cursor was on.
         " TODO: Does Vim provide another way?
         let mode = mode()
         if mode !=? 'v'
-            "let cursor = getpos('.')
             " Caveat: Entering visual mode can alter the viewport, which is a
             " problem for commands that expect to be able to preserve the
             " pre-command view; use winsaveview/winrestview to save/restore.
@@ -2220,7 +2210,6 @@ function! s:get_cursor_and_visual_info()
         if mode !=? 'v'
             exe "normal! \<Esc>"
             call winrestview(wsv)
-            "call s:setcursor(cursor)
         endif
         let o.cursor = o.at_end ? ve : vs
     else
@@ -2248,6 +2237,15 @@ endfunction
 "   no_sel  inhibit visual selection (return range only)
 " Return: adjusted position, else null pos
 " FIXME: Consider using try/catch; re-examine the off-nominal handling.
+" Idiosyncrasy: Hitting vie in normal mode on a single-char atom will cause two atoms to
+" be selected! When I first observed this behavior, it was sufficiently disconcerting that
+" I assumed it was a bug; however, upon reflection, I realized it was a natural
+" consequence of the new approach to expanding selections.
+" Explanation: When the v in vie is pressed, the aforementioned single-char atom is
+" completely inner-selected; thus, the subsequent ie expands the selection to include the
+" next atom.
+" TODO: Decide whether this behavior needs to change. Yes, it was disconcerting when I
+" first noticed it; otoh, typing 3 keystrokes (vie) in lieu of 1 (v) is kind of silly...
 function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     " Extra args imply extension mode only if mode is visual.
     "let cnt = a:0 && a:1 > 0 ? a:1 : 0

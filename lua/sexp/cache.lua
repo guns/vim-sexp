@@ -7,7 +7,7 @@ local prof = require'sexp.prof'
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
 local reltimestr = vim.fn.reltimestr
-local dbg = require'dp':get('sexp', {enabled=true})
+local dbg = require'dp':get('sexp', {enabled=false})
 
 ---@class CacheHit
 ---@field node TSNode

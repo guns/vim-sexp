@@ -1,7 +1,7 @@
 local M = {}
 M.__index = M
 
-local dbg = require'dp':get('sexp', {enabled=true})
+local dbg = require'dp':get('sexp', {enabled=false})
 
 function M:new()
   local o = {

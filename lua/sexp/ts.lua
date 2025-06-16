@@ -2,7 +2,7 @@ local M = {}
 local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
-local dbg = require'dp':get('sexp', {enabled=true})
+local dbg = require'dp':get('sexp', {enabled=false})
 local prof = require'sexp.prof'
 
 local reltime = vim.fn.reltime

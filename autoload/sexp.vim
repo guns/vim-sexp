@@ -2175,8 +2175,7 @@ endfunction
 "   cursor
 "   at_end  TODO: If this is redundant with cursor and there's no compelling
 "           reason for the de-normalization, remove one or the other.
-" Note: No point in calling if there's not visual selection, but handle
-" gracefully if we're not.
+" Note: No point in calling if there's no visual selection, but handle gracefully if not.
 " Important Note and TODO: Ideally, this function would use 'v' and '.' with getpos() to
 " get both ends of visual selection; however, this works only when you're truly in visual
 " mode, which, in turn, entails use of <cmd> (not :<c-u>) for visual mappings. Thus, as
@@ -2248,41 +2247,39 @@ endfunction
 " first noticed it; otoh, typing 3 keystrokes (vie) in lieu of 1 (v) is kind of silly...
 function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     " Extra args imply extension mode only if mode is visual.
-    "let cnt = a:0 && a:1 > 0 ? a:1 : 0
     let cnt = a:count > 0 ? a:count : 0
-    let cursor = getpos('.')
-    let curpos = cursor
+    let save_cursor = getpos('.')
     if a:mode ==? 'v'
+        " TODO: Should we just use cached cvi, or perhaps have get_visual_marks() return
+        " 'at_end' flag to obviate the need for cvi?
         let [vs_orig, ve_orig] = s:get_visual_marks()
-        "let dir = vs == cursor && ve != cursor ? 0 : 1
         let dir = b:sexp_cmd_cache.cvi.at_end
         " Rationalize visual range.
-        " TODO: Should super_range adjust selection inward or no? If it did,
-        " some of the subsequent end logic could go away.
-        " TODO: Optimize to skip this (potentially expensive call) when we can
-        " determine super range *without* looking for containing list: e.g.,
-        " in the very common case of a single selected char!!!
+        " TODO: Now that super_range trims surrounding whitespace from selection,
+        " optimizations could be added to subsequent logic.
         let [vs, ve] = s:super_range(vs_orig, ve_orig)
+        call s:Dbg("super_range returned %s %s", string(vs), string(ve))
         if !vs[1]
-            s:warnmsg("Refusing to operate on selection containing unmatched parens!")
+            " TODO: Is this the best way to handle? Is this all it can mean? Consider
+            " using exception for this, and getting rid of this if.
+            call s:warnmsg("Refusing to operate on selection containing unmatched parens!")
             return s:nullpos_pair
         endif
-        " In case actual cursor position has changed.
-        " Note: Cursor will align with either '< or '>
-        " Design Decision Needed: When visual selection is modified by
-        " super_range, should we consider original cursor side? I'm
-        " thinking we need to.
-        " Adjust curpos to reflect adjusted range.
-        let curpos = dir ? ve : vs
-        "echomsg 'dir=' . dir . ' vs=' . string(vs) . ' ve=' . string(ve) . ' c=' . string(cursor)
-        " Position at start of range.
+        " Move to start of range.
         call s:setcursor(vs)
     else
         let dir = 1
     endif
-    " Search from element start to avoid errors with elements that end
-    " with macro characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
-    " TODO: Factor into function.
+    " Search from element start to avoid errors with elements that end with macro
+    " characters. e.g. Clojure auto-gensyms: `(let [s# :foo)])
+    " Rationale: If cursor is on the # in the example above, current_element_terminal(1)
+    " will incorrectly assume the # is a leading macro char. (TODO: Should probably fix
+    " the logic in current_element_terminal.)
+    " TODO: In the visual mode case, super_range() has been called, so we should already
+    " be on the head of an element; however, in the special case of only whitespace
+    " selected, this block is still needed to move starting search position to the next
+    " element. Optimization would skip if super_range has been called *and* the selection
+    " *isn't* pure whitespace.
     let start = s:move_to_current_element_terminal(0)
     if !start[1]
         " We are on whitespace; check for next element
@@ -2294,76 +2291,62 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
                 " Inhibit operation.
                 delmarks < >
             endif
-            " TODO: Do we need to restore cursor position?
+            " Note: No need to restore cursor position, as it shouldn't have changed.
             return s:nullpos_pair
         endif
         let start = next
     endif
+    " Note: If we get here, a non-whitespace start position is guaranteed.
 
-    " If cursor (non-visual mode) or start of selection (visual mode) is
-    " before start, save the position.
+    " If cursor (non-visual mode) or start of selection (visual mode) is before start
+    " (because of leading whitespace), save the original position, which may be needed by
+    " cleanup logic.
     " Rationale: Input to terminals_with_whitespace.
-    let leading = a:mode ==? 'v' ? vs_orig : curpos
+    let leading = a:mode ==? 'v' ? vs_orig : save_cursor
     if s:compare_pos(leading, start) >= 0
         let leading = []
     endif
 
-    " Position ourselves to look for (first) end.
-    call s:setcursor(a:mode ==? 'v' &&
-                \ s:compare_pos(ve, start) > 0 ? ve : start)
+    " Position ourselves to look for (first) end, taking care to begin the search no
+    " earlier than start, which could be *after* ve in certain corner cases.
+    call s:setcursor(a:mode ==? 'v' && s:compare_pos(ve, start) > 0 ? ve : start)
 
     " Find first end, looking backwards if necessary.
-    " TODO: Consider changing this logic when counts involved...
-    " TODO: Factor into function.
     let end = sexp#current_element_terminal(1)
     if !end[1]
-        " Weren't on an element. Get to end of previous (whose
-        " existence is implied by existence of start).
+        " Weren't on an element. Get to end of previous (whose existence is implied by
+        " existence of start).
         let end = s:move_to_adjacent_element(0, 1, 0)
     endif
+    " At this point, end is on 'inner' end of the current (possibly partial) selection.
+    " Subsequent logic handles cleanup and possibly expansion.
 
-    if cnt > 0
-        " Determine whether first step is cleanup or expansion.
-        let [s, e] = a:inner
-            \ ? [start, end]
-            \ : s:terminals_with_whitespace(start, end, leading)
-        if a:mode !=? 'v' || s != vs_orig || e != ve_orig
-            " Cleanup was needed.
-            let cnt -= 1
-            if !a:inner && !cnt
-                " Cache results of terminals_with_whitespace to avoid
-                " redundant call.
-                let [o_start, o_end] = [s, e]
+    " We've now established a 'current' *inner* selection. If cnt > 1, pull in more,
+    " taking direction into account.
+    " Rationale: Initial selection always counts as 1, regardless of whether cleanup is
+    " required.
+    if cnt > 1
+        let p = dir ? end : start
+        call s:setcursor(p)
+        while cnt > 1
+            let pp = p
+            let p = s:move_to_adjacent_element(dir, dir, 0)
+            if p == pp
+                " We've gone as far as possible.
+                break
             endif
-        endif
+            let cnt -= 1
+        endwhile
+        " Adjust the end we've expanded.
+        let l:[dir ? 'end' : 'start'] = p
     endif
-
-    " We've now established a 'current' *inner* selection. Consider pulling in
-    " more, taking direction into account.
-    let p = dir ? end : start
-    if cnt > 0 | call s:setcursor(p) | endif
-    while cnt > 0
-        let pp = p
-        " Assumption: Can't get here in legacy case.
-        let p = s:move_to_adjacent_element(dir, dir, 0)
-        if p == pp
-            " We've gone as far as possible.
-            break
-        endif
-        let cnt -= 1
-    endwhile
-    " Adjust the end we've pulled.
-    let l:[dir ? 'end' : 'start'] = p
 
     if !a:inner
-        " Handle surrounding whitespace in 'outer' case, skipping call if
-        " positions are cached.
-        let [start, end] = exists('l:o_start')
-            \ ? [o_start, o_end]
-            \ : s:terminals_with_whitespace(start, end, leading)
+        " Perform whitespace cleanup.
+        let [start, end] = s:terminals_with_whitespace(start, end, leading)
     endif
 
-    call s:setcursor(cursor)
+    call s:setcursor(save_cursor)
     if !a:no_sel
         call s:set_visual_marks([start, end])
     endif

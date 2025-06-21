@@ -518,6 +518,9 @@ endfunction
 
 " Returns position of previous/next element's head/tail.
 " Returns current element's terminal if no adjacent element exists.
+" TODO: Currently, returns input position unmodified if no adjacent and no current. Is
+" this best approach? It's always worked like this, so changing it to (eg) null pos should
+" not be done without significant analysis/testing.
 function! s:nearest_element_terminal(next, tail)
     let cursor = getpos('.')
     let pos = cursor
@@ -672,6 +675,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
 
     let [_b, termline, termcol, _o] = a:pos
 
+    " FIXME: This is an inefficient way to do this! Fix it!
     while 1
         " Include empty lines
         let [line, col] = s:findpos('\v\_.', a:trailing)
@@ -693,29 +697,37 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
     return [0, termline, termcol, 0]
 endfunction
 
+" Analyze the text before/after start/end and fill the return dictionary with fields that
+" completely characterize it, with the goal of supporting the logic that determines the
+" optimal visual selection for an outer element.
 function! s:terminals_with_whitespace_info(start, end, leading)
     let cursor = getpos('.')
     let o = {}
     " Get text from BOL to start (exclusive).
+    " FIXME: Get bol_text without the double indexing.
     let bol_text = getline(a:start[1])[: a:start[2] - 1][: -2]
     let eol_text = getline(a:end[1])[a:end[2] - 1 :]
 
     let [o.start, o.end, o.leading] = [a:start, a:end, a:leading]
+    " Note: bol/eol flags apply to the start/end of selection, *not* the start/end of the
+    " surrounding whitespace.
     let o.bol = bol_text =~ '^\s*$'
     let o.eol = eol_text =~ '^.\s*$'
     " Are we at beginning of sexp?
     call s:setcursor(a:start)
     let p = s:nearest_element_terminal(0, 1)
+    " Caveat: This test assumes s:nearest_element_terminal() returns current position if no
+    " preceding element.
     let o.bos = s:compare_pos(p, a:start) >= 0
     " Do we follow a comment?
     let o.follows_com = !o.bos && s:is_comment(p[1], p[2])
     " Do we follow a list?
     " TODO: May not need this anymore.
     let o.follows_list = !o.bos && s:is_list(p[1], p[2])
-    " Is current element a comment?
-    " Make sure we're on an element.
+    " Is current element a comment? Make sure we're on an element before testing.
     let p = sexp#current_element_terminal(0)
     if !p[1]
+        " TODO: Do we need to handle null pos here? Is it even possible?
         let p = s:nearest_element_terminal(1, 0)
     endif
     let o.is_com = s:is_comment(p[1], p[2])
@@ -723,6 +735,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     call s:setcursor(a:end)
     let p = s:nearest_element_terminal(1, 0)
     if s:compare_pos(p, a:end) <= 0
+        " No element past current
         let o.eos = 1
         let o.precedes_com = 0
     else
@@ -736,6 +749,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let o['ws_s'] = s:adjacent_whitespace_terminal(o.start, 0)
     let o['ws_e'] = s:adjacent_whitespace_terminal(o.end, 1)
     " Set virtual start/end, which can include newlines.
+    " TODO: Does this rely on ve=onemore? I don't think so, but if not, what does?
     let o.ws_vs =
         \ o.ws_s[2] == 1 && o.ws_s[1] > 1
         \ ? [0, o.ws_s[1] - 1, col([o.ws_s[1] - 1, '$']), 0]
@@ -745,13 +759,26 @@ function! s:terminals_with_whitespace_info(start, end, leading)
         \ ? [0, o.ws_e[1], col([o.ws_e[1], '$']), 0]
         \ : o.ws_e
     " De-normalized multi-line flag for convenience
+    " Note: Single-line context is very restrictive: any scenario in which we'll have to
+    " decide whether to include newlines will be a multi-line scenario.
+    " Design Decision: Treat multi-line selection as single-line join if !bol and !eol.
+    " Rationale: Looking back from start and forward from end, it's exactly the same
+    " situation as the single-line selection case; thus, the handling should be identical.
+    "let o.ml = o.ws_vs[1] != o.ws_ve[1] || o.eol
     let o.ml = o.ws_vs[1] != o.ws_ve[1] || o.eol
-    " Question: Do we need an additional test for sflags.real? Depends on how
-    " we want to handle case of something up to end of line.
+    " Set some convenience flags representing various attributes of start/end.
+    " Note: In this context, head/tail refers to start/end of unbroken sequence of
+    " leading/trailing whitespace (potentially on lines other than a:start/a:end).
+    " Also, the final (terminal) newline is treated differently than any intermediate
+    " newlines: e.g., the 'ws' flag can be set by a blank line, but not by a newline
+    " separating elements. Moreover, ws_vs/ws_ve are set to point to these terminal
+    " newlines, while ws_s/ws_e are not.
     " Flags:
-    " ws: whitespace exists (includes blank lines but not newlines)
-    " eol: newline at head/tail of whitespace
-    " real: actual whitespace char at head/tail of whitespace
+    "   ws:    whitespace exists (including blank lines but not terminal newline)
+    "   eol:   head/tail at beginning/end of line
+    "   real:  actual whitespace char (not newlinw) at head/tail
+    "   spc:   literal SPACE char at head/tail
+    "   chr:   the char at non-virtual head/tail
     " Asymmetry: When ws_s is line 1 col 1, ws_s will equal ws_vs.
     let [o.sflags, o.eflags] = [{}, {}]
     let o.sflags.ws = o.ws_s != a:start
@@ -769,32 +796,36 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
-" Figures out the proper whitespace to select for either multi or single line
-" join. Returns null sentinel to indicate failure. In the multi-line case,
-" success indicates the lines will be joined; in single-line case, success
-" simply means we were able to find suitable whitespace.
-" TODO: "Join" may be misnomer, given that this handles single-line case.
+" Figure out the proper whitespace to select for either (non-partial) multi or single line
+" join. Returns null sentinel to indicate failure. In the multi-line case, success
+" indicates the lines would be joined by subsequent delete; in single-line case, success
+" simply means we were able to find suitable whitespace to include in selection.
+" TODO: "Join" may be misnomer, given that this handles single-line case as well. Consider
+" changing to get_whitespace_extents() or some such...
 function! s:get_join_whitespace(twwi)
     let o = a:twwi
     " TODO: Maybe use global (readonly) sentinel?
-    let ret = [[0, 0, 0, 0], [0, 0, 0, 0]]
-    " Assumption: Col pos for ecl test assumes we're deleting real ws at
-    " start.
-    " Note: Range ws_s..ws_e does not *necessarily* include whitespace (but
-    " almost always will).
+    let ret = [[0,0,0,0],[0,0,0,0]]
+    " Determine screen width of start/end whitespace char (0 if none).
+    " Rationale: Visible width of whitespace used to determine which end to keep.
+    " Note: Range ws_s..ws_e does not *necessarily* include whitespace (but almost always
+    " will).
     let scl = o.sflags.real ? strdisplaywidth(o.sflags.chr, o.ws_s[2]) : 0
-    let ecl = o.eflags.real ? strdisplaywidth(o.eflags.chr, o.ws_s[2]) : 0
-    " Get first position to discard on first line (spos) and last position to
-    " discard on last line (epos).
-    " Note: Joining requires at least one actual (real) whitespace char.
-    " (Blank line isn't sufficient.)
+    let ecl = o.eflags.real ? strdisplaywidth(o.eflags.chr, o.ws_e[2]) : 0
+    " Get first position to discard on first line (spos) and last position to discard on
+    " last line (epos).
+    " Note: Joining requires at least one actual (real) whitespace char. (Blank line isn't
+    " sufficient.)
+    " Also Note: If the selection is followed immediately by delete/change command, it
+    " doesn't really matter whether a single whitespace is kept at start or end; however,
+    " since the user may view the selection, we try to make the choice that will not
+    " violate the POLS.
     if (ecl &&
         \ (!scl
         \  || (!empty(o.leading) && s:compare_pos(o.leading, o.ws_s) <= 0)
         \  || ecl < scl))
         " Select all leading and all but final trailing whitespace.
-        let ret = [o.ws_vs,
-            \ s:offset_char(o.ws_e, 0, 1)]
+        let ret = [o.ws_vs, s:offset_char(o.ws_e, 0, 1)]
     elseif scl
         " Select all trailing and all but initial leading whitespace.
         " Note: Must handle special case of a kept whitespace at eol.
@@ -836,7 +867,9 @@ function! s:ml_join(twwi)
     return s:partial_ml_join(o)
 endfunction
 
-" TODO: Join may be a bit of a misnomer in the single line case.
+" Return selection range corresponding to single-line join: i.e., a join in which element
+" before selection
+" start and end of selection
 function! s:sl_join(twwi)
     let o = a:twwi
     " TODO: Relocate or remove the above comments...
@@ -847,35 +880,42 @@ function! s:sl_join(twwi)
     return ret
 endfunction
 
-"" Note: start might be in leading ws; that's ok.
+" Return selection range corresponding to a *partial* multi-line join: i.e., a join that
+" would not pull an element after the selection onto a line containing the element
+" preceding the selection.
+" Assumption: This will be called only in *multi-line* scenario.
 function! s:partial_ml_join(twwi)
     let o = a:twwi
     if o.eol
-        " Select all whitespace but trailing newline.
+        " Select all whitespace up to but not including final newline.
         let start = o.ws_vs
         if o.eflags.eol
+            " Leave the trailing newline only.
             let end = o.ws_e
         else
+            " There's whitespace *after* the final newline, so we need to move back from
+            " ws_e: either to last char of preceding line, or if that line is blank, to
+            " just past the end of the line preceding the blank line.
+            " TODO: Consider *not* moving back if ws_e is at end of buffer with no
+            " trailing newline: i.e., should we handle EOB case specially like BOB?
+            " Rationale: Ensure that a delete would not pull the subsequent element onto
+            " the same line as an earlier element.
             let end = col([o.ws_e[1] - 1, '$']) == 1
                 \ ? [0, o.ws_e[1] - 2, col([o.ws_e[1] - 2, '$']), 0]
                 \ : [0, o.ws_e[1] - 1, col([o.ws_e[1] - 1, '$']) - 1, 0]
         endif
-    else
-        " !eol && bol
-        " Rationale: Can't get into this function if !bol and !eol (NOT TRUE!).
-        " Subsequent element on same line as last selected element means
-        " there's no trailing new line to leave. Select all leading whitespace
-        " back to but not including first newline. I'm thinking maybe leave
-        " the trailing whitespace, but haven't decided on that yet (TODO).
-        " TODO: Consider leaving the trailing ws on final line...
-        " Note: 1 scenario in which we don't want 1st col of line past
-        " ws_vs[1]: whitespace extends to 1st char in buffer, in which case,
-        " we simply select back to BOB.
+    else " !eol
+        " Subsequent element on same line as last selected element means there's no
+        " trailing newline to leave, so we'll have to leave newline at head. The existence
+        " of newline at head is guaranteed by the fact that for a *multi-line* join, !eol
+        " implies bol. Select all leading whitespace back to but not including first
+        " newline. I'm thinking maybe leave the trailing whitespace, but haven't decided
+        " on that yet (TODO).
+        " Special Case: If whitespace extends to 1st char in buffer, select back to BOB.
         let start = o.ws_vs[1] == 1 && o.ws_vs[2] == 1
             \ ? o.ws_vs
             \ : [0, o.ws_vs[1] + 1, 1, 0]
         let end = o.end
-        "let [start, end] = [o.ws_vs, [0, o.ws_vs[1] + 1, 1, 0]]
     endif
     return [start, end]
 endfunction

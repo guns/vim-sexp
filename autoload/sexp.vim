@@ -758,6 +758,11 @@ function! s:terminals_with_whitespace_info(start, end, leading)
         \ s:offset_char(o.ws_e, 1)[1] > o.ws_e[1]
         \ ? [0, o.ws_e[1], col([o.ws_e[1], '$']), 0]
         \ : o.ws_e
+    " Also, set *interior* end positions (i.e., not on final line).
+    let o.ws_si = o.ws_s[1] != o.ws_vs[1] ? o.ws_s[1] : [0, o.ws_s[1] + 1, 1, 0]
+    let o.ws_ei = col([o.ws_e[1] - 1, '$']) == 1
+        \ ? [0, o.ws_e[1] - 2, col([o.ws_e[1] - 2, '$']), 0]
+        \ : [0, o.ws_e[1] - 1, col([o.ws_e[1] - 1, '$']) - 1, 0]
     " De-normalized multi-line flag for convenience
     " Note: Single-line context is very restrictive: any scenario in which we'll have to
     " decide whether to include newlines will be a multi-line scenario.
@@ -834,133 +839,64 @@ function! s:get_join_whitespace(twwi)
     return ret
 endfunction
 
-" Assumption: !bos and !eos but there might not be any actual, non-newline
-" whitespace between the two candidate join elements... Or the join might
-" create a line that's too long. In either case, we return invalid list.
-" TODO: Wordsmith this comment...
-" Note: Empty lines count as whitespace.
-function! s:ml_join(twwi)
-    let o = a:twwi
-    let [spos, epos] = s:get_join_whitespace(o)
-    if !o.bol && !o.eol
-        " We're forced to join lines, one way or the other.
-        return spos[1] ? [spos, epos] : [o.start, o.end]
-    endif
-    " bol || eol
-    " Assumption: If range has any surrounding whitespace
-    " (neither leading nor trailing), in 
-    if spos[1]
-        " Get first kept char, which, for multi-line join, will always be next
-        " real char past last deleted char pos.
-        let eapos = s:offset_char(epos, 1)
-        " Determine length of joined line.
-        let jlen = spos[2] + strdisplaywidth(
-            \ getline(eapos[1])[eapos[2] - 1:], spos[2])
-
-        if jlen <= col([spos[1], '$'])
-            " Go ahead and join
-            return [spos, epos]
-        endif
-    endif
-    " Assumption: Can't get here if !bol && !eol; thus, we know there's a
-    " partial join possibility.
-    return s:partial_ml_join(o)
-endfunction
-
-" Return selection range corresponding to single-line join: i.e., a join in which element
-" before selection
-" start and end of selection
-function! s:sl_join(twwi)
-    let o = a:twwi
-    " TODO: Relocate or remove the above comments...
-    let ret = s:get_join_whitespace(o)
-    if !ret[0][1]
-        let ret = [o.start, o.end]
-    endif
-    return ret
-endfunction
-
-" Return selection range corresponding to a *partial* multi-line join: i.e., a join that
-" would not pull an element after the selection onto a line containing the element
-" preceding the selection.
-" Assumption: This will be called only in *multi-line* scenario.
-function! s:partial_ml_join(twwi)
-    let o = a:twwi
-    if o.eol
-        " Select all whitespace up to but not including final newline.
-        let start = o.ws_vs
-        if o.eflags.eol
-            " Leave the trailing newline only.
-            let end = o.ws_e
-        else
-            " There's whitespace *after* the final newline, so we need to move back from
-            " ws_e: either to last char of preceding line, or if that line is blank, to
-            " just past the end of the line preceding the blank line.
-            " TODO: Consider *not* moving back if ws_e is at end of buffer with no
-            " trailing newline: i.e., should we handle EOB case specially like BOB?
-            " Rationale: Ensure that a delete would not pull the subsequent element onto
-            " the same line as an earlier element.
-            let end = col([o.ws_e[1] - 1, '$']) == 1
-                \ ? [0, o.ws_e[1] - 2, col([o.ws_e[1] - 2, '$']), 0]
-                \ : [0, o.ws_e[1] - 1, col([o.ws_e[1] - 1, '$']) - 1, 0]
-        endif
-    else " !eol
-        " Subsequent element on same line as last selected element means there's no
-        " trailing newline to leave, so we'll have to leave newline at head. The existence
-        " of newline at head is guaranteed by the fact that for a *multi-line* join, !eol
-        " implies bol. Select all leading whitespace back to but not including first
-        " newline. I'm thinking maybe leave the trailing whitespace, but haven't decided
-        " on that yet (TODO).
-        " Special Case: If whitespace extends to 1st char in buffer, select back to BOB.
-        let start = o.ws_vs[1] == 1 && o.ws_vs[2] == 1
-            \ ? o.ws_vs
-            \ : [0, o.ws_vs[1] + 1, 1, 0]
-        let end = o.end
-    endif
-    return [start, end]
-endfunction
-
-" FIXME: Rework this comment completely to reflect changed logic!!!!!!!!!
 " Given start and end positions, returns new positions [start', end'],
 " according to logic described below.
-" !!!!!TODO: Pick up here... Question: Do we consider whitespace *under*
-" cursor?
-"
-"   * If trailing whitespace after end, end' is set to include the trailing
-"     whitespace up to the next element, unless start is preceded on its line
-"     by something other than whitespace (but not an opening bracket), in
-"     which case end' is set to include only the trailing whitespace to the
-"     end of line.
-"   * If start is preceded by opening bracket earlier on line (possibly with
-"     intervening whitespace) or there's an element between BOL and start but
-"     none between end and EOL, start' is set to include leading whitespace
-"     back to the previous element or opening bracket.
-"   * Otherwise start and end are returned verbatim.
-"   Possible TODO: There's a pair of scenarios in which it might make sense to
-"   pull in leading whitespace, even going back to an earlier line:
-"   ) [<ws>] <element> [<ws>] )
-"   ( [<ws>] <element> [<ws>] (
-"   TODO: Completely REWORK this comment to reflect changed logic!!!!!!
+" If (bos or eos) and !(precedes_com || follows_com)
+" 	Include *all* leading and trailing whitespace.
+" ElseIf eol
+" 	If !bol
+"     start' includes all leading whitespace
+"     end' includes all trailing whitespace up to the end of line preceding next element.
+"   Else
+"     " Rationale: Don't delete leading indent, as it could discombobulate
+"     If precedes_com
+"       end' includes all trailing whitespace up to the end of line preceding next element.
+"     Else
+"       end' includes the trailing whitespace up to the next element (or EOB)
+" Else " Element follows on same line
+"   end' includes trailing whitespace
 "
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
+" FIXME: Once the 'leading' arg is definitively removed, remove the ellipsis.
 function! s:terminals_with_whitespace(start, end, ...)
     let [start, end] = [a:start, a:end]
-    " Note: Leading can be empty.
-    let leading = a:0 ? a:1 : []
 
-    let o = s:terminals_with_whitespace_info(start, end, leading)
-    if o.follows_com || o.precedes_com
-        " Keep a newline (ml) or whitespace (sl).
-        return o.ml ? s:partial_ml_join(o) : s:sl_join(o)
-    elseif o.bos || o.eos
-        " Beginning or end of sexp and we've ruled out preceding/following
-        " comment, so just clean up.
-        return [o.ws_vs, o.ws_ve]
+    let o = s:terminals_with_whitespace_info(start, end, [])
+    if (o.bos || o.eos) && !(o.precedes_com || o.follows_com)
+        " No need to preserve whitespace bounded by bracket
+        " Include *all* leading and trailing whitespace.
+        let [start, end] = [o.ws_vs, o.ws_ve]
+    elseif o.eol
+        " Nothing follows selection end on its line. (Keep in mind selection start/end may
+        " not be on the same line.)
+        if !o.bol
+            " Something precedes selection start on its line.
+            " Make start' include all leading whitespace
+            " Make end' include all trailing whitespace up to the end of line *preceding* next element.
+            let [start, end] = [o.ws_vs, o.ws_ei]
+        else
+            " Don't modify start, as removal of leading indent tends to be disorienting.
+            " If user wants to cleanup at start, there's always cleanup and indent...
+            " TODO: Does it make sense to treat comments differently, or just allow the
+            " comment to come up to where the deleted element started? The only argument I
+            " can see for treating comment differently is that comments are typically
+            " formatted, and appear in aligned blocks, and pulling one up to bol could
+            " change its indent.
+            if o.precedes_com
+                " Make end' include all trailing whitespace up to the end of line preceding next element.
+                let end = o.ws_ei
+            else
+                " Make end' include the trailing whitespace up to the next element (or EOB)
+                let end = o.ws_ve
+            endif
+        endif
     else
-        " Perform appropriate join.
-        return o.ml ? s:ml_join(o) : s:sl_join(o)
+        " Element follows selection end on its line.
+        " Make end' include trailing whitespace.
+        let end = o.ws_ve
     endif
+    return [start, end]
 endfunction
 
 " Extend given positions to the terminals of any partially contained elements.

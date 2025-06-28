@@ -776,27 +776,56 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let o.ws_si = o.ws_vs[1] < o.start[1]
                 \ ? [0, o.ws_vs[1] + 1, 1, 0]
                 \ : s:compare_pos(o.ws_s, o.start) >= 0 ? o.start[:] : s:offset_char(o.ws_s, 1)
+    let end_is_blank = col([o.ws_ve[1], '$']) == 1
+    let end1_is_blank = o.ws_ve[1] < 2 || col([o.ws_ve[1] - 1, '$']) == 1
     if o.end[1] < o.ws_ve[1]
         " Trailing whitespace spans more than one line.
+        " Logic: Simple if ws_e != ws_ve, since in that case, we can just pull back to
+        " ws_e, leaving the newline at ws_ve. If ws_e == ws_ve, it means that trailing ws
+        " ends with either 1) non-newline whitespace immediately preceding next element or
+        " 2) a blank line. In case 2, pulling back to $ of previous line
+        " will always work (with caveat below); in case 1, this will work only if previous
+        " line is non-empty: hence, the extra branches in the ternary.
         " Caveat: Ternary must ensure special handling for blank line.
         " Explanation: If line preceding next is blank, we would, in theory, set ws_ei to
         " col 0 to prevent subsequent delete from pulling next element onto start line,
         " but this won't work, since col 0 is interpreted as col 1, which is effectively
         " the trailing newline.
-        " If ws_e/ve are the same, pull back to end of preceding line (with special
-        " handling for blank line), else just use ws_e, which leaves a trailing newline.
         " Assumption: ws_ei and ws_e will be equal for blank line at end of trailing ws.
+        " Caveat: Ensure we don't attempt pullback prior to beginning of buffer.
+        let l = minline = max([o.ws_ve[1] - 2, 1])
         let o.ws_ei = o.ws_e != o.ws_ve
                     \ ? o.ws_e
-                    \ : col([o.ws_ve[1], '$']) == 1
+                    \ : end_is_blank
                     \ ? [0, o.ws_ve[1] - 1, col([o.ws_ve[1] - 1, '$']), 0] 
-                    \ : col([o.ws_ve[1] - 1, '$']) == 1
-                    \ ? [0, o.ws_ve[1] - 2, col([o.ws_ve[1] - 2, '$']), 0]
+                    \ : end1_is_blank
+                    \ ? [0, minline, col([minline, '$']), 0]
                     \ : [0, o.ws_ve[1] - 1, col([o.ws_ve[1] - 1, '$']) - 1, 0] 
     else
         " Can't pull back a line, as end of trailing whitespace is colinear with end. Pull
         " back a char if possible.
         let o.ws_ei = o.ws_e == o.end ? o.ws_e : s:offset_char(o.ws_e, -1)
+    endif
+
+    if g:sexp_outer_element_keep_one_blank
+        " ws_ei2 is like ws_ei, but pulled back to exclude one extra newline from the
+        " selection (if another exists in trailing whitespace), else just ws_ei.
+        " Note: See earlier notes on ws_ei for an explanation of the ternary complexity.
+        " Get reference line: i.e., line from which we're pulling back.
+        let l = end_is_blank ? o.ws_ve[1] + 1 : o.ws_ve[1]
+        " Note: Subsequent logic ensures we won't use a negative line value.
+        let [l_tgt, l_tgt_prev] = [l - 2, l - 3]
+        if o.end[1] + 1 < l
+            " Ensure we don't try to go before beginning of buffer in what would have to
+            " be a pathological case (maybe impossible).
+            " Ternary ensures that if target pullback line has no non-newline char, we
+            " adjust back to newline of line *preceding* target line.
+            let o.ws_ei2 = l_tgt_prev >= 1 && col([l_tgt, '$']) == 1
+                        \ ? [0, l_tgt_prev, col([l_tgt_prev, '$']), 0]
+                        \ : [0, l_tgt, col([l_tgt, '$']) - 1, 0])
+        else
+            let o.ws_ei2 = o.ws_ei
+        endif
     endif
     " De-normalized multi-line flag for convenience
     " Note: Single-line context is very restrictive: any scenario in which we'll have to
@@ -900,6 +929,7 @@ endfunction
 " FIXME: Add this to options, with appropriate default...
 let g:sexp_join_lines = 1
 let g:sexp_prioritize_leading_indent = 1
+let g:sexp_outer_element_keep_one_blank = 1
 function! s:terminals_with_whitespace(start, end, ...)
     let [start, end] = [a:start, a:end]
 
@@ -914,8 +944,8 @@ function! s:terminals_with_whitespace(start, end, ...)
             let [start, end] = [o.ws_vs, o.ws_ei]
         elseif o.follows_com " && eos (implied)
             if o.prev_e[1] == start[1]
-                " Selection starts on same line as end! Must be inline comment. Use ws_si
-                " to attempt to leave 1 whitespace at start.
+                " Selection starts on same line as end of comment! Must be inline comment.
+                " Use ws_si to attempt to leave 1 whitespace at start.
                 let [start, end] = [o.ws_si, o.ws_ve]
             elseif o.close[1] == end[1]
                 " No newline between end of selection and close bracket
@@ -948,7 +978,6 @@ function! s:terminals_with_whitespace(start, end, ...)
         else
             " Leave the newline preceding next element and include all other leading/trailing
             " whitespace.
-            " FIXME: Add special handling with line length test for !bol case...
             let [start, end] = [o.ws_vs, o.ws_ei]
         endif
     else " !eol

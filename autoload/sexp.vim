@@ -517,20 +517,26 @@ function! sexp#current_element_terminal(end)
 endfunction
 
 " Returns position of previous/next element's head/tail.
-" Returns current element's terminal if no adjacent element exists.
+" Returns current element's terminal if no adjacent element exists, unless optional
+" 'ignore_current' argument is set, in which case, return unmodified current position.
 " TODO: Currently, returns input position unmodified if no adjacent and no current. Is
 " this best approach? It's always worked like this, so changing it to (eg) null pos should
 " not be done without significant analysis/testing.
-function! s:nearest_element_terminal(next, tail)
+function! s:nearest_element_terminal(next, tail, ...)
     let cursor = getpos('.')
     let pos = cursor
+    " If optional flag is set, keep original position if no adjacent element (as opposed
+    " to returning current terminal in desired direction).
+    let ignore_current = a:0 && a:1
 
     try
         let terminal = sexp#current_element_terminal(a:next)
 
         if terminal[1] > 0 && s:compare_pos(pos, terminal) != 0
-            let pos = terminal
-            call s:setcursor(pos)
+            if !ignore_current
+                let pos = terminal
+            endif
+            call s:setcursor(terminal)
             " b moves to the head of the current word if not already on the
             " head and e moves to the tail if not on the tail. However, ge
             " does not!
@@ -698,8 +704,9 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
 endfunction
 
 " Analyze the text before/after start/end and fill the return dictionary with fields that
-" completely characterize it, with the goal of supporting the logic that determines the
-" optimal visual selection for an outer element.
+" completely characterize it, with the goal of supporting the logic in
+" s:terminals_with_whitespace() that determines the optimal visual selection for an outer
+" element.
 function! s:terminals_with_whitespace_info(start, end, leading)
     let cursor = getpos('.')
     let o = {}
@@ -722,8 +729,21 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let o.follows_com = !o.bos && s:is_comment(p[1], p[2])
     let o.follows_list = !o.bos && s:is_list(p[1], p[2])
     " FIXME: Get rid of o.next_e if only o.next_s is needed.
-    let o.prev_e = o.bos ? s:nullpos : p
+    " Get bounds of prev or open.
+    if !o.bos
+        " Save bounds of prev element.
+        call s:setcursor(p)
+        let ps = sexp#current_element_terminal(0)
+        let [o.prev_s, o.prev_e] = [ps, p]
+        let o.open = s:nullpos
+    else
+        " Save position of open
+        let o.open = s:nearest_bracket(0)
+        let [o.prev_s, o.prev_e] = s:nullpos_pair
+    endif
+    call s:setcursor(o.start)
     " Is current element a comment? Make sure we're on an element before testing.
+    " FIXME: Is this needed? Why do we care what current element is?
     let p = sexp#current_element_terminal(0)
     if !p[1]
         " TODO: Do we need to handle null pos here? Is it even possible?
@@ -736,6 +756,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let o.eos = s:compare_pos(p, a:end) <= 0
     let o.precedes_com = !o.eos && s:is_comment(p[1], p[2])
     let o.precedes_list = !o.eos && s:is_list(p[1], p[2])
+    " Get next and prev element extents.
     if !o.eos
         " Save bounds of next element.
         " Note: Currently, this is required only in list case. Consider optimization.
@@ -748,6 +769,11 @@ function! s:terminals_with_whitespace_info(start, end, leading)
         let o.close = s:nearest_bracket(1)
         let [o.next_s, o.next_e] = s:nullpos_pair
     endif
+    " Save number of whitespace-only lines preceding and following selection.
+    " TODO: Consider allowing this to go negative to differentiate between adjacent and
+    " same line cases. Alternatively, could make it a line delta.
+    let o.preceding_blanks = max([0, o.start[1] - (o.bos ? o.open[1] : o.prev_e[1]) - 1])
+    let o.following_blanks = max([0, (o.eos ? o.close[1] : o.next_s[1]) - o.end[1] - 1])
 
     " Find end of any sequences of whitespace immediately preceding start or
     " following end. (Returns input pos if no such whitespace.)
@@ -758,73 +784,84 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     " will differ when last non-newline whitespace is at bol or eol.
     " TODO: Does this rely on ve=onemore? I don't think so, but if not, what does?
     " At bol, pull back to end of preceding line, else use ws_s.
-    let o.ws_vs =
-        \ o.ws_s[2] == 1 && o.ws_s[1] > 1
+    let o.ws_vs = o.ws_s[2] == 1 && o.ws_s[1] > 1
         \ ? [0, o.ws_s[1] - 1, col([o.ws_s[1] - 1, '$']), 0]
         \ : o.ws_s
-    " At eol, use position just past end, else use ws_e.
-    " FIXME!!!! Handle eob properly and add any other special logic...
-    let o.ws_ve =
-        \ s:offset_char(o.ws_e, 1)[1] > o.ws_e[1]
-        \ ? [0, o.ws_e[1], col([o.ws_e[1], '$']), 0]
+    " If trailing ws ends in newline, use that, else ws_e.
+    let ecol = col([o.ws_e[1], '$'])
+    let o.ws_ve = s:offset_char(o.ws_e, 1, 1)[2] >= ecol
+        \ ? [0, o.ws_e[1], ecol, 0]
         \ : o.ws_e
-    " Also, set *interior* end positions, which are the extreme positions on the
-    " *penultimate* line of leading/trailing whitespace, else (if no newline in run of
-    " whitespace) the position of the penultimate non-newline whitespace char, else (if
-    " no leading/trailing whitespace) the original position.
+    " Set *interior* end positions, which are pulled in a bit from the end of the
+    " trailing whitespace: if possible, by excluding the outermost 1 or 2 newlines
+    " (option-dependent line offset value calculated below), else by excluding a single
+    " whitespace char (if possible).
+    " Important Note: Determine line offset for both sides, taking the pertinent option
+    " into account.
+    " Logic: If at least one blank following or no blanks preceding, let ws_ei handle
+    " leaving the extra blank; else let ws_si handle it.
+    let [s_off, e_off] = !g:sexp_cleanup_keep_one_blank
+                \ ? [1, 1]
+                \ : o.following_blanks || !o.preceding_blanks
+                \ ? [1, 2]
+                \ : [2, 1]
     " Caveat: Handle unusual case of no whitespace before start and preceding element.
-    let o.ws_si = o.ws_vs[1] < o.start[1]
-                \ ? [0, o.ws_vs[1] + 1, 1, 0]
-                \ : s:compare_pos(o.ws_s, o.start) >= 0 ? o.start[:] : s:offset_char(o.ws_s, 1)
-    let end_is_blank = col([o.ws_ve[1], '$']) == 1
-    let end1_is_blank = o.ws_ve[1] < 2 || col([o.ws_ve[1] - 1, '$']) == 1
-    if o.end[1] < o.ws_ve[1]
-        " Trailing whitespace spans more than one line.
-        " Logic: Simple if ws_e != ws_ve, since in that case, we can just pull back to
-        " ws_e, leaving the newline at ws_ve. If ws_e == ws_ve, it means that trailing ws
-        " ends with either 1) non-newline whitespace immediately preceding next element or
-        " 2) a blank line. In case 2, pulling back to $ of previous line
-        " will always work (with caveat below); in case 1, this will work only if previous
-        " line is non-empty: hence, the extra branches in the ternary.
-        " Caveat: Ternary must ensure special handling for blank line.
-        " Explanation: If line preceding next is blank, we would, in theory, set ws_ei to
-        " col 0 to prevent subsequent delete from pulling next element onto start line,
-        " but this won't work, since col 0 is interpreted as col 1, which is effectively
-        " the trailing newline.
-        " Assumption: ws_ei and ws_e will be equal for blank line at end of trailing ws.
-        " Caveat: Ensure we don't attempt pullback prior to beginning of buffer.
-        let l = minline = max([o.ws_ve[1] - 2, 1])
-        let o.ws_ei = o.ws_e != o.ws_ve
-                    \ ? o.ws_e
-                    \ : end_is_blank
-                    \ ? [0, o.ws_ve[1] - 1, col([o.ws_ve[1] - 1, '$']), 0] 
-                    \ : end1_is_blank
-                    \ ? [0, minline, col([minline, '$']), 0]
-                    \ : [0, o.ws_ve[1] - 1, col([o.ws_ve[1] - 1, '$']) - 1, 0] 
+    if o.ws_vs[1] < o.start[1]
+        if o.preceding_blanks > o.following_blanks
+            let l = min([o.start[1], o.ws_vs[1] + s_off])
+            let o.ws_si = [0, l, 1, 0]
+        else
+            " Special Case: ws_ei will assure the newline, so make sure leading whitespace
+            " doesn't include any.
+            let o.ws_si = o.ws_vs
+        endif
+    else
+        " No newlines in leading whitespace. Exclude 1 whitespace char if possible.
+        " Caveat: Handle unusual case of no whitespace between start and preceding element.
+        let o.ws_si = s:compare_pos(o.ws_s, o.start) >= 0 ? o.start[:] : s:offset_char(o.ws_s, 0)
+    endif
+
+    " Caveat: Special handling required for blank line.
+    " Explanation: On a blank line, the only possible cursor position is 1 past end of
+    " line (effectively *on* the newline); thus, to exclude that newline from the
+    " selection, it's necessary to go back to the preceding line. Note that if there were
+    " even a single whitespace char on the line, we could rewind to it to exclude the
+    " newline.
+    " Special Case: Ordinarily, ws_ve != ws_e indicates trailing whitespace ends with
+    " newline; however, ws_ve == ws_e when trailing whitespace ends with blank line.
+    " Caveat: Ensure we don't attempt pullback prior to beginning of buffer.
+    if o.ws_ve[1] > o.end[1]
+        if o.preceding_blanks > o.following_blanks
+            " Special Case: ws_si will assure the newline, so include everything up to
+            " beginning of last line of trailing whitespace.
+            let o.ws_ei = o.ws_e != o.ws_ve ? o.ws_ve : [0, o.ws_ve[1] - 1, col([o.ws_ve[1] - 1, '$']), 0]
+        else
+            " At least one newline in trailing whitespace
+            let end_is_blank = col([o.ws_ve[1], '$']) == 1
+            " Get reference line: i.e., line from which pullback back is measured. For
+            " trailing whitespace that ends with newline, this will ws_ve + 1, else ws_ve.
+            " Note: A special test is required for blank lines, for which ws_ve == ws_e.
+            let l = end_is_blank || o.ws_ve != o.ws_e ? o.ws_ve[1] + 1 : o.ws_ve[1]
+            " Determine how far to pull back, careful not to surpass end of sel.
+            let off = min([l - o.end[1], e_off])
+            " Note: Calculate the nominal target line, and the one prior to it, which is
+            " needed only in special case of blank target line, for reasons described earlier.
+            let [l_tgt, l_tgt_prev] = [l - off, max([o.end[1], l - off - 1])]
+            " Ternary ensures that if target pullback line has no non-newline char, we
+            " adjust back to newline of line *preceding* target line.
+            let ecol = col([l_tgt, '$'])
+            let o.ws_ei = ecol == 1
+                        \ ? [0, l_tgt_prev, col([l_tgt_prev, '$']), 0]
+                        \ : [0, l_tgt, ecol - 1, 0]
+        endif
     else
         " Can't pull back a line, as end of trailing whitespace is colinear with end. Pull
         " back a char if possible.
-        let o.ws_ei = o.ws_e == o.end ? o.ws_e : s:offset_char(o.ws_e, -1)
-    endif
-
-    if g:sexp_outer_element_keep_one_blank
-        " ws_ei2 is like ws_ei, but pulled back to exclude one extra newline from the
-        " selection (if another exists in trailing whitespace), else just ws_ei.
-        " Note: See earlier notes on ws_ei for an explanation of the ternary complexity.
-        " Get reference line: i.e., line from which we're pulling back.
-        let l = end_is_blank ? o.ws_ve[1] + 1 : o.ws_ve[1]
-        " Note: Subsequent logic ensures we won't use a negative line value.
-        let [l_tgt, l_tgt_prev] = [l - 2, l - 3]
-        if o.end[1] + 1 < l
-            " Ensure we don't try to go before beginning of buffer in what would have to
-            " be a pathological case (maybe impossible).
-            " Ternary ensures that if target pullback line has no non-newline char, we
-            " adjust back to newline of line *preceding* target line.
-            let o.ws_ei2 = l_tgt_prev >= 1 && col([l_tgt, '$']) == 1
-                        \ ? [0, l_tgt_prev, col([l_tgt_prev, '$']), 0]
-                        \ : [0, l_tgt, col([l_tgt, '$']) - 1, 0])
+        if o.preceding_blanks > o.following_blanks && o.ws_e != o.ws_ve
+            " Special Case: ws_si will assure newline, so don't leave one here.
+            let o.ws_ei = o.ws_ve
         else
-            let o.ws_ei2 = o.ws_ei
+            let o.ws_ei = s:compare_pos(o.ws_e, o.end) <= 0 ? o.end[:] : s:offset_char(o.ws_e, 0)
         endif
     endif
     " De-normalized multi-line flag for convenience
@@ -865,42 +902,72 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
-" Figure out the proper whitespace to select for either (non-partial) multi or single line
-" join. Returns null sentinel to indicate failure. In the multi-line case, success
-" indicates the lines would be joined by subsequent delete; in single-line case, success
-" simply means we were able to find suitable whitespace to include in selection.
-" TODO: "Join" may be misnomer, given that this handles single-line case as well. Consider
-" changing to get_whitespace_extents() or some such...
-function! s:get_join_whitespace(twwi)
+" Return integer indicating the 0-based offset in list of the element at the specified
+" position, else -1 if position not inside a list.
+function! s:is_list_head(pos)
+    let save_cursor = getpos('.')
+    try
+        call s:setcursor(a:pos)
+        " Attempt to find previous element.
+        let p = s:nearest_element_terminal(0, 1, 1)
+        if p != a:pos
+            " Previous element implies not head of list.
+            " Note: In many cases, this allows short-circuiting a test for top-level.
+            return 0
+        endif
+        " No previous element, but we still need to check whether we're in list.
+        return !s:at_top(a:pos[1], a:pos[2])
+    finally
+        call s:setcursor(save_cursor)
+    endtry
+endfunction
+
+" Using options and the input object produced by s:terminals_with_whitespace_info(),
+" return true iff selection should be adjusted to ensure that, upon delete, the element
+" following selection will be appended to the element before the selection.
+" Note: Take all relevant options into account.
+" join_at_toplevel:
+"     0 (default)
+"     1 make no distinction between inside list and top-level
+" join_affinity:
+"     0 = never join
+"     1 = append only to head of list
+"     2 = append anywhere (subject to other constraints)
+" join_multiline
+"     0 = allow append of single line elements only
+"     1 = allow append of both single and multi-line elements
+" join_tw
+"     0 = disables checking (as with 'tw')
+"     -1 use &tw
+"     else override &tw
+function! s:outer_element_can_append(twwi)
     let o = a:twwi
-    " TODO: Maybe use global (readonly) sentinel?
-    let ret = [[0,0,0,0],[0,0,0,0]]
-    " Determine screen width of start/end whitespace char (0 if none).
-    " Rationale: Visible width of whitespace used to determine which end to keep.
-    " Note: Range ws_s..ws_e does not *necessarily* include whitespace (but almost always
-    " will).
-    let scl = o.sflags.real ? strdisplaywidth(o.sflags.chr, o.ws_s[2]) : 0
-    let ecl = o.eflags.real ? strdisplaywidth(o.eflags.chr, o.ws_e[2]) : 0
-    " Get first position to discard on first line (spos) and last position to discard on
-    " last line (epos).
-    " Note: Joining requires at least one actual (real) whitespace char. (Blank line isn't
-    " sufficient.)
-    " Also Note: If the selection is followed immediately by delete/change command, it
-    " doesn't really matter whether a single whitespace is kept at start or end; however,
-    " since the user may view the selection, we try to make the choice that will not
-    " violate the POLS.
-    if (ecl &&
-        \ (!scl
-        \  || (!empty(o.leading) && s:compare_pos(o.leading, o.ws_s) <= 0)
-        \  || ecl < scl))
-        " Select all leading and all but final trailing whitespace.
-        let ret = [o.ws_vs, s:offset_char(o.ws_e, 0, 1)]
-    elseif scl
-        " Select all trailing and all but initial leading whitespace.
-        " Note: Must handle special case of a kept whitespace at eol.
-        let ret = [s:offset_char(o.ws_s, 1, 1), o.ws_ve]
+    let tw = g:sexp_cleanup_join_tw < 0 ? (&tw ? &tw : 80) : g:sexp_cleanup_join_tw
+    let [affinity, ml, top] =
+        \ [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline, g:sexp_cleanup_join_at_toplevel]
+    " Note: affinity shouldn't be less than zero, but err on side of disabling...
+    if affinity <= 0 || !o.next_s[1]
+        " Joining disabled or no next element to append.
+        return 0
     endif
-    return ret
+    " Is join precluded by context?
+    if o.bol || o.is_com || o.precedes_com
+        return 0
+    endif
+    " Is join precluded by line length constraint?
+    if tw > 0 && tw < o.prev_e[2] + col([o.next_s[1], '$']) - o.next_s[2]
+        return 0
+    endif
+    if !ml && o.next_s[1] != o.next_e[1]
+        " Only single-line joins permitted.
+        return 0
+    endif
+    " Apply affinity constraints.
+    if affinity == 1 && !s:is_list_head(o.prev_e)
+        " Affinity is for appends to list head, but prev element is not list head.
+        return 0
+    endif
+    return 1
 endfunction
 
 " Given start and end positions, returns new positions [start', end'],
@@ -925,12 +992,7 @@ endfunction
 "
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
-" FIXME: Once the 'leading' arg is definitively removed, remove the ellipsis.
-" FIXME: Add this to options, with appropriate default...
-let g:sexp_join_lines = 1
-let g:sexp_prioritize_leading_indent = 1
-let g:sexp_outer_element_keep_one_blank = 1
-function! s:terminals_with_whitespace(start, end, ...)
+function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
 
     " TODO: Rename as get_ctx or some such...
@@ -952,7 +1014,7 @@ function! s:terminals_with_whitespace(start, end, ...)
                 " Leave the newline following comment to avoid pulling close bracket into
                 " comment line but select all trailing whitespace.
                 let end = o.ws_ve
-                if !g:sexp_prioritize_leading_indent
+                if !g:sexp_cleanup_prioritize_leading_indent
                     let start = o.ws_si
                 endif
             else
@@ -967,18 +1029,20 @@ function! s:terminals_with_whitespace(start, end, ...)
             let [start, end] = [o.ws_vs, o.ws_ve]
         endif
     elseif o.eol
-        " TODO: Consider adding a g:sexp_outer_element_join_affinity option.
-        " TODO: Consider treating first element of a form specially, or possibly just
-        " whether we're in a form.
-        " Consider joining, but only if doing so wouldn't violate 'tw' constraint.
-        " FIXME: Clean this up...
-        if !o.bol && !o.precedes_com &&
-                    \ (&tw ? &tw : 80) >= o.prev_e[2] + (col([o.next_s[1], '$']) - o.next_s[2])
+        " Consider join, but only if it won't violate option-dependent constraints.
+        if s:outer_element_can_append(o)
             let end = o.ws_ve
         else
-            " Leave the newline preceding next element and include all other leading/trailing
-            " whitespace.
-            let [start, end] = [o.ws_vs, o.ws_ei]
+            " Not appending. If g:sexp_cleanup_keep_one_blank is unset, we simply
+            " eat up all leading whitespace and leave the final newline in the trailing
+            " whitespace. If g:sexp_cleanup_keep_one_blank is set and there's a
+            " blank line before selection but not after, we use the 'inner' start/end
+            " positions, which have been coordinated to ensure a blank line is left before
+            " prev and alignment of next is preserved.
+            let [start, end] =
+                        \ g:sexp_cleanup_keep_one_blank && !o.following_blanks && o.preceding_blanks
+                        \ ? [o.ws_si, o.ws_ei]
+                        \ : [o.ws_vs, o.ws_ei]
         endif
     else " !eol
         if !o.bol
@@ -989,7 +1053,7 @@ function! s:terminals_with_whitespace(start, end, ...)
         else " o.bol
             " Select all trailing ws to pull next element back to selection start.
             let end = o.ws_ve
-            if !g:sexp_prioritize_leading_indent
+            if !g:sexp_cleanup_prioritize_leading_indent
                 " Caveat!: This will pull next element back to start of line on delete,
                 " which can be rather disorienting. OTOH, if we don't do it, we may leave
                 " a lot of whitespace preceding the selection.
@@ -1155,6 +1219,7 @@ function! s:offset_char(pos, dir, ...)
     call s:setcursor(cursor)
     return [0, l, c, 0]
 endfunction
+"let g:Oc = function('s:offset_char')
 
 function! s:super_range_ts(start, end)
     let ret = luaeval(
@@ -2420,7 +2485,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
 
     if !a:inner
         " Perform whitespace cleanup.
-        let [start, end] = s:terminals_with_whitespace(start, end, leading)
+        let [start, end] = s:terminals_with_whitespace(start, end)
     endif
 
     call s:setcursor(save_cursor)

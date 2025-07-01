@@ -813,6 +813,8 @@ function! s:terminals_with_whitespace_info(start, end, leading)
         else
             " Special Case: ws_ei will assure the newline, so make sure leading whitespace
             " doesn't include any.
+            " FIXME: Is it necessary to consider preceding_blanks > following_blanks both
+            " here and in caller? If not, simplify in one place or the other...
             let o.ws_si = o.ws_vs
         endif
     else
@@ -831,12 +833,12 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     " newline; however, ws_ve == ws_e when trailing whitespace ends with blank line.
     " Caveat: Ensure we don't attempt pullback prior to beginning of buffer.
     if o.ws_ve[1] > o.end[1]
+            " At least one newline in trailing whitespace
         if o.preceding_blanks > o.following_blanks
             " Special Case: ws_si will assure the newline, so include everything up to
             " beginning of last line of trailing whitespace.
             let o.ws_ei = o.ws_e != o.ws_ve ? o.ws_ve : [0, o.ws_ve[1] - 1, col([o.ws_ve[1] - 1, '$']), 0]
         else
-            " At least one newline in trailing whitespace
             let end_is_blank = col([o.ws_ve[1], '$']) == 1
             " Get reference line: i.e., line from which pullback back is measured. For
             " trailing whitespace that ends with newline, this will ws_ve + 1, else ws_ve.
@@ -857,10 +859,17 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     else
         " Can't pull back a line, as end of trailing whitespace is colinear with end. Pull
         " back a char if possible.
-        if o.preceding_blanks > o.following_blanks && o.ws_e != o.ws_ve
-            " Special Case: ws_si will assure newline, so don't leave one here.
+        " FIXME: Need to decide whether start or end pulls back when both are colinear...
+        " Actually, maybe not, as there's only one case in which we use both si and ei...
+        if o.preceding_blanks > 0
+            " Special Case: If we're not joining, ws_si will leave at least 1 newline at
+            " start, and in case of join, we leave the leading whitespace to preserve
+            " alignment, so don't need to leave any whitespace at end.
             let o.ws_ei = o.ws_ve
         else
+            " FIXME!!!: Do we coordinate si/ei here? I.e., ensure we don't keep both
+            " leading and trailing ws? Or can we rely on the fact that there's only 1
+            " scenario in which we use both si/ei, and they're coordinated there.
             let o.ws_ei = s:compare_pos(o.ws_e, o.end) <= 0 ? o.end[:] : s:offset_char(o.ws_e, 0)
         endif
     endif
@@ -1032,13 +1041,18 @@ function! s:terminals_with_whitespace(start, end)
         " Consider join, but only if it won't violate option-dependent constraints.
         if s:outer_element_can_append(o)
             let end = o.ws_ve
-        else
-            " Not appending. If g:sexp_cleanup_keep_one_blank is unset, we simply
+        elseif !o.bol
+            " Not appending
+            let [start, end] = [o.ws_vs, o.ws_ei]
+        else " eol && bol
+            " If g:sexp_cleanup_keep_one_blank is unset, we simply
             " eat up all leading whitespace and leave the final newline in the trailing
             " whitespace. If g:sexp_cleanup_keep_one_blank is set and there's a
             " blank line before selection but not after, we use the 'inner' start/end
             " positions, which have been coordinated to ensure a blank line is left before
             " prev and alignment of next is preserved.
+            " FIXME: Currently, The ternary could be replace with simple assignment to
+            " [o.ws_si, o.ws_ei].
             let [start, end] =
                         \ g:sexp_cleanup_keep_one_blank && !o.following_blanks && o.preceding_blanks
                         \ ? [o.ws_si, o.ws_ei]
@@ -2930,7 +2944,7 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
 endfunction
 
 " Note: This preadjustment step isn't strictly necessary, since number of
-" bytes to be deleted could be calculated theoritically (even before any
+" bytes to be deleted could be calculated theoretically (even before any
 " buffer modifications have occurred) using pos2byte etc on start/end;
 " attempting to convert from bytes back to positions, however, is
 " significantly more complex: much simpler/safer to do it using byte2pos after
@@ -3399,6 +3413,8 @@ endfunction
 function! s:cleanup_ws(start, at_top, ps, ...)
     let end = a:0 ? a:1 : [0, 0, 0, 0]
     let [open, close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    " TODO: Consider factoring this first if/else into its own function: cleanup_init, or
+    " some such...
     if !end[1]
         let open = a:start[:]
         " Cleanup a list.

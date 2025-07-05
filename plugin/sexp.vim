@@ -43,31 +43,34 @@ if !exists('g:sexp_prefer_legacy_syntax')
     let g:sexp_prefer_legacy_syntax = 0
 endif
 
-if !exists('g:sexp_cleanup_keep_one_blank')
-    let g:sexp_cleanup_keep_one_blank = 1
-endif
-
-if !exists('g:sexp_cleanup_join_textwidth')
-    " -1=use &tw 0=ignore line width >0=max line width to create with join
-    let g:sexp_cleanup_join_textwidth = -1
+if !exists('g:sexp_cleanup_keep_empty_lines')
+    let g:sexp_cleanup_keep_empty_lines = 1
 endif
 
 if !exists('g:sexp_cleanup_join_affinity')
-    " 0=never join 1=append to head of list 2=append anywhere
     let g:sexp_cleanup_join_affinity = 1
 endif
 
-if !exists('g:sexp_cleanup_join_at_toplevel')
-    let g:sexp_cleanup_join_at_toplevel = 0
-endif
-
-if !exists('g:sexp_prioritize_leading_indent')
-    let g:sexp_cleanup_prioritize_leading_indent = 1
+if !exists('g:sexp_cleanup_join_textwidth')
+    let g:sexp_cleanup_join_textwidth = -1
 endif
 
 if !exists('g:sexp_cleanup_join_multiline')
-    let g:sexp_cleanup_join_multiline = 1
+    let g:sexp_cleanup_join_multiline = 0
 endif
+
+if !exists('g:sexp_cleanup_lineshift_limit')
+    let g:sexp_cleanup_lineshift_limit = 4
+endif
+
+if !exists('g:sexp_cleanup_colshift')
+    let g:sexp_cleanup_colshift = 0
+endif
+
+if !exists('g:sexp_cleanup_colshift_slope')
+    let g:sexp_cleanup_colshift_slope = 8
+endif
+
 
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}

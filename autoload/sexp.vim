@@ -807,7 +807,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     let start_assures_newline =
                 \ o.following_line_gap < 2 && o.preceding_line_gap > o.following_line_gap
     " Determine option-dependent pullback line offset.
-    let off = !g:sexp_cleanup_keep_one_blank ? 1 : 2
+    let off = g:sexp_cleanup_keep_empty_lines + 1
     if o.ws_vs[1] < o.start[1]
         " At least one newline in leading whitespace
         if start_assures_newline
@@ -929,13 +929,11 @@ endfunction
 " return true iff selection should be adjusted to ensure that, upon delete, the element
 " following selection will be appended to the element before the selection.
 " Note: Take all relevant options into account.
-" join_at_toplevel:
-"     0 (default)
-"     1 make no distinction between inside list and top-level
 " join_affinity:
 "     0 = never join
 "     1 = append only to head of list
-"     2 = append anywhere (subject to other constraints)
+"     2 = append anywhere but top-level (subject to other constraints)
+"     3 = append anywhere (including top-level, subject to other constraints)
 " join_multiline
 "     0 = allow append of single line elements only
 "     1 = allow append of both single and multi-line elements
@@ -946,15 +944,19 @@ endfunction
 function! s:outer_element_can_append(twwi)
     let o = a:twwi
     let tw = g:sexp_cleanup_join_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
-    let [affinity, ml, top] =
-        \ [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline, g:sexp_cleanup_join_at_toplevel]
+    let [affinity, ml] =
+        \ [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
     " Note: affinity shouldn't be less than zero, but err on side of disabling...
     if affinity <= 0 || !o.next_s[1]
         " Joining disabled or no next element to append.
         return 0
     endif
     " Is join precluded by context?
-    if o.bol || o.is_com || o.precedes_com
+    " Logic:
+    " * Don't append to an element that wasn't already followed by an element on its line.
+    " * Don't join elements that were separated by a comment
+    " * Don't append a comment to anything or anything to a comment
+    if o.bol || o.is_com || o.precedes_com || o.follows_com
         return 0
     endif
     " Is join precluded by line length constraint?
@@ -970,7 +972,43 @@ function! s:outer_element_can_append(twwi)
         " Affinity is for appends to list head, but prev element is not list head.
         return 0
     endif
+    " Now that all other checks have passed, do top-level check only if necessary.
+    if affinity < 3 && s:at_top(o.start[1], o.start[2])
+        return 0
+    endif
     return 1
+endfunction
+
+" Return 1 to prioritize preservation of leading indent, 0 to prioritize removal of
+" leading whitespace.
+function! s:prioritize_leading_indent(twwi)
+    let o = a:twwi
+    let [cs, css, lsl] =
+            \ [g:sexp_cleanup_colshift, g:sexp_cleanup_colshift_slope, g:sexp_cleanup_lineshift_limit]
+    " Short-circuit in left-margin case.
+    if o.start[2] == 1 | return 0 | endif
+    " Short-circuit in top-level case.
+    if s:at_top(o.start[1], o.start[2]) | return 0 | endif
+    " Short-circuit if removal of leading whitespace wouldn't remove any lines.
+    if o.ws_si[1] >= o.start[1] | return 1 | endif
+    " Short-circuit if options preclude possibility of preferring leading blanks.
+    if !cs && !css && !lsl | return 1 | endif
+    " Guarantee: At least one nonzero option value needs to be considered.
+    " Since g:sexp_cleanup_leading_newlines takes precedence, consider it first.
+    let lshift = o.start[1] - o.ws_si[1]
+    if lsl > 0 &&  lshift >= lsl
+        " Prioritize leading whitespace removal.
+        return 0
+    endif
+    " Calculate col shift threshold according to linear eq.
+    let cshift = cs + css * lshift
+    " Short-circuit if zero cshift precludes need for comparison.
+    if !cshift | return 1 | endif
+    " Use leading indent (in screen width) of start of selection to make final decision.
+    " Note: The -2 offset accounts for 1-to-0-based index conversion and excludes the
+    " start char itself from the calculation (since we're calculating width of what
+    " precedes it).
+    return strdisplaywidth(getline(o.start[1])[:o.start[2] - 2]) >= cshift
 endfunction
 
 " Given start and end positions, returns new positions [start', end'],
@@ -1000,54 +1038,15 @@ function! s:terminals_with_whitespace(start, end)
 
     " TODO: Rename as get_ctx or some such...
     let o = s:terminals_with_whitespace_info(start, end, [])
-    if o.bos || o.eos
-        if o.precedes_com " && bos (implied)
-            " Make start' include all leading whitespace, and end' include up to but not
-            " including the newline preceding the comment (buf if there is no newline,
-            " leave the final whitespace).
-            " TODO: Decide whether to leave whitespace between open and colinear comment.
-            " FIXME!!! Was broken due to inter-dependency - rework and retest...
-            if o.bol && o.eol
-                " Newlines surround selection.
-                let [start, end] = [o.ws_si, o.ws_ei]
-            elseif o.eol
-                let [start, end] = [o.ws_vs, o.ws_ei]
-            elseif o.bol
-                let [start, end] = [o.ws_si, o.ws_ve]
-            else
-                " Try to keep leading whitespace, but fall back to trailing.
-                let end = start == o.ws_e ? o.ws_ei : o.ws_ve
-            endif
-        elseif o.follows_com " && eos (implied)
-            " FIXME: Rework to use bol/eol for consistency with above...
-            if o.prev_e[1] == start[1]
-                " Selection starts on same line as end of comment! Must be inline comment.
-                " Use ws_si in attempt to leave 1 whitespace at start.
-                " TODO: Consider logic to leave whitespace at end in pathological case in
-                " which there's trailing but no leading whitespace.
-                let [start, end] = [o.ws_si, o.ws_ve]
-            elseif o.close[1] == end[1]
-                " No newline between end of selection and close bracket
-                let end = o.ws_ve
-                if !g:sexp_cleanup_prioritize_leading_indent
-                    " Leave the newline following comment to avoid pulling close bracket
-                    " into comment line, but include the rest of leading whitespace.
-                    let start = o.ws_si
-                endif
-            else
-                " Newlines surround selection.
-                " Note: Calculation of ws_ei ensures we leave the newline preceding the
-                " closing bracket to avoid changing its indent.
-                let [start, end] = [o.ws_si, o.ws_ei]
-            endif
-        else
-            " No need to preserve any whitespace adjacent to bracket; include *all*
-            " leading/trailing whitespace.
-            " Note: This necessarily handles the case of bos && eos.
-            let [start, end] = [o.ws_vs, o.ws_ve]
-        endif
+    if (o.bos || o.eos) && (!o.precedes_com && !o.follows_com)
+        " No need to preserve any whitespace adjacent to bracket; include *all*
+        " leading/trailing whitespace.
+        " Note: s:outer_element_can_append() is the only other place we require special
+        " handling for comments and begin/end of sexp.
+        let [start, end] = [o.ws_vs, o.ws_ve]
     elseif o.eol
         " Consider join, but only if it won't violate option-dependent constraints.
+        " Note: Comment constraints are applied by outer_element_can_append().
         if s:outer_element_can_append(o)
             " Note: Ideally, we would select all trailing ws, excluding leading ws to
             " preserve alignment of next element; however, in pathological scenario in
@@ -1073,10 +1072,12 @@ function! s:terminals_with_whitespace(start, end)
         else " o.bol
             " Select all trailing ws to pull next element back to selection start.
             let end = o.ws_ve
-            if !g:sexp_cleanup_prioritize_leading_indent
-                " Caveat!: This will pull next element back to start of line on delete,
-                " which can be rather disorienting. OTOH, if we don't do it, we may leave
-                " a lot of whitespace preceding the selection.
+            " Use options and selection context to decide whether to pull in leading
+            " whitespace.
+            " Rationale: Pulling in leading whitespace entails the loss of leading indent
+            " before start, which can be disorienting to user, especially when there was a
+            " lot of it (e.g., inside deeply-nested form).
+            if !s:prioritize_leading_indent(o)
                 let start = o.ws_si
             endif
         endif

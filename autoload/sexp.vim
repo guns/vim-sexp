@@ -3165,7 +3165,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
 
     return ret
 endfu
-let Ydr = function('s:yankdel_range')
+"let Ydr = function('s:yankdel_range')
 
 " Put input text at specified position, with input flags determining whether
 " paste works like p, P, gp or gP.
@@ -3265,6 +3265,105 @@ function! s:indent_postadjust_positions(adj)
     endfor
 endfunction
 
+" Go to position of last non-whitespace char on specified line, else leave position
+" unchanged.
+" Return col or 0 if no jump.
+" Caveat: This function does not preserve cursor position.
+function! s:goto_last_non_ws(line)
+    let ecol = col([a:line, '$'])
+    if ecol == 1
+        " Empty line has no comment.
+        return 0
+    endif
+    " Position past (or on, depending on 've') last char.
+    call cursor(a:line, ecol)
+    " Find last non-white char on line.
+    " Note: 'c' flag needed because default 've' setting doesn't allow us to start *past*
+    " the last char.
+    if search('\S', 'bWc', a:line)
+        " We're on non-whitespace; see whether it's a comment.
+        return col('.')
+    endif
+    return 0
+endfunction
+
+" If specified line has eol comment, return position of its start, else null pos.
+" Caveat: This function does not preserve cursor position.
+function! s:has_eol_comment(line)
+    let ecol = col([a:line, '$'])
+    if ecol == 1
+        " Empty line has no comment.
+        return s:nullpos_pair
+    endif
+    " Position past (or on, depending on 've') last char.
+    call cursor(a:line, ecol)
+    " Find last non-white char on line.
+    " Note: 'c' flag needed because default 've' setting doesn't allow us to start *past*
+    " the last char.
+    if search('\S', 'bWc', a:line)
+        " We're on non-whitespace; see whether it's a comment.
+        if s:is_comment(line('.'), col('.'))
+            return s:current_comment_terminal(0)
+        endif
+    endif
+    return s:nullpos
+endfunction
+
+function! s:align_eol_comments(start, end, ps)
+    let maxshift = g:sexp_cleanup_eol_comment_maxshift
+    let seg = {}
+    let segs = []
+    let l = a:start
+    while l <= a:end
+        " Note: It's not eol comment if there's nothing before it.
+        let ecol = s:goto_last_non_ws(l)
+        if !ecol
+            " Nothing to do for blank line
+            continue
+        endif
+        let [is_com, is_eol_com] = [s:is_comment(l, ecol), 0]
+        let com_start = s:nullpos
+        if is_com
+            " Find start of comment.
+            let com_start = s:current_comment_terminal(0)
+            call s:setcursor(com_start)
+            " Is this an eol comment? I.e., is there something before it?
+            " This comment will match the first char *after* the preceding non-whitespace,
+            " but won't match a \S at cursor position (because of the subsequent \zs).
+            " The result is that ecol will be 0 for non-eol comment.
+            let [_, ecol] = searchpos('\S\zs', 'bcW', l)
+            let is_eol_com = !!prev_col
+        endif
+
+        if is_com && !ecol
+            " Full line comment
+            if !empty(seg.positions)
+                " Accumulate this segment and reset
+                call add(segs, seg)
+                seg = {}
+            endif
+        else
+            " Guarantee: Non-empty line
+            if !empty(seg) && ecol - seg.mincol > g:sexp_cleanup_eol_comment_maxshift
+                " Terminate current segment.
+                if !empty(seg.positions)
+                    call add(segs, seg)
+                endif
+                let seg = {'mincol': ecol, 'maxcol': ecol, 'positions': []}
+            endif
+            if empty(seg) && com_start[1]
+                let seg = {'mincol': ecol, 'maxcol': ecol, 'positions': []}
+            endif
+            if ecol > seg.maxcol
+                let seg.maxcol = ecol
+            endif
+            if com_start[1]
+                call add(seg.positions, com_start)
+            endif
+        endif
+    endwhile
+endfunction
+
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
@@ -3353,6 +3452,10 @@ function! sexp#indent(mode, top, count, clean, ...)
     " Position post-adjustment
     call s:indent_postadjust_positions(adj)
 
+    " FIXME: Add option...
+    if g:sexp_cleanup_align_eol_comments
+        call s:align_eol_comments(start, end)
+    endif
     " Adjust window view object to account for buffer changes made by the
     " indent (and possibly by s:cleanup_ws).
     " FIXME: Since this function is called internally (e.g., from sexp#clone),

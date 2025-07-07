@@ -707,12 +707,21 @@ When there are multiple consecutive empty lines, keep up to this many.
         " Default
         let g:sexp_cleanup_keep_empty_lines = 1
 <
+
+                                  *g:sexp_cleanup_collapse_whitespace*
+Collapse all adjacent whitespace between elements to a single space, provided
+it's not within a comment or string or immediately preceding a comment.
+>
+        " Default
+        let g:sexp_cleanup_collapse_whitespace = 0
+
+<
                                                  *g:sexp_cleanup_join_affinity*
 Determines scenarios in which outer selection attempts to ensure that a
 subsequent delete would pull element following selection onto end of line
 containing element preceding selection.
   0  never join
-  1  append to head of list
+  1  append to head of list only
   2  append anywhere but top-level
   3  append anywhere (including top-level)
 Default considers join only when the first selected element is the second
@@ -730,11 +739,11 @@ Related options: g:sexp_cleanup_join_textwidth, g:sexp_cleanup_join_multiline
         let g:sexp_cleanup_join_affinity = 1
 <
                                                 *g:sexp_cleanup_join_textwidth*
-Line length constraint applied to outer selection "cleanup" logic, which
-avoids making selections whose deletion would result in a line longer than the
+Line length constraint applied to outer selection cleanup logic, which avoids
+making selections whose deletion would result in a line longer than the
 specified length.
   -1  use &tw
-   0  ignore line width
+   0  ignore line length
   >0  max line width to create with join
 Related options: g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline
 >
@@ -754,6 +763,27 @@ Related options: g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_textwidth
                                                *g:sexp_cleanup_lineshift_limit*
 Threshold at which outer element cleanup logic switches from preserving
 leading indent to prioritizing the removal of leading empty lines.
+
+Example: >
+        (foo
+
+
+          bar baz)
+<
+With cursor on bar, the value of this option determines whether 'dae' cleans
+up the leading blank lines or preserves the leading indent on the final line.
+
+        0 ==> >
+        (foo
+
+
+          baz)
+<
+        1 ==> >
+        (foo
+ baz)
+<
+
      0  Allow any number of leading empty lines to be left behind by cleanup,
         if required to preserve leading indent: i.e., whether to preserve
         leading indent or remove leading blanks is determined solely by the

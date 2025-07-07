@@ -2950,12 +2950,22 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
     return ret
 endfunction
 
-" Note: This preadjustment step isn't strictly necessary, since number of
-" bytes to be deleted could be calculated theoretically (even before any
-" buffer modifications have occurred) using pos2byte etc on start/end;
-" attempting to convert from bytes back to positions, however, is
-" significantly more complex: much simpler/safer to do it using byte2pos after
-" the deletion has occurred.
+" Return a dict recording the following:
+" * total # of bytes in the file
+" * byte offset of start relative to BOF
+" * byte offset of end relative to start
+" * list of byte offsets of each of the provided positions relative to start
+" * the positions themselves (indices correspond to indices in byte_offs[])
+" Explanation: After delete/splice, this information can be used to adjust the positions
+" to account for added/deleted text.
+" Caveat: Because callers generally maintain references to the position tuples in the
+" input list, it's vital that we never delete or replace the tuple references: i.e., when
+" adjustments are made, the line/col elements are modified directly.
+" Alternative Approach: This preadjustment step isn't strictly necessary, since number of
+" bytes to be deleted could be calculated analytically (even before any buffer
+" modifications have occurred) using pos2byte etc on start/end; however, that approach is
+" significantly more complex: much simpler/safer to do it using byte2pos after the
+" deletion has occurred.
 function! s:yankdel_range__preadjust_positions(start, end, ps)
     " Pre-op position adjustment
     let ret = {'ps': a:ps, 'byte_offs': [], 'start': a:start}
@@ -2963,10 +2973,10 @@ function! s:yankdel_range__preadjust_positions(start, end, ps)
     let ret.bytes_in_file = s:total_bytes_in_file()
     " Calculate byte offset of start wrt BOF and end wrt start.
     let ret.start_byte = s:pos2byte(a:start)
-    " Note: Considered making e_off reflect position just *past* end.
-    " Rationale: When position is deleted, it looks best when it falls forward
-    " *out of* the deleted range (i.e., into first non-deleted text).
-    " Decision: I actually think it's best to position *at* original end.
+    " Note: Considered making e_off reflect position just *past* end, so that when
+    " position is deleted, it falls forward *out of* the deleted range (i.e., into first
+    " non-deleted text).
+    " Decision: I think it's best to position *at* original end.
     " Rationale: If splice text is non-empty, it looks best for cursor to move
     " to end of spliced text; if splice is empty (i.e., splice is actually
     " delete), end position will correspond to first char past deletion
@@ -2979,23 +2989,52 @@ function! s:yankdel_range__preadjust_positions(start, end, ps)
     return ret
 endfunction
 
-function! s:yankdel_range__postadjust_positions(adj, splice)
+" Adjust the positions in adj (assumed to be dict built by
+" yankdel_range__preadjust_positions()) to reflect the text added/removed by a
+" splice/delete operation.
+function! s:yankdel_range__postadjust_positions(adj, spl)
     " Post-op position adjustment
     " Calculate net byte delta (added (+) / deleted (-))
     let delta = s:total_bytes_in_file() - a:adj.bytes_in_file
     let [ps, offs] = [a:adj.ps, a:adj.byte_offs]
     let [s, s_byte, e_off] = [a:adj.start, a:adj.start_byte, a:adj.end_off]
+    " Get adjusted e_off, which will be used within the loop.
+    let e_off_adj = e_off + delta
+    let e_adj = s:byte2pos(s_byte + e_off_adj)
     " Iterate parallel lists ps and offs.
     for i in range(len(offs))
         let [o, p] = [offs[i], ps[i]]
         if o > 0
-            " Adjustment required.
-            " Use either adjusted original pos or adjusted original end (if
-            " original pos is in deleted range).
-            let [p[1], p[2]] = s:byte2pos(s_byte + max([o, e_off]) + delta)[1:2]
-            "echomsg "p=" . string(p)
-            if p[2] >= col([p[1], '$']) && p[1] < line('$')
-                let p[1:2] = [p[1] + 1, 1]
+            " Important Note: There are 3 possible cases for the position being adjusted:
+            " 1. original position within both original and adjusted ranges
+            " 2. original position within original but not adjusted range
+            " 3. original position past original range (and thus, also past adjusted
+            "    range)
+            " Originally, used position calculated from original byte offset for case 1,
+            " but this is problematic because converting whitespace (e.g., trailing
+            " spaces) to newlines can result in an adjusted position on a different line,
+            " even when the original line still exists. A better approach for cases 1 & 2
+            " is to try to use the original line/col (limiting col to '$'-1), falling back
+            " to the adjusted end position if the aforementioned position is past adjusted
+            " end.
+            " Caveat: Because callers may hold references to the position lists, it's
+            " vital that we replace the list elements *without* replacing the list
+            " references.
+            if o <= e_off
+                " Case 1 or 2
+                if s:compare_pos(p, e_adj) >= 0
+                    " Don't allow position to escape from adjusted range.
+                    let [p[1], p[2]] = e_adj[1:2]
+                else
+                    " Should be able to use col-constrained original position.
+                    let ecol = col([p[1], '$'])
+                    if p[2] >= ecol
+                        let p[2] = max([1, ecol - 1]) " max() needed to handle blank lines
+                    endif
+                endif
+            else
+                " Case 3
+                let [p[1], p[2]] = s:byte2pos(s_byte + o + delta)[1:2]
             endif
         endif
     endfor
@@ -3113,7 +3152,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 silent! exe 'normal! ' . '"a' . (del ? 'd' : 'y')
                 let ret = @a
             endif
-            if del
+            if del " Both delete and splice set this flag
                 " Post-op position adjustment
                 call s:yankdel_range__postadjust_positions(adj, spl)
             endif
@@ -3476,14 +3515,14 @@ function! s:cleanup_ws(start, at_top, ps, ...)
 
         " Do we want to remove *all* whitespace between eff_prev and eff_next?
         let full_join =
-                \ !next[1] && !prev[1]
+                \ !next[1] && !prev[1] " empty form
                 \ || !next[1] && (!close[1] || !s:is_comment(prev[1], prev[2]))
                 \ || !prev[1] && (!open[1] || !s:is_comment(next[1], next[2]))
 
-        " Note: A single call to yankdel_range with 'splice' arg will be used
-        " to perform any required whitespace contraction: calculate the
-        " 'splice' arg, which can be either 1 (delete) for a full join, or
-        " actual splice text consisting of a single space or newline(s).
+        " Note: A single call to yankdel_range with 'splice' arg will be used to perform
+        " any required whitespace contraction: calculate the 'splice' arg, which can be
+        " either 1 (delete) for a full join, or actual splice text consisting of a single
+        " space or newline(s).
         let spl = 0
         if full_join
             " Delete rather than splice.
@@ -3493,33 +3532,31 @@ function! s:cleanup_ws(start, at_top, ps, ...)
             let gap = eff_next[1] - eff_prev[1]
             if gap
                 " Multi-line
-                " Contract whitespace between prev and next if any of the
-                " following conditions holds true for the gap between prev and
-                " next:
-                " 1. more than 1 blank line (remove all but 0 or 1 blanks)
-                " 2. exactly 1 blank and next not comment (remove all blanks)
-                " 3. (else) trailing whitespace on prev line (remove trailing ws)
+                " Contract whitespace between prev and next if any of the following
+                " conditions holds true for the gap between prev and next:
+                " * # of blank lines > g:sexp_cleanup_keep_empty_lines
+                " * (else) trailing whitespace on prev line (remove trailing ws)
                 let precedes_com = next[1] && s:is_comment(next[1], next[2])
-                if gap > 2 || gap > 1 && !precedes_com
+                if gap > g:sexp_cleanup_keep_empty_lines + 1
                     \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
-                    " Replace gap with either 1 or 2 newlines followed by
-                    " original whitespace on eff_next's line:
-                    " Note: the goal generally is to remove blank lines, but
-                    " if any of the following conditions is met, keep (but
-                    " don't add if it doesn't already exist) a single blank
-                    " line:
-                    " 1. next is comment
-                    " 2. next and prev are at toplevel
-                    let spl = precedes_com && gap > 2 || a:at_top
-                            \ ? "\n\n" : "\n"
+                    " Replace gap with number of newlines determined by existing line gap
+                    " and g:sexp_cleanup_keep_empty_lines option, followed by original
+                    " whitespace on eff_next's line:
+                    let spl = repeat("\n", min([gap, g:sexp_cleanup_keep_empty_lines + 1]))
                 endif
-            " Single-line (whitespace between collinear elements)
-            " Cursor Logic: If cursor is in whitespace to be contracted, but
-            " not on *first* whitespace in the range, we want it to end up
-            " *past* the single remaining space; otherwise, on it.
-            " Rationale: Only before a comment does extra (non-leading) whitespace
-            " make sense.
-            elseif getline(eff_prev[1])[eff_prev[2] - 1 : eff_next[2] - 1] =~ '....'
+            " Single-line (whitespace between colinear elements)
+            " If next isn't comment and there are multiple whitespace chars between
+            " eff_prev and eff_next, collapse to a single whitespace.
+            " Rationale: Only before comment does extra (non-leading) ws make sense.
+            " FIXME: Refusing to collapse whitespace *immediately* preceding comment
+            " doesn't really solve anything, since collapsing ws earlier on the line will
+            " still break alignment. Really need to add the eol comment alignment logic...
+            " Cursor Logic: If cursor is in whitespace to be contracted, but not on
+            " *first* whitespace in the range, we want it to end up *past* the single
+            " remaining space; otherwise, on it. FIXME: Currently, this can mean past end
+            " of line, but perhaps it shouldn't be allowed to move to next line.
+            elseif g:sexp_cleanup_collapse_whitespace
+                \ && getline(eff_prev[1])[eff_prev[2] - 1 : eff_next[2] - 1] =~ '.\s\s'
                 \ && next[1] && !s:is_comment(next[1], next[2])
                 " Replace multiple whitespace on single line with single space.
                 " Assumption: BOF and EOF are always handled as full join
@@ -3552,8 +3589,8 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         " (since it wasn't adjusted by yankdel_range).
         if done || !next[1] | break | endif
         " If here, there's another element at this level.
-        " Assumption: eff_next and next are the same except that the former
-        " has been adjusted.
+        " Assumption: eff_next and next are the same except that the former has been
+        " adjusted.
         call cursor(eff_next[1], eff_next[2])
         if s:is_list(eff_next[1], eff_next[2])
             let next = s:move_to_list_open()

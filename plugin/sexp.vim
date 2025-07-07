@@ -47,6 +47,10 @@ if !exists('g:sexp_cleanup_keep_empty_lines')
     let g:sexp_cleanup_keep_empty_lines = 1
 endif
 
+if !exists('g:sexp_cleanup_collapse_whitespace')
+    let g:sexp_cleanup_collapse_whitespace = 0
+endif
+
 if !exists('g:sexp_cleanup_join_affinity')
     let g:sexp_cleanup_join_affinity = 1
 endif

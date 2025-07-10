@@ -3309,11 +3309,25 @@ function! s:has_eol_comment(line)
     return s:nullpos
 endfunction
 
+let g:sexp_cleanup_eol_comment_shift = 8
+let g:sexp_cleanup_eol_comment_maxshift = 16
+let g:sexp_cleanup_eol_comment_maxdist = 0
+let g:sexp_cleanup_eol_comment_minsize = 2
 function! s:align_eol_comments(start, end, ps)
     let maxshift = g:sexp_cleanup_eol_comment_maxshift
-    let seg = {}
-    let segs = []
-    let l = a:start
+    let [maxdist, minsize] = [g:sexp_cleanup_eol_comment_maxdist, g:sexp_cleanup_eol_comment_minsize]
+    " TODO: Create some sort of initialization function.
+    let seg = {'pos_min': -1, 'pos': -1, 'pos_max': -1}
+    " Create the DP state array.
+    let dp = []
+    let N = a:end[1] - a:start[1] + 1
+    let i = 0
+    while i < N
+        call add(dp, {'cost': 0, 'start': -1, 'prev_end': -1})
+    endwhile
+    let [i, l] = [0, a:start]
+    " Never need to reach back to this index.
+    let imin = -1
     while l <= a:end
         " Note: It's not eol comment if there's nothing before it.
         let ecol = s:goto_last_non_ws(l)
@@ -3328,39 +3342,52 @@ function! s:align_eol_comments(start, end, ps)
             let com_start = s:current_comment_terminal(0)
             call s:setcursor(com_start)
             " Is this an eol comment? I.e., is there something before it?
-            " This comment will match the first char *after* the preceding non-whitespace,
+            " This pattern will match the first char *after* the preceding non-whitespace,
             " but won't match a \S at cursor position (because of the subsequent \zs).
             " The result is that ecol will be 0 for non-eol comment.
             let [_, ecol] = searchpos('\S\zs', 'bcW', l)
-            let is_eol_com = !!prev_col
-        endif
-
-        if is_com && !ecol
-            " Full line comment
-            if !empty(seg.positions)
-                " Accumulate this segment and reset
-                call add(segs, seg)
-                seg = {}
+            let is_eol_com = !!ecol
+            if !is_eol_com
+                let ecol = s:current_comment_terminal(1)
             endif
+        endif
+        " Guarantee: ecol is 0 for line comment, else col of end of prev element for eol
+        " comment.
+        " TODO: Decide whether option is needed for whether line comment necessarily
+        " breaks groups.
+        let line_comment_breaks_groups = 0
+        if line_comment_breaks_groups && is_com && !is_eol_com
+            " Full line comment - treat like non-point
+            let imin = i
+            let dp[i] = !i ? dp[i] : dp[i - 1]
         else
             " Guarantee: Non-empty line
-            if !empty(seg) && ecol - seg.mincol > g:sexp_cleanup_eol_comment_maxshift
-                " Terminate current segment.
-                if !empty(seg.positions)
-                    call add(segs, seg)
+            if seg.pos >= 0
+                " Consider termination
+                " Note: Min bound needs to be considered only for eol comment.
+                if is_eol_com && ecol < seg.pos_min && seg.pos_max - ecol > maxshift
+                    \ || ecol - seg.pos_min > maxshift
+                    " Terminate current segment.
+                    let imin = i - 1
+                    let seg = {'pos_min': -1, 'pos': -1, 'pos_max': -1}
                 endif
-                let seg = {'mincol': ecol, 'maxcol': ecol, 'positions': []}
             endif
-            if empty(seg) && com_start[1]
-                let seg = {'mincol': ecol, 'maxcol': ecol, 'positions': []}
-            endif
-            if ecol > seg.maxcol
-                let seg.maxcol = ecol
-            endif
-            if com_start[1]
+            if is_eol_com
+                " Line needs to be covered.
+                if ecol < seg.pos_min
+                    let seg.pos_min = ecol
+                elseif ecol > seg.pos
+                    let seg.pos = ecol
+                endif
+                " TODO: Update dp[] in loop over (imin, i]
                 call add(seg.positions, com_start)
+            else
+                " Line needn't be covered.
+                if i | let dp[i] = dp[i - 1] | endif
             endif
+            let seg.pos_max = max([ecol, seg.pos_max])
         endif
+        let i += 1
     endwhile
 endfunction
 

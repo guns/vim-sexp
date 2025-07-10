@@ -2,8 +2,8 @@ local M = {}
 local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
-local dbg = require'dp':get('sexp', {enabled=false})
-local prof = require'sexp.prof'
+--local dbg = require'dp':get('sexp', {enabled=false})
+--local prof = require'sexp.prof'
 
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
@@ -93,26 +93,26 @@ end
 ---@return TSNode? # the matching node, else nil
 ---@return string? # the matching primitive, else nil
 function M.is_rgn_type(rgn, line, col)
-  dbg:logf("is_rgn_type(%d, %d: %s", line, col, rgn)
+  --dbg:logf("is_rgn_type(%d, %d: %s", line, col, rgn)
   -- Grab api-indexed pos that supports comparison operators.
   local pos = ApiPos:new(line-1, col-1)
   local ts = reltime()
   local key, node = cache:lookup(pos, true)
-  dbg:logf("cache:lookup: pos=%s, node=%s", pos, vim.inspect(node))
+  --dbg:logf("cache:lookup: pos=%s, node=%s", pos, vim.inspect(node))
   local tsf = reltimefloat(reltime(ts))
 
   if key then
     -- Cache hit!
-    dbg:logf("found cached %s", key)
-    prof:add(string.format("Cache hit: %s", key), tsf)
+    --dbg:logf("found cached %s", key)
+    --prof:add(string.format("Cache hit: %s", key), tsf)
     -- Cache hit! But does the matching primitive satisfy rgn?
-    dbg:logf("Cache %s", primitives[key][rgn] and "hit" or "miss")
+    --dbg:logf("Cache %s", primitives[key][rgn] and "hit" or "miss")
     -- Caveat: First return mustn't be nil.
     return primitives[key][rgn] or false, node, key
   end
   -- No cache hit, but do we have a node?
   if not node then
-    dbg:logf("Ooops! No tree!")
+    --dbg:logf("Ooops! No tree!")
     return nil
   end
   -- See whether node is a primitive.
@@ -121,11 +121,11 @@ function M.is_rgn_type(rgn, line, col)
     -- Add as cache hit unconditionally, returning true only if primitive corresponds to rgn.
     --dbg:logf("Caching %s at %s", key, pos)
     cache:add_hit(node, key)
-    dbg:logf("No cache: %s %s %s", key, primitives[key][rgn] and "==" or "!=", rgn)
+    --dbg:logf("No cache: %s %s %s", key, primitives[key][rgn] and "==" or "!=", rgn)
     -- Design Decision: Return node and key regardless of match: caller can ignore.
     return primitives[key][rgn] or false, node, key
   else
-    dbg:logf("No primitive at %s", pos)
+    --dbg:logf("No primitive at %s", pos)
     return false
   end
 end
@@ -199,8 +199,10 @@ function M.current_region_terminal(rgn, dir)
     end
     --local sr, sc, er, ec = ApiRange:from_node(node):to_positions()
     --return dir == 1 and {0, er, ec, 0} or {0, sr, sc, 0}
+    --[[
     dbg:logf("current_region_terminal returning %s",
       dir == 1 and ApiPos:new(node:end_()) or ApiPos:new(node:start()))
+      ]]
     return dir == 1 and ApiPos:new(node:end_()):to_vim4(true) or ApiPos:new(node:start()):to_vim4()
   else
     -- Caller is responsible for ensuring this doesn't happen!
@@ -290,7 +292,7 @@ end
 ---@return [VimPos, VimPos]?
 function M.super_range(beg, end_)
   local save_curpos = vim.fn.getcurpos()
-  dbg:logf("super_range(%s, %s)", vim.inspect(beg), vim.inspect(end_))
+  --dbg:logf("super_range(%s, %s)", vim.inspect(beg), vim.inspect(end_))
   -- In case of upwards traversal, this tuple will hold the found start/end nodes.
   ---@type [TSNode?, TSNode?]
   local nodes_ = {}
@@ -307,10 +309,10 @@ function M.super_range(beg, end_)
     -- Note: Could use e or e_ for end of range.
     local enode = root:named_descendant_for_range(e.r, e.c, e_.r, e_.c)
     if not snode or not enode then
-      dbg:logf("Returning nil: snode=%s enode=%s", vim.inspect(snode), vim.inspect(enode))
+      --dbg:logf("Returning nil: snode=%s enode=%s", vim.inspect(snode), vim.inspect(enode))
       return nil
     end
-    dbg:logf("Getting container node")
+    --dbg:logf("Getting container node")
     -- Get node that contains *both* start and end.
     -- Note: Important to use e_ (not e) for end of rnage
     local ct_node = root:named_descendant_for_range(s.r, s.c, e_.r, e_.c)
@@ -331,25 +333,25 @@ function M.super_range(beg, end_)
   -- Initialize return positions, accounting for any upwards movement in loops above.
   local svp = nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or vim.list_slice(beg)
   local evp = nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or vim.list_slice(end_)
-  dbg:logf("---------------------")
-  dbg:logf("svp=%d,%d evp=%d,%d", svp[2], svp[3], evp[2], evp[3])
+  --dbg:logf("---------------------")
+  --dbg:logf("svp=%d,%d evp=%d,%d", svp[2], svp[3], evp[2], evp[3])
   -- Make sure start and end do not contain *partial* elements.
   vim.fn.setpos('.', svp)
-  dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))
+  --dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))
   ---@type [VimPos4, VimPos4]
   local p = vim.fn['sexp#current_element_terminal'](0)
   if p[2] ~= 0 then svp = p end
-  dbg:logf("Found current_element_terminal(0) for svp: %s", vim.inspect(svp))
+  --dbg:logf("Found current_element_terminal(0) for svp: %s", vim.inspect(svp))
   vim.fn.setpos('.', evp)
-  dbg:logf("Finding current_element_terminal(1) for evp: %s", vim.inspect(evp))
+  --dbg:logf("Finding current_element_terminal(1) for evp: %s", vim.inspect(evp))
   p = vim.fn['sexp#current_element_terminal'](1)
   if p[2] ~= 0 then evp = p end
-  dbg:logf("Found current_element_terminal(1) for evp: %s", vim.inspect(evp))
+  --dbg:logf("Found current_element_terminal(1) for evp: %s", vim.inspect(evp))
   -- Restore position.
   vim.fn.setpos('.', save_curpos)
   -- At this point, snode and enode could be the same or different nodes. It's also
   -- possible one or both are not within an element (i.e., blank or whitespace).
-  dbg:logf("super_range returning %s-%s", vim.inspect(svp), vim.inspect(evp))
+  --dbg:logf("super_range returning %s-%s", vim.inspect(svp), vim.inspect(evp))
   return {svp, evp}
 end
 

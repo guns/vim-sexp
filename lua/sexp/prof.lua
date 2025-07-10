@@ -1,7 +1,7 @@
 local M = {}
 M.__index = M
 
-local dbg = require'dp':get('sexp', {enabled=false})
+--local dbg = require'dp':get('sexp', {enabled=false})
 
 function M:new()
   local o = {
@@ -27,7 +27,7 @@ end
 
 function M:show()
   for k, v in pairs(self.keys) do
-    dbg:logf("%s: avg=%f cnt=%d", k, v.tot / v.cnt, v.cnt)
+    --dbg:logf("%s: avg=%f cnt=%d", k, v.tot / v.cnt, v.cnt)
   end
 end
 

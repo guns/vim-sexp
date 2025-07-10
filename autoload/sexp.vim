@@ -21,16 +21,16 @@ fu! s:Dbg(...)
     "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
-let s:prof_ts = 0
-fu! s:prof_start()
-    let s:prof_ts = reltime()
-endfu
-
-fu! s:prof_end(key)
-    if has('nvim')
-        call luaeval("require'sexp.prof':add(_A[1], _A[2])", [a:key, reltimefloat(reltime(s:prof_ts))])
-    endif
-endfu
+"let s:prof_ts = 0
+"fu! s:prof_start()
+"    let s:prof_ts = reltime()
+"endfu
+"
+"fu! s:prof_end(key)
+"    if has('nvim')
+"        call luaeval("require'sexp.prof':add(_A[1], _A[2])", [a:key, reltimefloat(reltime(s:prof_ts))])
+"    endif
+"endfu
 
 " TODO:
 "
@@ -648,12 +648,12 @@ fu! s:current_region_terminal_legacy(rgn, dir)
         " continue across blank lines (which might make sense, but would break with legacy
         " behavior).
         while (col < eol || col == 1) && col >= 1
-            call s:Dbg("%d,%d: is_comment", line, col)
+            "call s:Dbg("%d,%d: is_comment", line, col)
             if s:is_rgn_type_legacy(a:rgn, line, col)
-                call s:Dbg("%d,%d: is_comment", line, col)
+                "call s:Dbg("%d,%d: is_comment", line, col)
                 let [termline, termcol] = [line, col]
             else
-                call s:Dbg("%d,%d: not comment!", line, col)
+                "call s:Dbg("%d,%d: not comment!", line, col)
                 let in_rgn = 0
                 break
             endif
@@ -665,7 +665,7 @@ fu! s:current_region_terminal_legacy(rgn, dir)
         " Caveat: Don't let col go below 1 on empty line.
         let col = a:dir ? 1 : max([col([line, '$']) - 1, 1])
     endwhile
-    call s:Dbg("current_region_terminal_legacy returning %d, %d", termline, termcol)
+    "call s:Dbg("current_region_terminal_legacy returning %d, %d", termline, termcol)
     return [0, termline, termcol, 0]
 endfu
 
@@ -1354,7 +1354,7 @@ function! s:super_range(start, end)
         " Both ends of selection in same blank/whitespace
         " TODO: Ok to return the original ends, or do we need to find some sort of
         " terminals?
-        call s:Dbg("Both ends in same whitespace optimization!")
+        "call s:Dbg("Both ends in same whitespace optimization!")
         return [a:start, a:end]
     endif
     " Ignore leading/trailing whitespace.
@@ -1372,7 +1372,7 @@ function! s:super_range(start, end)
             " start/end within same atom!
             " Caveat: Restore cursor before return!
             call s:setcursor(save_cursor)
-            call s:Dbg("Same atom optimization!")
+            "call s:Dbg("Same atom optimization!")
             return [s, e1]
         endif
         call s:setcursor(save_cursor)
@@ -1653,7 +1653,7 @@ endfu
 fu! s:is_rgn_type(rgn, line, col)
     if s:prefer_treesitter()
         let match = s:is_rgn_type_ts(a:rgn, a:line, a:col)
-        call s:Dbg("match=%s rgn=%s line=%d col=%d", string(match), a:rgn, a:line, a:col)
+        "call s:Dbg("match=%s rgn=%s line=%d col=%d", string(match), a:rgn, a:line, a:col)
         if match != v:null
             " Nil return indicates no treesitter tree; fall through to try legacy.
             return match
@@ -1894,7 +1894,7 @@ endfunction
 " brackets in atoms - e.g., foo\(bar - revisit the ignore pattern used with
 " searchpair.
 function! sexp#list_flow(mode, count, next, close)
-    call s:prof_start()
+    "call s:prof_start()
     let cnt = a:count ? a:count : 1
     " Loop until we've landed on [count]th non-ignored bracket of desired type
     " or exhausted buffer trying.
@@ -1929,7 +1929,7 @@ function! sexp#list_flow(mode, count, next, close)
             call s:select_current_marks('v')
         endif
     endif
-    call s:prof_end("list_flow")
+    "call s:prof_end("list_flow")
 endfunction
 
 " Move to [count]th next/prev non-list (leaf) element in the buffer, flowing
@@ -1963,7 +1963,7 @@ endfunction
 "    TODO: Revisit if move_to_adjacent_element is ever updated to handle the
 "    edge case.
 function! sexp#leaf_flow(mode, count, next, tail)
-    call s:prof_start()
+    "call s:prof_start()
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
     let cnt = a:count ? a:count : 1
@@ -2035,7 +2035,7 @@ function! sexp#leaf_flow(mode, count, next, tail)
             call s:select_current_marks('v')
         endif
     endif
-    call s:prof_end("leaf_flow")
+    "call s:prof_end("leaf_flow")
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts
@@ -2421,7 +2421,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         " TODO: Now that super_range trims surrounding whitespace from selection,
         " optimizations could be added to subsequent logic.
         let [vs, ve] = s:super_range(vs_orig, ve_orig)
-        call s:Dbg("super_range returned %s %s", string(vs), string(ve))
+        "call s:Dbg("super_range returned %s %s", string(vs), string(ve))
         if !vs[1]
             " TODO: Is this the best way to handle? Is this all it can mean? Consider
             " using exception for this, and getting rid of this if.
@@ -2590,7 +2590,7 @@ endfunction
 " Set visual marks at current list's brackets, then enter visual mode with
 " that selection. Selects current element if cursor is not in a list.
 function! sexp#select_current_list(mode, offset, allow_expansion)
-    call s:prof_start()
+    "call s:prof_start()
     if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
         " TODO: I'd really rather hard-code 1 for inner here, but need to
         " consider backwards-compatability...
@@ -2600,7 +2600,7 @@ function! sexp#select_current_list(mode, offset, allow_expansion)
         " inner, regardless of a:offset.
         call s:set_marks_around_current_element(a:mode, 1, 0, 0) "a:offset)
     endif
-    call s:prof_end("select_current_list")
+    "call s:prof_end("select_current_list")
     return s:select_current_marks(a:mode)
 endfunction
 
@@ -2624,10 +2624,10 @@ endfunction
 
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner, ...)
-    call s:prof_start()
+    "call s:prof_start()
     let cnt = a:0 && a:1 ? a:1 : 1
     call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
-    call s:prof_end("select_current_element")
+    "call s:prof_end("select_current_element")
     return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
 endfunction
 

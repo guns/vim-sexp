@@ -3,11 +3,11 @@ local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
 -- DEBUG/PROFILING
-local prof = require'sexp.prof'
+--local prof = require'sexp.prof'
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
 local reltimestr = vim.fn.reltimestr
-local dbg = require'dp':get('sexp', {enabled=false})
+--local dbg = require'dp':get('sexp', {enabled=false})
 
 ---@class CacheHit
 ---@field node TSNode
@@ -92,7 +92,7 @@ function BufCache:lookup(pos)
     local ts = reltime()
     local node = self.root:named_descendant_for_range(row, col, row, col + 1)
     local tsf = reltimefloat(reltime(ts))
-    dbg:logf("BufCache:lookup took %f", tsf)
+    --dbg:logf("BufCache:lookup took %f", tsf)
     if node then
       return false, node
     end
@@ -177,7 +177,7 @@ function Cache:lookup(pos, create)
 end
 
 function Cache:show()
-  dbg:logf("cache: %s", vim.inspect(self))
+  --dbg:logf("cache: %s", vim.inspect(self))
 end
 
 return Cache

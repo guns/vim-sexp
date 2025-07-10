@@ -702,7 +702,7 @@ when the Treesitter library is available. (Applies only to Neovim users.)
         let g:sexp_prefer_legacy_syntax = 0
 <
                                               *g:sexp_cleanup_keep_empty_lines*
-When there are multiple consecutive empty lines, keep up to this many.
+When there are multiple consecutive empty lines, preserve up to this many.
 >
         " Default
         let g:sexp_cleanup_keep_empty_lines = 1
@@ -711,6 +711,7 @@ When there are multiple consecutive empty lines, keep up to this many.
                                   *g:sexp_cleanup_collapse_whitespace*
 Collapse all adjacent whitespace between elements to a single space, provided
 it's not within a comment or string or immediately preceding a comment.
+*COMING SOON*: End-of-line comment alignment
 >
         " Default
         let g:sexp_cleanup_collapse_whitespace = 0
@@ -720,12 +721,12 @@ it's not within a comment or string or immediately preceding a comment.
 Determines scenarios in which outer selection attempts to ensure that a
 subsequent delete would pull element following selection onto end of line
 containing element preceding selection.
-  0  never join
+  0  never append
   1  append to head of list only
   2  append anywhere but top-level
   3  append anywhere (including top-level)
-Default considers join only when the first selected element is the second
-element of a list: e.g., with the default setting...
+Default setting permits join only when the first selected element is the
+second element of a list: e.g., with the default setting...
 >
         (fn foo
             bar baz
@@ -762,7 +763,16 @@ Related options: g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_textwidth
 <
                                                *g:sexp_cleanup_lineshift_limit*
 Threshold at which outer element cleanup logic switches from preserving
-leading indent to prioritizing the removal of leading empty lines.
+leading indent to prioritizing the removal of leading empty lines. (Takes
+g:sexp_cleanup_keep_empty_lines into account.)
+   0  Allow any number of leading empty lines to be left behind by cleanup, if
+      required to preserve leading indent: i.e., whether to preserve leading
+      indent or remove leading blanks is determined solely by the colshift
+      options described below.
+ >=1  Prioritize removal of leading whitespace if doing so would remove at
+      least this many empty lines.
+      Note: This option is considered an upper limit, which takes precedence
+      over the colshift options below.
 
 Example: >
         (foo
@@ -783,15 +793,6 @@ up the leading blank lines or preserves the leading indent on the final line.
         (foo
  baz)
 <
-
-     0  Allow any number of leading empty lines to be left behind by cleanup,
-        if required to preserve leading indent: i.e., whether to preserve
-        leading indent or remove leading blanks is determined solely by the
-        colshift options described below.
-   >=1  Prioritize removal of leading whitespace if doing so would remove at
-        least this many empty lines.
-        Note: This option is considered an upper limit, which takes precedence
-        over the colshift options below.
 >
         " Default
         let g:sexp_cleanup_lineshift_limit = 2
@@ -814,17 +815,19 @@ customize the behavior to his preference.
   1..v:maxcol  If sexp_cleanup_colshift_slope == 0, sets a constant leading
                indent threshold; if sexp_cleanup_colshift_slope > 0, sets the
                minimum leading indent threshold, with the actual value
-               increasing linearly as the leading line gap increases.
+               increasing linearly with the number of leading blank lines
+               susceptible to removal.
 >
         " Default
-        let g:sexp_cleanup_colshift = 1
+        let g:sexp_cleanup_colshift = 4
 <
                                                 *g:sexp_cleanup_colshift_slope*
 The rate at which the leading indent threshold (see g:sexp_cleanup_colshift)
 increases with the number of empty lines susceptible to removal.
-  0            Leading indent threshold is constant, given by sexp_cleanup_colshift.
+  0            Leading indent threshold is constant, given by
+               g:sexp_cleanup_colshift.
   1..v:maxcol  Rate at which leading indent threshold grows with number of
-               blank in leading whitespace.
+               blank lines in leading whitespace.
                (For details, see g:sexp_cleanup_colshift.)
 >
         " Default

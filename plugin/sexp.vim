@@ -64,11 +64,11 @@ if !exists('g:sexp_cleanup_join_multiline')
 endif
 
 if !exists('g:sexp_cleanup_lineshift_limit')
-    let g:sexp_cleanup_lineshift_limit = 4
+    let g:sexp_cleanup_lineshift_limit = 2
 endif
 
 if !exists('g:sexp_cleanup_colshift')
-    let g:sexp_cleanup_colshift = 0
+    let g:sexp_cleanup_colshift = 4
 endif
 
 if !exists('g:sexp_cleanup_colshift_slope')

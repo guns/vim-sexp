@@ -3396,8 +3396,9 @@ endfunction
 " < 0: cost1 higher
 " > 0: cost2 higher
 " = 0: costs equal
-function! s:align_eol_comments__compare_costs(dp, cost1, cost2)
-    let [c1, c2] = [a:cost1, a:cost2]
+function! s:align_eol_comments__compare_costs(dp, grp1, grp2)
+    let [g1, g2] = [a:grp1, a:grp2]
+    let [c1, c2] = [g1.cost, g2.cost]
     " Return value will be negative if cost1 is higher, positive if cost2 is higher.
     let ret = 0
     let weights = s:align_eol_comment__get_weights()
@@ -3416,90 +3417,63 @@ function! s:align_eol_comments__compare_costs(dp, cost1, cost2)
         let ret += weights.density * s:percent_diff(c1.cumul.area, c2.cumul.area)
     endif
     " -- Runt --
-    " Note: Use only the *previous* (sidx-1) groups for this one.
-    " TODO: Decide whether it makes sense to consider runtness at all when either is
-    " missing.
-    if weights.runt > 0 && !empty(cp1) && !empty(cp2)
+    " Note: Use only the *previous* (sidx-1) groups for this one, ignoring this criterion
+    " if there's no previous group for either candidate under comparison.
+    if weights.runt > 0 && c1.sidx > 0 && c2.sidx > 0
         " Get the *previous* (sidx-1) group costs to prevent spurious avoidance of an
         " incipient group.
-        let cp1 = c1.sidx > 0 ? a:dp[c1.sidx - 1] : {}
-        let cp2 = c2.sidx > 0 ? a:dp[c2.sidx - 1] : {}
-        let ret -= weights.runt * s:percent_diff(cp1.cumul.runt, cp2.cumul.runt)
+        let runt1 = a:dp[c1.sidx - 1].grp.cost.cumul.runt
+        let runt2 = a:dp[c2.sidx - 1].grp.cost.cumul.runt
+        let ret -= weights.runt * s:percent_diff(runt1, runt2)
     endif
     " Return the signed comparison value.
     return ret
 endfunction
 
-" TODO: This function is currently unused.
-" Decorate input cost dict with a 'norm' member containing normalized costs.
-" Inputs:
-"   cost: current cost dict
-"   pcost: previous cost dict (empty if this is first group)
-function! s:align_eol_comments__normalize_cost(cost, pcost)
-    let [cost, norm] = [a:cost, {}]
-    let [cost.norm, cumul] = [norm, cost.cumul]
-    " -- ngrps --
-    " Normalize to total # of lines spanned by groups (i.e., grps per line, which is
-    " necessarily less than unity).
-    let norm.ngrps = cumul.ngrps / cumul.nlines
-    " -- Area (cumulative) --
-    " Normalize to largest possible area (determined from maxshift and total num eol
-    " comments)
-    let norm.area = cumul.area / (g:sexp_align_eolc_maxshift * cumul.ncoms)
-    " -- negative Density (Sparseness) --
-    let norm.density = -cost.data.ncoms / cost.data.nlines
-    " -- Runtness --
-    " Consider only pcost for runtness.
-    " Normalize the sum-of-squares to sum of max sum-of-squares for all runt groups.
-    " Note: This is the value from the group this would finalize; current group's value
-    " does not impact cost.
-    " TODO: Save the square of runt thresh somewhere... Actually, I think more
-    " optimization is possible, as this value could be saved and reused, given that it
-    " doesn't reflect current group.
-    let norm.runt = pcost.cumul.runt.sos /
-            \ (g:sexp_align_eolc_runt_thresh * g:sexp_align_eolc_runt_thresh) /
-            \ pcost.cumul.runt.ngrps
-endfunction
-
-" Calculate and return a cost dict for the specified group.
-" The cost dict should contain everything needed by the comparison function to compare
-" this candidate with another.
-function! s:align_eol_comments__calculate_cost(dp, sidx, eidx, area)
-    let [dp, cost] = [a:dp, {}]
+" Calculate and return a dict representing the specified candidate group.
+" The dict must contain a cost dict containing everything needed by the comparison
+" function to compare this candidate with another.
+function! s:align_eol_comments__create_group_candidate(dp, sidx, eidx, area, align)
+    let [dp, ret] = [a:dp, {}]
     " Calculate figures of merit for the current group.
-    let nlines = dp[eidx].line - dp[sidx].line
-    let ncoms = eidx - sidx + 1
+    let nlines = dp[a:eidx].line - dp[a:sidx].line
+    let ncoms = a:eidx - a:sidx + 1
     " Calculate runtness now, but it won't be used till this element is at sidx-1.
     let runt = nlines < g:sexp_align_eolc_runt_thresh
             \ ? (g:sexp_align_eolc_runt_thresh - nlines) * (g:sexp_align_eolc_runt_thresh - nlines)
             \ : 0
     " Save the current group's (non-cumulative) values (possibly only for debugging).
-    " TODO: Possible remove this and pull 'cumul' up.
-    let data = {'area': area, 'nlines': nlines, 'ncoms': ncoms}
-    if sidx > 0
+    let self = {'area': a:area, 'nlines': nlines, 'ncoms': ncoms, 'runt': runt}
+    if a:sidx > 0
         " Get sidx-1 cost to support accumulation.
-        let pcost = dp[sidx - 1].cost
+        let pgrp = dp[a:sidx - 1].grp
         " TODO: Consider whether quantities like this should be spans or num elements.
         " Cumulative cost-related data that applies to the current candidate and its chain
         " of predecessors.
         let cumul = {
-                    \ 'ngrps': pcost.cumul.ngrps + 1,
-                    \ 'nlines': pcost.cumul.nlines + nlines,
-                    \ 'ncoms': pcost.cumul.ncoms + ncoms,
-                    \ 'area': pcost.cumul.area + area,
-                    \ 'runt': pcost.cumul.runt + runt,
+                    \ 'ngrps': pgrp.cost.cumul.ngrps + 1,
+                    \ 'nlines': pgrp.cost.cumul.nlines + nlines,
+                    \ 'ncoms': pgrp.cost.cumul.ncoms + ncoms,
+                    \ 'area': pgrp.cost.cumul.area + area,
+                    \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
     else
         " First element needs no accumulation.
+        " TODO: Toying with idea that we don't really need a cost structure or even a
+        " 'grp' for the first element. The only thing it's really needed for is to support
+        " cost accumulation, once it becomes an sidx-1 group, but this could be handled
+        " specially.
+        " Rationale: There's never any comparison to be made...
         let cumul = {
                     \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': area,
                     \ 'runt': {'ngrps': 0, 'sos': 0}
         \ }
     endif
+    " TODO: If self ends up not being required, pull cumul up.
+    let cost = {'self': self, 'cumul': cumul}
     " Wrap them into a single cost dict.
-    " TODO: Not sure we really need 'data' for anything other than debugging...
-    let cost = {'data': data, 'cumul': cumul}
-    return cost
+    let ret = {'align': a:align, 'sidx': a:sidx, 'cost': cost}
+    return ret
 endfunction
 
 " Update the Dynamic Programming state list element corresponding to the input line.
@@ -3524,13 +3498,12 @@ function! s:align_eol_comments__update_dps(dp, line, ecol, com_start, ecol_max, 
     "   cost reflects the selected start
     let el = {}
     let el.line = a:line   " line represented by this dp el.
-    let el.sidx = -1       " index in dp[] of the optimal group start line
     " ecol_max represents max ecol of the lines between this (inclusive) and the previous
     " covered line (exclusive).
     let el.ecol_max = max([a:ecol, a:ecol_max])
     let el.ecol = a:ecol                " end of element prior to eol comment
     let el.com_s = a:com_start          " start of eol comment
-    let el.cost = {}                    " dict to hold cost info
+    let el.grp = {}                     " dict to hold candidate group.
     call add(a:dp, el)
 
     " summation of gaps between end of code and start of aligned eol comment
@@ -3558,14 +3531,13 @@ function! s:align_eol_comments__update_dps(dp, line, ecol, com_start, ecol_max, 
         endif
         " This is a candidate group; determine its cost.
         let area += ecol_max - el_s.ecol
-        " Calculate cost of this candidate group.
-        let cost = s:align_eol_comments__calculate_cost(a:dp, i, N - 1, area)
+        " Create group candidate and calculate its cost.
+        let grp = s:align_eol_comments__create_group_candidate(a:dp, i, N - 1, area, ecol_max)
         " Note: Comparison value > 0 indicates cost2 higher. If costs are the same, keep
         " existing best, since it's the later-starting option.
-        if a:sog || empty(el.cost) || s:align_eol_comments__compare_costs(a:dp, cost, el.cost) > 0
+        if a:sog || empty(el.grp) || s:align_eol_comments__compare_costs(a:dp, grp, el.grp) > 0
             " Make this the new best candidate.
-            let el.cost = cost
-            let el.sidx = i
+            let el.grp = grp
         endif
         if a:sog
             " Don't look back if this is start of group.
@@ -3574,7 +3546,6 @@ function! s:align_eol_comments__update_dps(dp, line, ecol, com_start, ecol_max, 
         endif
         " Before moving to previous element, update bounding box to account for current
         " line and any long, non-eol-comment lines in the interval preceding it.
-        " TODO: Make this option-dependent.
         let [ecol_min, ecol_max] = [min([el_s.ecol, ecol_min]), max([el_s.ecol_max, ecol_max])]
         let i -= 1
     endwhile
@@ -3582,13 +3553,39 @@ endfunction
 
 " Convert the dp state list to a list of groups in convenient format.
 function! s:align_eol_comments__finalize_groups(dp)
+    " Loop over elements in reverse, skipping nodes that are not the end of a group.
+    let eidx = len(a:dp) - 1
+    let grps = []
+    while eidx >= 0
+        let el = a:dp[eidx]
+        let grp = {
+            'align': el.grp.align,
+            'items': [],
+        \ }
+        " Add items to the group.
+        let idx = el.grp.sidx
+        while idx <= eidx
+            " Accumulate a single eol comment line item with all the information required
+            " to align it.
+            let o = a:dp[idx]
+            call add(grp.items, {
+                'line': o.line,
+                'com_s': o.com_s,
+                'ecol': o.ecol,
+            \ })
+            let idx += 1
+        endwhile
+        " Accumulate group, then move to last element of previous group.
+        call add(grps, grp)
+        let eidx = el.sidx - 1
+    endwhile
+    " The list of grps just built is in reverse order.
+    return reverse(grps)
 endfunction
 
-function! s:align_eol_comments__calculate_groups(start, end, ps)
-    let maxshift = g:sexp_align_eolc_maxshift
-    let maxdist = g:sexp_align_eolc_maxdist
-    " Create the DP state array, consisting of one element per eol comment in range.
-    " Note: Elements are added as DP optimization progresses.
+function! s:align_eol_comments__optimize_range(start, end)
+    " Create the DP state array, which will ultimately contain one element per eol comment
+    " in range. (Elements are added as DP optimization progresses.)
     let dp = []
     " Set to prevent lookbehind (e.g., when encountering too long a span with no eol
     " comments).
@@ -3598,8 +3595,11 @@ function! s:align_eol_comments__calculate_groups(start, end, ps)
     " Keep up with last included line to support (option-dependent) detection of excessive
     " gaps.
     let line_gap = 0
-
+    " Loop over lines in range, using DP optimization as we go to determine the best
+    " candidate group ending at the current line...
     while l <= a:end
+        " Get all relevant information about the current line (which may or may not
+        " contain comment).
         let [ecol, is_com, is_eol_com, com_start] = s:align_eol_comments__characterize(l)
         " Check for group break conditions.
         if g:sexp_align_eolc_line_comment_breaks_groups && is_com && !is_eol_com
@@ -3625,10 +3625,13 @@ function! s:align_eol_comments__calculate_groups(start, end, ps)
         let i += 1
     endwhile
     " Reformat the list for easy group traversal.
-    let groups = s:align_eol_comments__finalize_groups(dp)
+    return s:align_eol_comments__finalize_groups(dp)
 endfunction
 
-function! s:align_eol_comments(start, end, ps)
+function! s:align_eol_comments(start, end)
+    let grps = s:align_eol_comments__optimize_range(a:start, a:end, a:ps)
+    " TODO: Perform the adjustments...
+
 endfunction
 
 " Indent S-Expression, maintaining cursor position. This is similar to mapping

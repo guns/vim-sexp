@@ -75,6 +75,42 @@ if !exists('g:sexp_cleanup_colshift_slope')
     let g:sexp_cleanup_colshift_slope = 8
 endif
 
+" TODO: Consider encapsulating related options in a dict.
+if !exists('g:sexp_align_eolc')
+    let g:sexp_sexp_align_eolc = 1
+endif
+
+if !exists('g:sexp_align_eolc_maxshift')
+    let g:sexp_sexp_align_eolc_maxshift = 16
+endif
+
+if !exists('g:sexp_align_eolc_maxgap')
+    let g:sexp_sexp_align_eolc_maxgap = 0
+endif
+
+if !exists('g:sexp_align_eolc_break_at_linecom')
+    let g:sexp_sexp_align_eolc_break_at_linecom = 0
+endif
+
+" Set these weights to values between 0 and 10 to adjust default weights.
+" Value of 5 corresponds to plugin-defined default. Each increment above or below 5
+" adjusts up or down by an plugin-defined, criterion-specific adjustment value.
+" TODO: Probably encapsulate in a dict.
+if !exists('g:sexp_align_eolc_shift_weight')
+    let g:sexp_sexp_align_eolc_shift_weight = 0
+endif
+
+if !exists('g:sexp_align_eolc_density_weight')
+    let g:sexp_sexp_align_eolc_density_weight = 0
+endif
+
+if !exists('g:sexp_align_eolc_runt_weight')
+    let g:sexp_sexp_align_eolc_runt_weight = 0
+endif
+
+if !exists('g:sexp_align_eolc_runt_thresh')
+    let g:sexp_sexp_align_eolc_runt_thresh = 4
+endif
 
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}

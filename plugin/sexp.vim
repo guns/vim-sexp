@@ -81,7 +81,7 @@ if !exists('g:sexp_align_eolc')
 endif
 
 if !exists('g:sexp_align_eolc_maxshift')
-    let g:sexp_align_eolc_maxshift = 16
+    let g:sexp_align_eolc_maxshift = 40
 endif
 
 if !exists('g:sexp_align_eolc_maxgap')
@@ -113,7 +113,7 @@ if !exists('g:sexp_align_eolc_runt_weight')
 endif
 
 if !exists('g:sexp_align_eolc_runt_thresh')
-    let g:sexp_align_eolc_runt_thresh = 4
+    let g:sexp_align_eolc_runt_thresh = 5
 endif
 
 if !exists('g:sexp_mappings')

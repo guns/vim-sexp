@@ -18,7 +18,7 @@ endif
 let g:sexp_autoloaded = 1
 
 fu! s:Dbg(...)
-    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
 "let s:prof_ts = 0
@@ -79,6 +79,17 @@ let s:rgn_patts = {
             \ 'comment': 'comment',
             \ 'str_com_chr': '\vstring|str_lit|regex|pattern|comment|character',
             \ 'str_com': '\vstring|str_lit|regex|pattern|comment'
+\ }
+
+" Default value corresponds to user weight of 5. If 'adjust' is set to 0.20, adjustments
+" will be linear from 0 to twice the default, but 'adjust' may be set smaller to prevent
+" the weight from dropping all the way to zero.
+" TODO: Is a more complex approach warranted? E.g., an offset in addition to the slope?
+let s:align_eolc_weights = {
+    \ 'ngrps':   {'default': 50, 'adjust': 0.10},
+    \ 'shift':   {'default': 50, 'adjust': 0.20},
+    \ 'runt':    {'default': 50, 'adjust': 0.20},
+    \ 'density': {'default': 50, 'adjust': 0.20},
 \ }
 
 let s:nullpos = [0,0,0,0]
@@ -3309,24 +3320,18 @@ function! s:goto_last_non_ws(line)
     return 0
 endfunction
 
-" TODO: Move these somewhere (probably top of file)...
-" Default value corresponds to user weight of 5. If 'adjust' is set to 0.20, adjustments
-" will be linear from 0 to twice the default, but 'adjust' may be set smaller to prevent
-" the weight from dropping all the way to zero.
-" TODO: Is a more complex approach warranted? E.g., an offset in addition to the slope?
-let s:align_eolc_weights = {
-    \ 'ngrps':   {'default': 75, 'adjust': 0.05},
-    \ 'shift':   {'default': 50, 'adjust': 0.20},
-    \ 'runt':    {'default': 75, 'adjust': 0.20},
-    \ 'density': {'default': 50, 'adjust': 0.20},
-\ }
-
 " Return signed percent difference between a and b, with negative result indicating a<b.
 " TODO: Consider moving this to more of a general utility location.
 function! s:percent_diff(a, b)
+    " Note: Input values are typically integer, and the intended use case for this is such
+    " that we don't require anything more than 1% accuracy; thus, since Vim 7.3 (current
+    " prereq) didn't have isnan(), just return 0 if abs of difference between input values
+    " is less than 1E-3.
+    " TODO Consider bumping up the Vim version prereq to allow use of isnan().
+    " TODO: If I switch to all integer math, this will need to be modified.
     " Note: The factor of 2.0 converts to Float and also performs averaging.
-    let ret = 2.0 * (a:a - a:b) / (a:a + a:b)
-    return isnan(ret) ? 0.0 : ret
+    let diff = a:a - a:b
+    return abs(diff) < 1.0E-3 ? 0.0 : 2.0 * (a:a - a:b) / (a:a + a:b)
 endfunction
 
 " Return tuple with the following keys to characterize the specified line:
@@ -3401,13 +3406,11 @@ function! s:align_eol_comment__get_weights()
             " TODO: Warn, or silently treat like "as much as possible" in direction
             " indicated by sign?
             let user_adj = max([0, min([10, user_adj])])
-            if user_adj == 0
-                " Ensure disabled.
-                let ret[k] = 0
-            else
-                " Make linear adjustment from default weight.
-                let ret[k] = d.default * (1 + d.adjust * (user_adj - 5))
-            endif
+            " Make linear adjustment from default weight.
+            let ret[k] = d.default * (1 + d.adjust * (user_adj - 5))
+            " Convert near-zero to zero to ensure fp roundoff error doesn't result in
+            " spurious processing for a criterion user meant to disable.
+            if abs(ret[k]) <= 1.0E-6 | let ret[k] = 0 | endif
         endif
     endfor
     return ret
@@ -3538,9 +3541,6 @@ endfunction
 function! s:align_eolc__update_dps(dp, line, ecol, com_start, pre_max, sog)
     " TODO: Consider mechanism to validate/constrain options.
     let [maxshift, maxdist] = [g:sexp_align_eolc_maxshift, g:sexp_align_eolc_maxgap]
-    if a:line == 56
-        breaka func *compare_cost*
-    endif
     " Initialize DP state for current commment and add it to list.
     " Note: The 'grp' field will be updated within loop to reflect current best group
     " candidate.
@@ -3720,6 +3720,7 @@ endfunction
 
 " Align end of line comments within specified range, taking all options into account.
 function! s:align_eol_comments(start, end, ps)
+    let ts = reltime()
     let grps = s:align_eolc__optimize_range(a:start, a:end)
     call s:dbg_show_eolcs(grps)
     for grp in grps
@@ -3741,6 +3742,7 @@ function! s:align_eol_comments(start, end, ps)
                     \ a:ps)
         endfor
     endfor
+    echomsg printf("Alignment took: %f", reltimefloat(reltime(ts)))
 endfunction
 
 " Indent S-Expression, maintaining cursor position. This is similar to mapping

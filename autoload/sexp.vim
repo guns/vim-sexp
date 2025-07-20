@@ -18,7 +18,7 @@ endif
 let g:sexp_autoloaded = 1
 
 fu! s:Dbg(...)
-    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
 "let s:prof_ts = 0
@@ -3315,20 +3315,23 @@ endfunction
 " the weight from dropping all the way to zero.
 " TODO: Is a more complex approach warranted? E.g., an offset in addition to the slope?
 let s:align_eolc_weights = {
-    'ngrps':   {'default': 50, 'adjust': 0.05}
-    'area':    {'default': 50, 'adjust': 0.20}
-    'runt':    {'default': 50, 'adjust': 0.20}
-    'density': {'default': 50, 'adjust': 0.20}
+    \ 'ngrps':   {'default': 75, 'adjust': 0.05},
+    \ 'shift':   {'default': 50, 'adjust': 0.20},
+    \ 'runt':    {'default': 75, 'adjust': 0.20},
+    \ 'density': {'default': 50, 'adjust': 0.20},
 \ }
 
 " Return signed percent difference between a and b, with negative result indicating a<b.
 " TODO: Consider moving this to more of a general utility location.
 function! s:percent_diff(a, b)
-    return (a - b) / (a + b) / 2
+    " Note: The factor of 2.0 converts to Float and also performs averaging.
+    let ret = 2.0 * (a:a - a:b) / (a:a + a:b)
+    return isnan(ret) ? 0.0 : ret
 endfunction
 
 " Return tuple with the following keys to characterize the specified line:
-"   ecol:       col in which the element preceding eol comment ends (0 if no eol comment)
+"   ecol:       screen col just past element preceding eol or screen col just past last
+"               non-ws on line if no eol comment
 "   is_com:     1 iff specified line ends in comment (eol or otherwise)
 "   is_eol_com: 1 iff specified line ends in eol comment
 "   com_start:  VimPos indicating start of eol comment (else s:nullpos)
@@ -3345,11 +3348,14 @@ endfunction
 " test on the final *non-ws* char of the line, not the final char of the line.
 function! s:align_eolc__characterize(line)
     " Note: It's not an eol comment if there's nothing before it.
-    let ecol = s:goto_last_non_ws(a:line)
-    if !ecol
+    let p = s:goto_last_non_ws(a:line)
+    if !p
         " Nothing to do for blank line
         return [0, 0, 0, s:nullpos]
     endif
+    " This will be adjusted later for eol comment, but if there's no eol comment, we'll
+    " need screen pos just past last non-ws for alignment purposes.
+    let ecol = virtcol('.') + 1
     " Figure out which type of comment (if any) we have.
     let [is_eol_com, com_start] = [0, s:nullpos]
     let is_com = s:is_comment(a:line, ecol)
@@ -3358,17 +3364,19 @@ function! s:align_eolc__characterize(line)
         let com_start = s:current_comment_terminal(0)
         call s:setcursor(com_start)
         " Is this an eol comment? I.e., is there something before it?
-        " This pattern will match the first char *after* the preceding non-whitespace,
-        " but won't match a \S at cursor position (because of the subsequent \zs).
-        " The result is that ecol will be 0 for non-eol comment.
-        let [_, p] = searchpos('\S\zs', 'bcW', a:line)
+        " This pattern will match the last char of the preceding non-whitespace, with
+        " [0,0] indicating this is not an eol comment.
+        let [_, p] = searchpos('\S', 'bW', a:line)
         let is_eol_com = !!p
         if is_eol_com
-            " Set ecol to the end of previous element.
+            " Important Note: What we need for alignment is screen col, not col(); use
+            " virtcol(), which existed in our prerequisite Vim version 7.3. (screenpos was
+            " added later.)
+            " Set ecol to screen position just past end of previous element.
             " Design Decision: There's really no reason to use current_element_terminal(1)
             " or current_comment_terminal(1) here, since last non-ws is always desired for
             " alignment purposes.
-            let ecol = p
+            let ecol = virtcol('.') + 1
         endif
     endif
     return [ecol, is_com, is_eol_com, com_start]
@@ -3378,19 +3386,19 @@ endfunction
 function! s:align_eol_comment__get_weights()
     " Design Question: Should we enforce use of integers in user weights? Probably no need
     " to, as long as values are within range.
-    " Build dict of scalars, taking into account the plugin-defined defaults and any
-    " user-requested adjustment.
+    " Build dict of scalar weights, taking into account the plugin-defined defaults and
+    " any user-requested adjustment.
     let ret = {}
     for [k, d] in items(s:align_eolc_weights)
         let user_adj = get(g:, 'sexp_align_eolc_' . k . '_weight', -1)
-        if user_adj < -1
+        if user_adj < 0
             " Either user didn't override or explicitly selected default with -1.
             " Design Decision: Treat anything negative as request for default.
             " TODO: Should we warn about values other than -1?
-            ret[k] = d.default
+            let ret[k] = d.default
         else
             " Make sure user-override doesn't violate limits.
-            " TODO: Warn, or just silently treat like "as much as possible" in direction
+            " TODO: Warn, or silently treat like "as much as possible" in direction
             " indicated by sign?
             let user_adj = max([0, min([10, user_adj])])
             if user_adj == 0
@@ -3429,27 +3437,28 @@ function! s:align_eolc__compare_costs(dp, grp1, grp2)
     let ret = 0
     let weights = s:align_eol_comment__get_weights()
     " -- Ngrps --
-    let ret += weights.ngrps * s:percent_diff(c1.cumul.ngrps, c1.cumul.ngrps)
-    " -- Area --
-    if weights.area > 0
-        let ret += weights.area * s:percent_diff(c1.cumul.area, c2.cumul.area)
+    let ret += weights.ngrps * s:percent_diff(c1.cumul.ngrps, c2.cumul.ngrps)
+    " -- Area (Shift) --
+    if weights.shift > 0
+        let ret += weights.shift * s:percent_diff(c1.cumul.area, c2.cumul.area)
     endif
     " -- Density --
     if weights.density > 0
-        let density1 = c1.cumul.coms / c1.cumul.nlines
-        let density2 = c2.cumul.coms / c2.cumul.nlines
-        let ret -= weights.density * s:percent_diff(c1.cumul.area, c2.cumul.area)
+        let density1 = 1.0 * c1.cumul.ncoms / c1.cumul.nlines
+        let density2 = 1.0 * c2.cumul.ncoms / c2.cumul.nlines
+        let ret -= weights.density * s:percent_diff(density1, density2)
     endif
     " -- Runt --
     " Note: Use only the *previous* (sidx-1) groups for this one, ignoring this criterion
     " if there's no previous group for either candidate under comparison.
-    " TODO: Rationale?
-    if weights.runt > 0 && c1.sidx > 0 && c2.sidx > 0
+    " TODO: Rationale? Decide on this, noting that we should probably take the same
+    " approach with both area and runt...
+    if weights.runt > 0 " && g1.sidx > 0 && g2.sidx > 0
         " Use the *previous* (sidx-1) group costs (without accumulation) to prevent
         " spurious avoidance of an incipient group.
-        let runt1 = a:dp[c1.sidx - 1].grp.cost.cumul.runt
-        let runt2 = a:dp[c2.sidx - 1].grp.cost.cumul.runt
-        let ret += weights.runt * s:percent_diff(runt1, runt2)
+        "let runt1 = a:dp[g1.sidx - 1].grp.cost.cumul.runt
+        "let runt2 = a:dp[g2.sidx - 1].grp.cost.cumul.runt
+        let ret += weights.runt * s:percent_diff(c1.cumul.runt, c2.cumul.runt)
     endif
     " Return the signed comparison value.
     return ret
@@ -3458,13 +3467,23 @@ endfunction
 " Calculate and return a dict representing the specified candidate group.
 " The dict must contain a cost dict with everything needed by the comparison function to
 " compare this candidate with another.
+" Inputs:
+"   dp:        dynamic programming state list with one element for each eol comment 
+"   sidx:      index of element corresponding to start of candidate group
+"   eidx:      index of element corresponding to end of candidate group
+"   area:      "area under the curve" for group being created: i.e., sum of all gaps
+"              between end of code and start of eol comment
+"   align:     alignment column for all eol comments in this group (excluding any
+"              separating spaces we may add).
 function! s:align_eolc__create_group_candidate(dp, sidx, eidx, area, align)
-    let [dp, ret] = [a:dp, {}]
+    let dp = a:dp
     " Calculate figures of merit for the *current* group.
     let nlines = dp[a:eidx].line - dp[a:sidx].line + 1
     let ncoms = a:eidx - a:sidx + 1
     " Calculate runtness now, though it won't be used till this element is at sidx-1.
     " TODO: Should this take "effective" group size into account?
+    " Note: Runtness is a step function equal to square of the delta between actual group
+    " size and runt threshold when size is under the threshold, else 0.
     let runt = nlines < g:sexp_align_eolc_runt_thresh
             \ ? (g:sexp_align_eolc_runt_thresh - nlines) * (g:sexp_align_eolc_runt_thresh - nlines)
             \ : 0
@@ -3473,14 +3492,13 @@ function! s:align_eolc__create_group_candidate(dp, sidx, eidx, area, align)
     if a:sidx > 0
         " Get previous grp in chain to support accumulation.
         let pgrp = dp[a:sidx - 1].grp
-        " TODO: Consider whether quantities like nlines and ncoms should be spans or num elements.
-        " Cumulative cost-related data that applies to the current candidate and its chain
+        " Aggregate cost-related data that applies to the current candidate and its chain
         " of predecessors.
         let cumul = {
                     \ 'ngrps': pgrp.cost.cumul.ngrps + 1,
                     \ 'nlines': pgrp.cost.cumul.nlines + nlines,
                     \ 'ncoms': pgrp.cost.cumul.ncoms + ncoms,
-                    \ 'area': pgrp.cost.cumul.area + area,
+                    \ 'area': pgrp.cost.cumul.area + a:area,
                     \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
     else
@@ -3490,12 +3508,15 @@ function! s:align_eolc__create_group_candidate(dp, sidx, eidx, area, align)
         " once it becomes an sidx-1 group, but this could be handled specially.
         " Rationale: There's never any comparison to be made...
         let cumul = {
-            \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': area, 'runt': 0
+            \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': a:area, 'runt': 0
         \ }
     endif
     " TODO: If self ends up not being required, pull cumul up.
-    let cost = {'self': self, 'cumul': cumul}
+    " TEMP DEBUG!!!
+    "let cost = {'self': self, 'cumul': cumul}
+    let cost = {'cumul': cumul}
     " Wrap all into a single grp dict.
+    " Note: 'sidx' is needed to support backwards traversal of group chain.
     let ret = {'align': a:align, 'sidx': a:sidx, 'cost': cost}
     return ret
 endfunction
@@ -3510,21 +3531,24 @@ endfunction
 " Inputs:
 "   dp:        dynamic programming state list with one element for each eol comment
 "   line:      linenr of line being evaluated
-"   ecol:      last non-white col preceding the eol comment
+"   ecol:      screen col just past last non-white char preceding the eol comment
 "   com_start: position of start of eol comment
-"   ecol_max:  like ecol, but considers non-eol-comment lines in preceding interval
+"   pre_max:   like ecol, but considers non-eol-comment lines in preceding interval
 "   sog:       start of group: don't look back
-function! s:align_eolc__update_dps(dp, line, ecol, com_start, ecol_max, sog)
+function! s:align_eolc__update_dps(dp, line, ecol, com_start, pre_max, sog)
     " TODO: Consider mechanism to validate/constrain options.
     let [maxshift, maxdist] = [g:sexp_align_eolc_maxshift, g:sexp_align_eolc_maxgap]
+    if a:line == 56
+        breaka func *compare_cost*
+    endif
     " Initialize DP state for current commment and add it to list.
     " Note: The 'grp' field will be updated within loop to reflect current best group
     " candidate.
     let el = {}
     let el.line = a:line                " line represented by this dp el.
-    " ecol_max represents max ecol of the lines between this (inclusive) and the previous
+    " pre_max represents max ecol of the lines between this (inclusive) and the previous
     " covered line (exclusive).
-    let el.ecol_max = a:ecol_max
+    let el.pre_max = a:pre_max
     let el.ecol = a:ecol                " end of element prior to eol comment
     let el.com_s = a:com_start          " start of eol comment
     let el.grp = {}                     " dict to hold candidate group.
@@ -3536,9 +3560,12 @@ function! s:align_eolc__update_dps(dp, line, ecol, com_start, ecol_max, sog)
     " Keep up with horizontal extents of the "box" containing end of code for all lines in
     " the group. Each time we move to earlier line, we must account for lines with no eol
     " comment if bounded by line with eol comment.
+    " Also keep up with previous ecol_max, which lets us know how much the "curve" whose
+    " integral we're interested in shifts upward each iteration, thereby increasing 'area'
+    " by the area of the rectangle associated with the shift.
     " TODO: Consider renaming box_{min,max} or adding a suffix to avoid confusion between
     " the 2 uses of 'ecol_max' (one referring only to lines between eol comment lines).
-    let [ecol_min, ecol_max] = [el.ecol, el.ecol]
+    let [ecol_min, ecol_max, ecol_max_prev] = [el.ecol, el.ecol, -1]
     " Loop over dp state backwards, starting with current element.
     " Optimization TODO: Handle single-element group outside loop with dedicated, more
     " efficient logic, skipping the loop altogether in special case of first element or
@@ -3559,25 +3586,40 @@ function! s:align_eolc__update_dps(dp, line, ecol, com_start, ecol_max, sog)
         endif
         " This is a candidate group; determine its cost.
         let area += ecol_max - el_s.ecol
+        if ecol_max_prev > 0 && ecol_max > ecol_max_prev
+            " Account for area increase due to "curve" shifting up by constant amount.
+            " Note: Difference term accounts for shift due to eol comment and/or
+            " non-comment lines between elements.
+            let area += (ecol_max - ecol_max_prev) * (N - 1 - i)
+        endif
+        let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:align_eolc__create_group_candidate(a:dp, i, N - 1, area, ecol_max)
+        if (i == N - 1)
+            call s:Dbg("End       (l=%3d, i=%d): %s", el.line, i, string(grp))
+        else
+            call s:Dbg("Candidate (l=%3d, i=%d): %s", el_s.line, i, string(grp))
+        endif
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
         if a:sog || empty(el.grp) || s:align_eolc__compare_costs(a:dp, el.grp, grp) > 0
             " Make this the new best candidate.
+            call s:Dbg("New best: %s", string(grp))
             let el.grp = grp
         endif
         if a:sog
             " Don't look back if this is start of group.
             " TODO: Consider treating sog as special case before the loop.
+            call s:Dbg("Breaking at i=%d for sog", i)
             break
         endif
         " Before moving to previous element, adjust right edge of bounding box to include
         " any long, non-eol-comment lines in the interval between previous and current.
         " Note: ecol_{min,max} have already been adjusted for the eolc line itself.
-        let ecol_max = max([el_s.ecol_max, ecol_max])
+        let ecol_max = max([el_s.pre_max, ecol_max])
         let i -= 1
     endwhile
+    call s:Dbg("Finished %d", N-1)
 endfunction
 
 " Convert the dp state list to a list of groups in convenient format.
@@ -3589,8 +3631,8 @@ function! s:align_eolc__finalize_groups(dp)
     while eidx >= 0
         let el = a:dp[eidx]
         let grp = {
-            'align': el.grp.align,
-            'eolcs': [],
+            \ 'align': el.grp.align,
+            \ 'eolcs': [],
         \ }
         " Add elements to the group.
         let idx = el.grp.sidx
@@ -3604,10 +3646,21 @@ function! s:align_eolc__finalize_groups(dp)
         endwhile
         " Accumulate group, then move to last element of previous group.
         call add(grps, grp)
-        let eidx = el.sidx - 1
+        let eidx = el.grp.sidx - 1
     endwhile
     " Since the list was built in reverse order...
     return reverse(grps)
+endfunction
+
+function! s:dbg_show_eolcs(grps)
+    let idx = 0
+    for grp in a:grps
+        call s:Dbg("Group %d align=%d", idx, grp.align)
+        " Loop over group members...
+        for eolc in grp.eolcs
+            call s:Dbg("com_s: %s prev_e: %s", string(eolc.com_s), string(eolc.prev_e))
+        endfor
+    endfor
 endfunction
 
 function! s:align_eolc__optimize_range(start, end)
@@ -3621,42 +3674,45 @@ function! s:align_eolc__optimize_range(start, end)
     " for first element, though dp function will work either way.
     let force_break = 1
     " Keep up with longest line *between* eol comment lines.
-    let ecol_max = 0
+    let pre_max = 0
     " Keep up with last included line, which is needed to support (option-dependent)
     " detection of excessive gaps.
     let line_gap = 0
     " Loop over lines in range, using DP optimization as we go to determine the best
     " candidate group ending at the current line...
-    while l <= a:end
+    let l = a:start[1]
+    while l <= a:end[1]
         " Get all relevant information about the current line (which may or may not
         " contain comment).
         let [ecol, is_com, is_eol_com, com_start] = s:align_eolc__characterize(l)
         " Check for group break conditions.
         if g:sexp_align_eolc_break_at_linecom && is_com && !is_eol_com
             " Break at (full) line comment.
-            let [ecol_max, force_break] = [0, 1]
+            call s:Dbg("Breaking due to linecom")
+            let [pre_max, force_break] = [0, 1]
         elseif g:sexp_align_eolc_maxgap && line_gap > g:sexp_align_eolc_maxgap
             " Gap between eol comment lines is too great to continue any open group.
-            let [ecol_max, force_break] = [0, 1]
+            call s:Dbg("Breaking due to maxgap")
+            let [pre_max, force_break] = [0, 1]
         endif
         if is_eol_com
             " Line needs to be covered.
-            call s:align_eolc__update_dps(dp, l, ecol, com_start, ecol_max, force_break)
-            let [line_gap, ecol_max, force_break] = [0, 0, 0]
+            call s:align_eolc__update_dps(dp, l, ecol, com_start, pre_max, force_break)
+            let [line_gap, pre_max, force_break] = [0, 0, 0]
         else
-            " Adjust ecol_max for non-empty, non-comment line, and increment line gap
+            " Adjust pre_max for non-empty, non-comment line, and increment line gap
             " unconditionally.
             " Rationale: If we're not within a group (i.e., haven't seen first eolc),
-            " ecol_max is irrelevant and line_gap incrementation is harmless, so don't
+            " pre_max is irrelevant and line_gap incrementation is harmless, so don't
             " bother inhibiting adjustments.
-            " TODO: Do we need an option that causes line comments to affect alignment?
-            " I'm thinking no one would want this...
+            " Design Decision: Line comments have no impact on alignment (unless they're
+            " configured to break groups).
             if ecol && !is_com
-                let ecol_max = max([ecol, ecol_max])
+                let pre_max = max([ecol, pre_max])
             endif
             let line_gap += 1
         endif
-        let i += 1
+        let l += 1
     endwhile
     " Reformat the list for easy group traversal.
     return s:align_eolc__finalize_groups(dp)
@@ -3664,18 +3720,24 @@ endfunction
 
 " Align end of line comments within specified range, taking all options into account.
 function! s:align_eol_comments(start, end, ps)
-    let grps = s:align_eolc__optimize_range(a:start, a:end, a:ps)
+    let grps = s:align_eolc__optimize_range(a:start, a:end)
+    call s:dbg_show_eolcs(grps)
     for grp in grps
         let [align, eolcs] = [grp.align, grp.eolcs]
         " Loop over the comments in this group.
+        "echomsg align
         for eolc in eolcs
+            "echomsg eolc
             " Align the comment by splicing required number of spaces between start of eol
-            " comment (exclusve) and end of element preceding it (exclusive).
-            call s:yankdel_range(,
+            " comment (exclusive) and position just past end of element preceding it
+            " (inclusive).
+            " Note: yankdel_range() knows how to handle the case in which those positions
+            " are equal.
+            call s:yankdel_range(
                     \ eolc.prev_e,
                     \ eolc.com_s,
-                    \ s:repeat(' ', align)
-                    \ [0, 0],
+                    \ repeat(' ', align - eolc.prev_e[2] + 2),
+                    \ [1, 0],
                     \ a:ps)
         endfor
     endfor

@@ -3652,6 +3652,7 @@ function! s:align_eolc__finalize_groups(dp)
     return reverse(grps)
 endfunction
 
+" TEMP DEBUG ONLY!!! Remove...
 function! s:dbg_show_eolcs(grps)
     let idx = 0
     for grp in a:grps
@@ -3661,6 +3662,145 @@ function! s:dbg_show_eolcs(grps)
             call s:Dbg("com_s: %s prev_e: %s", string(eolc.com_s), string(eolc.prev_e))
         endfor
     endfor
+endfunction
+
+" Inputs:
+"   i:            index of element at head of group (or one past final element) 
+"   sidx:         index of first element in group that just ended
+"   prev_sidx:    index of first element in group prior to one that just ended
+"   prep[]:       list of dicts characterizing eol comment lines
+"   ecol_maxes[]: alignment at each index in group that just ended
+function! s:align_eolc__preproc_calc(i, sidx, prev_sidx, prep, ecol_maxes)
+    " Factor of 2 used to ensure the first group will be at least as long as the second.
+    " TODO: Decide whether lookback and threshold should be distinct.
+    if i - a:sidx >= 2 * g:sexp_align_eolc_greedy_lookback
+        " End of long group. Mark transition to greedy at its start.
+        " Note: len and ecol_max keys added later.
+        let a:prep[a:sidx].seg = {'mode': "greedy"}
+    elseif i - a:sidx <= g:sexp_align_eolc_greedy_lookback
+        \ && a:prev_sidx >= 0 && a:prep[a:prev_sidx].mode == "greedy"
+        " End of short group following long. Mark transition to dp mode a little
+        " before the end of long group. Note that explicit sentinel is unnecessary, given
+        " that all greedy segments are explicitly marked with dict that records length.
+        let idx = i - g:sexp_align_eolc_greedy_lookback
+        " TODO: Do we even need the seg key for dp?
+        let a:prep[idx].seg = {'mode': "dp"}
+        " Finalize the preceding greedy segment.
+        let a:prep[a:prev_sidx].seg.len = idx - a:prev_sidx
+        let a:prep[a:prev_sidx].seg.ecol_max =
+                    \ a:ecol_maxes[-g:sexp_align_eolc_greedy_lookback]
+    endif
+endfunction
+
+function! s:align_eolc__preproc_pass2(start, end, prep, opt_level)
+    " Set to prevent lookbehind (e.g., when encountering too long a span with no eol
+    " comments, or when encountering line comment and g:sexp_align_eolc_break_at_linecom
+    " == 1).
+    let sog = 1            " start of group flag
+    let line_gap = 0       " gap between eol comment lines
+    let sidx = 0           " start of current group
+    let prev_sidx = -1     " start of previous group
+    let [ecol_min, ecol_max] = [0, 0]
+    " Cumulative ecol_max at each point in group.
+    let ecol_maxes = []
+    " Loop over lines in range to do the following, augmenting elements in input list with
+    " a seg dict that will facilitate transition between modes in the layout function.
+    let [i, N] = [0, len(a:prep)]
+    while i < N
+        let el = a:prep[i]
+        " Check for forcible group break conditions.
+        if g:sexp_align_eolc_break_at_linecom && el.is_com && !el.is_eol_com
+            " Break at (full) line comment.
+            let sog = 1
+        elseif g:sexp_align_eolc_maxgap && line_gap > g:sexp_align_eolc_maxgap
+            " Gap between eol comment lines is too great to continue any open group.
+            let sog = 1
+        endif
+        if !sog
+            " Update bounding box assuming same group.
+            let ecol_min = min([el.ecol, ecol_min])
+            let ecol_max = max([el.ecol, el.pre_max, ecol_max])
+            " Is bounding box still within limits?
+            if ecol_max - ecol_min > g:sexp_align_eolc_maxshift
+                " Break group.
+                let [sog, ecol_maxes] = [1, []]
+            else
+                " Save alignment in case this ends up being final element of greedy group.
+                call add(ecol_maxes, ecol_max)
+            endif
+        endif
+        if sog " starting new group
+            " Perform any requisite decoration of segment head elements.
+            if opt_level > 0
+                call s:align_eolc__preproc_calc(i, sidx, prev_sidx, a:prep, ecol_maxes)
+            else
+                " TODO: Probably change to is_greedy, or even just make presence of seg
+                " imply greedy.
+                let el.seg = {'mode': 'greedy', 'len': i - sidx, 'ecol_max': ecol_max}
+            endif
+            let prev_sidx = sidx
+            let sidx = i
+        endif
+        " Keep up with group extents.
+        let line_gap += 1
+        let l += 1
+    endwhile
+    " Process final group.
+    call s:align_eolc__preproc_calc(a:prep, i)
+endfunction
+
+" Return Dict:
+"   line
+"   is_com
+"   is_eol_com
+"   com_start
+function! s:align_eolc__preproc_pass1(start, end)
+    " List will contain one element for each eol comment in range.
+    let ret = []
+    " Set to prevent lookbehind (e.g., when encountering too long a span with no eol
+    " comments, or when encountering line comment and g:sexp_align_eolc_break_at_linecom
+    " == 1).
+    let pre_max = 0  " longest line *between* eol comment lines
+    " Loop over lines in range to do the following:
+    " 1. Determine which algorithm will be used for eol comment grouping/alignment.
+    " 2. Prepare the list of structs used by the algorithm-specific function
+    "    alignment function.
+    let [i, l] = [0, a:start[1]]
+    while l <= a:end[1]
+        " Get all relevant information about the current line (which may or may not
+        " contain comment).
+        let [ecol, is_com, is_eol_com, com_start] = s:align_eolc__characterize(l)
+        if is_eol_com
+            let el = {
+                \ 'line': l, 'ecol', 'is_eol_com': is_eol_com, 'is_com': is_com,
+                \ 'com_start': com_start, 'pre_max': pre_max}
+            call add(ret, el)
+            let pre_max = 0
+        else
+            " Adjust pre_max for non-empty, non-comment line, and increment line gap
+            " unconditionally.
+            " Rationale: If we're not within a group (i.e., haven't seen first eolc),
+            " pre_max is irrelevant and line_gap incrementation is harmless, so don't
+            " bother inhibiting adjustments.
+            " Design Decision: Line comments have no impact on alignment (unless they're
+            " configured to break groups).
+            if ecol && !is_com
+                let pre_max = max([ecol, pre_max])
+            endif
+        endif
+        let l += 1
+    endwhile
+endfunction
+
+function! s:align_eolc__opt_level(ncoms)
+endfunction
+
+function! s:align_eolc__preproc(start, end)
+    let prep = s:align_eolc__preproc_pass1(a:start, a:end)
+    let opt_level = s:align_eolc__opt_level(len(prep))
+    if opt_level < 2
+        call s:align_eolc__preproc_pass2(a:start, a:end, prep, opt_level)
+    endif
 endfunction
 
 function! s:align_eolc__optimize_range(start, end)

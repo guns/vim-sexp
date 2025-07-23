@@ -3532,26 +3532,19 @@ endfunction
 " the globally optimal set of groups by following group start indices backwards, starting
 " with the final element, which is necessarily the end of the final group.
 " Inputs:
-"   dp:        dynamic programming state list with one element for each eol comment
-"   line:      linenr of line being evaluated
-"   ecol:      screen col just past last non-white char preceding the eol comment
-"   com_start: position of start of eol comment
-"   pre_max:   like ecol, but considers non-eol-comment lines in preceding interval
-"   sog:       start of group: don't look back
-function! s:align_eolc__update_dps(dp, line, ecol, com_start, pre_max, sog)
+"   dp:          dynamic programming state list with one element for each eol comment
+"   idx:         current index
+"   sidx_limit:  Don't go back further than this (-1 means no limit)
+"                FIXME: Remove if not needed because of sog property.
+function! s:align_eolc__update_dps(dp, idx)
     " TODO: Consider mechanism to validate/constrain options.
     let [maxshift, maxdist] = [g:sexp_align_eolc_maxshift, g:sexp_align_eolc_maxgap]
-    " Initialize DP state for current commment and add it to list.
+    let [dp, idx] = [a:dp, a:idx]
+    let el = dp[idx]
+    " Initialize DP state for current comment and add it to list.
     " Note: The 'grp' field will be updated within loop to reflect current best group
     " candidate.
-    let el = {}
-    let el.line = a:line                " line represented by this dp el.
-    " pre_max represents max ecol of the lines between this (inclusive) and the previous
-    " covered line (exclusive).
-    let el.pre_max = a:pre_max
-    let el.ecol = a:ecol                " end of element prior to eol comment
-    let el.com_s = a:com_start          " start of eol comment
-    let el.grp = {}                     " dict to hold candidate group.
+    let el.grp = {}
     call add(a:dp, el)
 
     " Keep running sum of gaps between end of code and start of aligned eol comment: i.e.,
@@ -3570,11 +3563,10 @@ function! s:align_eolc__update_dps(dp, line, ecol, com_start, pre_max, sog)
     " Optimization TODO: Handle single-element group outside loop with dedicated, more
     " efficient logic, skipping the loop altogether in special case of first element or
     " start-of-group. As it is now, the single-element group is not treated specially.
-    let N = len(a:dp)
-    let i = N - 1
+    let i = idx
     while i >= 0
         " Get DP element representing current group start candidate.
-        let el_s = a:dp[i]
+        let el_s = dp[i]
         " Update bounding box as though this candidate is valid, then verify.
         if el_s.ecol < ecol_min | let ecol_min = el_s.ecol
         elseif el_s.ecol > ecol_max | let ecol_max = el_s.ecol
@@ -3587,30 +3579,24 @@ function! s:align_eolc__update_dps(dp, line, ecol, com_start, pre_max, sog)
         " This is a candidate group; determine its cost.
         let area += ecol_max - el_s.ecol
         if ecol_max_prev > 0 && ecol_max > ecol_max_prev
-            " Account for area increase due to "curve" shifting up by constant amount.
-            " Note: Difference term accounts for shift due to eol comment and/or
+            " Account for area increase due to entire "curve" shifting up by constant amount.
+            " Note: Shift could be due to either the newly-considered eol comment *or*
             " non-comment lines between elements.
             let area += (ecol_max - ecol_max_prev) * (N - 1 - i)
         endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:align_eolc__create_group_candidate(a:dp, i, N - 1, area, ecol_max)
-        if (i == N - 1)
-            call s:Dbg("End       (l=%3d, i=%d): %s", el.line, i, string(grp))
-        else
-            call s:Dbg("Candidate (l=%3d, i=%d): %s", el_s.line, i, string(grp))
-        endif
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
-        if a:sog || empty(el.grp) || s:align_eolc__compare_costs(a:dp, el.grp, grp) > 0
+        if el.sog || empty(el.grp) || s:align_eolc__compare_costs(a:dp, el.grp, grp) > 0
             " Make this the new best candidate.
-            call s:Dbg("New best: %s", string(grp))
             let el.grp = grp
         endif
-        if a:sog
-            " Don't look back if this is start of group.
+        if el.sog
+            " Don't look back if this is start of group or previous element is part of
+            " greedy group.
             " TODO: Consider treating sog as special case before the loop.
-            call s:Dbg("Breaking at i=%d for sog", i)
             break
         endif
         " Before moving to previous element, adjust right edge of bounding box to include
@@ -3675,18 +3661,21 @@ function! s:align_eolc__preproc_calc(i, sidx, prev_sidx, prep, ecol_maxes)
     " TODO: Decide whether lookback and threshold should be distinct.
     if i - a:sidx >= 2 * g:sexp_align_eolc_greedy_lookback
         " End of long group. Mark transition to greedy at its start.
-        " Note: len and ecol_max keys added later.
-        let a:prep[a:sidx].seg = {'mode': "greedy"}
+        " Note: len and ecol_max keys may be adjusted later.
+        let a:prep[a:sidx].seg =
+            \ {'mode': "greedy", 'eidx': i - 1, 'ecol_max': a:ecol_maxes[-1]}
     elseif i - a:sidx <= g:sexp_align_eolc_greedy_lookback
         \ && a:prev_sidx >= 0 && a:prep[a:prev_sidx].mode == "greedy"
         " End of short group following long. Mark transition to dp mode a little
-        " before the end of long group. Note that explicit sentinel is unnecessary, given
-        " that all greedy segments are explicitly marked with dict that records length.
+        " before the end of long group.
         let idx = i - g:sexp_align_eolc_greedy_lookback
-        " TODO: Do we even need the seg key for dp?
+        " TODO: Do we even need the seg key for dp? Note that explicit sentinel isn't
+        " strictly necessary, given that all greedy segments are explicitly marked with
+        " dict that records length.
         let a:prep[idx].seg = {'mode': "dp"}
+        let a:prep[idx].sog = 1
         " Finalize the preceding greedy segment.
-        let a:prep[a:prev_sidx].seg.len = idx - a:prev_sidx
+        let a:prep[a:prev_sidx].seg.eidx = idx - 1
         let a:prep[a:prev_sidx].seg.ecol_max =
                     \ a:ecol_maxes[-g:sexp_align_eolc_greedy_lookback]
     endif
@@ -3711,10 +3700,10 @@ function! s:align_eolc__preproc_pass2(start, end, prep, opt_level)
         " Check for forcible group break conditions.
         if g:sexp_align_eolc_break_at_linecom && el.is_com && !el.is_eol_com
             " Break at (full) line comment.
-            let sog = 1
+            let [sog, el.sog] = [1, 1]
         elseif g:sexp_align_eolc_maxgap && line_gap > g:sexp_align_eolc_maxgap
             " Gap between eol comment lines is too great to continue any open group.
-            let sog = 1
+            let [sog, el.sog] = [1, 1]
         endif
         if !sog
             " Update bounding box assuming same group.
@@ -3736,7 +3725,7 @@ function! s:align_eolc__preproc_pass2(start, end, prep, opt_level)
             else
                 " TODO: Probably change to is_greedy, or even just make presence of seg
                 " imply greedy.
-                let el.seg = {'mode': 'greedy', 'len': i - sidx, 'ecol_max': ecol_max}
+                let el.seg = {'mode': 'greedy', 'eidx': i - 1, 'ecol_max': ecol_max}
             endif
             let prev_sidx = sidx
             let sidx = i
@@ -3793,67 +3782,57 @@ function! s:align_eolc__preproc_pass1(start, end)
 endfunction
 
 function! s:align_eolc__opt_level(ncoms)
+    " FIXME!!!!! Consider options...
+    return 2
 endfunction
 
+" Preprocess range of lines potentially containing eolc comments, building a list of dicts
+" intended to streamline the subsequent alignment logic, particularly in
+" align_eolc__optimize_range().
+" At the end of preprocessing, each elements will have the following keys:
+"   line, ecol, is_eol_com, is_com, com_start, pre_max
+" Additionally, if element is head of a 'greedy' segment, it will contain the following:
+"   seg: {'mode': 'greedy', 'eidx': <end_of_greedy_grp>, 'ecol_max': <greedy_grp_align>}
+" Finally, if element is head of a 'dp' segment, it will contain the following:
+"   seg: {'mode': 'dp'}
 function! s:align_eolc__preproc(start, end)
     let prep = s:align_eolc__preproc_pass1(a:start, a:end)
     let opt_level = s:align_eolc__opt_level(len(prep))
     if opt_level < 2
         call s:align_eolc__preproc_pass2(a:start, a:end, prep, opt_level)
     endif
+    return prep
 endfunction
 
-function! s:align_eolc__optimize_range(start, end)
-    " Create the DP state array, which will ultimately contain one element per eol comment
-    " in range, with elements added as DP optimization progresses.
-    let dp = []
-    " Set to prevent lookbehind (e.g., when encountering too long a span with no eol
-    " comments, or when encountering line comment and g:sexp_align_eolc_break_at_linecom
-    " == 1).
-    " Design Decision: Since this could just as well have been named 'new_grp', set it
-    " for first element, though dp function will work either way.
-    let force_break = 1
-    " Keep up with longest line *between* eol comment lines.
-    let pre_max = 0
-    " Keep up with last included line, which is needed to support (option-dependent)
-    " detection of excessive gaps.
-    let line_gap = 0
-    " Loop over lines in range, using DP optimization as we go to determine the best
-    " candidate group ending at the current line...
-    let l = a:start[1]
-    while l <= a:end[1]
-        " Get all relevant information about the current line (which may or may not
-        " contain comment).
-        let [ecol, is_com, is_eol_com, com_start] = s:align_eolc__characterize(l)
-        " Check for group break conditions.
-        if g:sexp_align_eolc_break_at_linecom && is_com && !is_eol_com
-            " Break at (full) line comment.
-            call s:Dbg("Breaking due to linecom")
-            let [pre_max, force_break] = [0, 1]
-        elseif g:sexp_align_eolc_maxgap && line_gap > g:sexp_align_eolc_maxgap
-            " Gap between eol comment lines is too great to continue any open group.
-            call s:Dbg("Breaking due to maxgap")
-            let [pre_max, force_break] = [0, 1]
+" Iterate over the elements in the output of the preprocessor stage, optimizing eol
+" comment layout, taking optimization level into account. Note that we don't technically
+" need optimization level provided, as the requisite information is all in the preproc
+" dict, but having it allows us to skip checks when full optimization is requested.
+function! s:align_eolc__optimize_range(prep, opt_lvl)
+    let [prep, opt_lvl] = [a:prep, a:opt_lvl]
+    let is_greedy = 1
+    let sidx_limit = 0
+    let [i, N] = [0, len(prep)]
+    while i < N
+        let el = prep[i]
+        let seg = get(el, 'seg', {})
+        " Assumption: 'seg' will always be present on first element.
+        if !empty(seg)
+            " Potential mode change
+            let is_greedy = seg.mode == "greedy"
         endif
-        if is_eol_com
-            " Line needs to be covered.
-            call s:align_eolc__update_dps(dp, l, ecol, com_start, pre_max, force_break)
-            let [line_gap, pre_max, force_break] = [0, 0, 0]
+        if is_greedy
+            " Augment the grp dict of the final element in the greedy group to add this
+            " group to the reverse chain.
+            let prep[el.eidx].grp = { 'align': seg.align, 'sidx': i }
+            " Allow natural incrementation at loop end.
+            let i = el.eidx
         else
-            " Adjust pre_max for non-empty, non-comment line, and increment line gap
-            " unconditionally.
-            " Rationale: If we're not within a group (i.e., haven't seen first eolc),
-            " pre_max is irrelevant and line_gap incrementation is harmless, so don't
-            " bother inhibiting adjustments.
-            " Design Decision: Line comments have no impact on alignment (unless they're
-            " configured to break groups).
-            if ecol && !is_com
-                let pre_max = max([ecol, pre_max])
-            endif
-            let line_gap += 1
+            " Use DP to find best of candidate groups ending at this element.
+            call s:align_eolc__update_dps(dp, i)
         endif
-        let l += 1
-    endwhile
+        let i += 1
+    endfor
     " Reformat the list for easy group traversal.
     return s:align_eolc__finalize_groups(dp)
 endfunction
@@ -3861,7 +3840,8 @@ endfunction
 " Align end of line comments within specified range, taking all options into account.
 function! s:align_eol_comments(start, end, ps)
     let ts = reltime()
-    let grps = s:align_eolc__optimize_range(a:start, a:end)
+    let prep = s:align_eolc__preproc(a:start, a:end)
+    let grps = s:align_eolc__optimize_range(prep, s:align_eolc__opt_level(len(prep)))
     call s:dbg_show_eolcs(grps)
     for grp in grps
         let [align, eolcs] = [grp.align, grp.eolcs]

@@ -116,6 +116,15 @@ if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
 endif
 
+" TODO: Better names...
+if !exists('g:sexp_align_eolc_optlvl_fallback1')
+    let g:sexp_align_eolc_optlvl_fallback1 = 0
+endif
+
+if !exists('g:sexp_align_eolc_optlvl_fallback2')
+    let g:sexp_align_eolc_optlvl_fallback2 = 0
+endif
+
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif

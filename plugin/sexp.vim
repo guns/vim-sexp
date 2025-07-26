@@ -116,6 +116,10 @@ if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
 endif
 
+if !exists('g:sexp_align_eolc_greedy_lookback')
+    let g:sexp_align_eolc_greedy_lookback = 4
+endif
+
 " TODO: Better names...
 if !exists('g:sexp_align_eolc_optlvl_fallback1')
     let g:sexp_align_eolc_optlvl_fallback1 = 0

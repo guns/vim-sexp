@@ -116,6 +116,14 @@ if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
 endif
 
+if !exists('g:sexp_align_eolc_allow_split_group')
+    let g:sexp_align_eolc_allow_split_group = 1
+endif
+
+if !exists('g:sexp_align_eolc_split_group_maxgap')
+    let g:sexp_align_eolc_split_group_maxgap = 3
+endif
+
 if !exists('g:sexp_align_eolc_greedy_lookback')
     let g:sexp_align_eolc_greedy_lookback = 4
 endif

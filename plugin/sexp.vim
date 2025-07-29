@@ -116,6 +116,10 @@ if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
 endif
 
+if !exists('g:sexp_align_eolc_preferred_spaces')
+    let g:sexp_align_eolc_preferred_spaces = 2
+endif
+
 if !exists('g:sexp_align_eolc_allow_split_group')
     let g:sexp_align_eolc_allow_split_group = 1
 endif

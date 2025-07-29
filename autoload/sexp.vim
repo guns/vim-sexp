@@ -3443,7 +3443,17 @@ function! s:align_eolc__compare_costs(dp, grp1, grp2)
     let ret += weights.ngrps * s:percent_diff(c1.cumul.ngrps, c2.cumul.ngrps)
     " -- Area (Shift) --
     if weights.shift > 0
-        let ret += weights.shift * s:percent_diff(c1.cumul.area, c2.cumul.area)
+        " Area/shift requires normalization, but also, we need an approach that prevents
+        " spurious boosting of single-element (inherently zero-shift) groups, which is a
+        " natural consequence of using zero in the pct diff calculation.
+        " Approach: Use shift per line in lieu of raw area, and bias this quantity by a
+        " nonzero threshold, which represents the point at which a multi-line group will
+        " begin to be penalized relative to the single-line one.
+        " Note: Using maxshift as bias yields max pct diff of 1.5 (assuming
+        " s:percent_diff() uses avg in denom).
+        let spl1 = 1.0 * c1.cumul.area / c1.cumul.ncoms + g:sexp_align_eolc_maxshift
+        let spl2 = 1.0 * c2.cumul.area / c2.cumul.ncoms + g:sexp_align_eolc_maxshift
+        let ret += weights.shift * s:percent_diff(spl1, spl2)
     endif
     " -- Density --
     if weights.density > 0
@@ -3452,15 +3462,7 @@ function! s:align_eolc__compare_costs(dp, grp1, grp2)
         let ret -= weights.density * s:percent_diff(density1, density2)
     endif
     " -- Runt --
-    " Note: Use only the *previous* (sidx-1) groups for this one, ignoring this criterion
-    " if there's no previous group for either candidate under comparison.
-    " TODO: Rationale? Decide on this, noting that we should probably take the same
-    " approach with both area and runt...
-    if weights.runt > 0 " && g1.sidx > 0 && g2.sidx > 0
-        " Use the *previous* (sidx-1) group costs (without accumulation) to prevent
-        " spurious avoidance of an incipient group.
-        "let runt1 = a:dp[g1.sidx - 1].grp.cost.cumul.runt
-        "let runt2 = a:dp[g2.sidx - 1].grp.cost.cumul.runt
+    if weights.runt > 0
         let ret += weights.runt * s:percent_diff(c1.cumul.runt, c2.cumul.runt)
     endif
     " Return the signed comparison value.
@@ -3694,14 +3696,15 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx)
 endfunction
 
 " Convert the dp state list to a list of groups in convenient format.
-" dp:     the list produced by optimization/layout
+" dp:      the list produced by optimization/layout
+" opt_lvl: 0=greedy 1=greedy with lookback 2=dynamic programming
 " -- optional args (to support recursive calls for split group processing) --
 "    Note: If extra args are provided, at least 3 are required.
-" a:1     grps[] list to *augment* ([] if not provided)
-" a:2     eidx of first-processed group
-" a:3     sidx at which to stop processing
-"         Note: The previous 2 args facilitate processing sub-ranges with recursive calls.
-" a:4     alignment override.
+" a:1      grps[] list to *augment* ([] if not provided)
+" a:2      eidx of first-processed group
+" a:3      sidx at which to stop processing
+"          Note: The previous 2 args facilitate processing sub-ranges with recursive calls.
+" a:4      alignment override.
 " Note: Recursive calls are intended to handle only the following:
 " * holes (potentially, but rarely, consisting of multiple groups)
 "   Note: hole processing never uses alignment override
@@ -3713,7 +3716,7 @@ endfunction
 "   calls are possible, but multiple iterations are not.
 " Implication: Recursive calls may make recursive calls, but will never involve more than
 " a single iteration.
-function! s:align_eolc__finalize_groups(dp, ...)
+function! s:align_eolc__finalize_groups(dp, opt_lvl, ...)
     " Loop over elements in reverse, skipping nodes that are not the end of a group.
     " Assumption: Final element always ends a group.
     let subrange = !!a:0
@@ -3725,13 +3728,15 @@ function! s:align_eolc__finalize_groups(dp, ...)
     while eidx >= stop_sidx
         let el = a:dp[eidx]
         " Check for alignment override. See note in header comment.
-        if !subrange || align < 0 | let align = el.grp.align | endif
+        if !subrange || align < 0
+            let align = el.grp.align
+        endif
         " Is this a split group?
-        let hole = el.grp.hole
+        let hole = g:sexp_align_eolc_allow_split_group && a:opt_lvl == 2
+                \ ? el.grp.hole : [-1, -1]
         " Caveat: A hole that ends before sidx is a hole that's being handled by caller;
         " the only type of hole dealt with by a recursive call to this function is a hole
-        " within the first part of a split group, and such holes will always be inside the
-        " range.
+        " within the first part of a split group, and such holes will always within range.
         " Get *effective* sidx for sub-range about to be processed. (For the second part
         " of a split group, this will not be the sidx stored on the element.)
         let sidx = !subrange ? el.grp.sidx : stop_sidx
@@ -3741,11 +3746,11 @@ function! s:align_eolc__finalize_groups(dp, ...)
             " Caveat: Must use alignment override (if provided) because the group
             " represented by el could itself be the first part of a split group, in which
             " case, el.grp.align is not the *effective* alignment.
-            call s:align_eolc__finalize_groups(a:dp, grps, eidx, hole[1] + 1, align)
+            call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, eidx, hole[1] + 1, align)
             " Process hole, whose alignment is always correct.
-            call s:align_eolc__finalize_groups(a:dp, grps, hole[1], hole[0])
+            call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, hole[1], hole[0])
             " Process 1st part of split group, overriding its alignment.
-            call s:align_eolc__finalize_groups(a:dp, grps, hole[0] - 1, el.grp.sidx, align)
+            call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, hole[0] - 1, el.grp.sidx, align)
         else
             let grp = {'align': align, 'eolcs': []}
             " Add elements to the group.
@@ -3788,6 +3793,7 @@ endfunction
 " optimization levels.
 function! s:align_eolc__optimize_range(prep, opt_lvl)
     let [i, N] = [0, len(a:prep)]
+    call s:Dbg("\n\nPre-Prep: %s\n\n", json_encode(a:prep))
     let greedy_eidx = -1
     while i < N
         let el = a:prep[i]
@@ -3808,8 +3814,8 @@ function! s:align_eolc__optimize_range(prep, opt_lvl)
         let i += 1
     endwhile
     " Reformat the list for easy group traversal.
-    call s:Dbg("\n\nPrep: %s\n\n", json_encode(a:prep))
-    return s:align_eolc__finalize_groups(a:prep)
+    call s:Dbg("\n\nPost-Prep: %s\n\n", json_encode(a:prep))
+    return s:align_eolc__finalize_groups(a:prep, a:opt_lvl)
 endfunction
 
 " Update the 'seg' dict for a group that has just ended (and if necessary, its
@@ -3828,6 +3834,7 @@ function! s:align_eolc__preproc_finalize_seg(i, sidx, prev_sidx, prep, ecol_max,
     " short group and a configurable number of elements at the end of the long group.
     " Factor of 2 used to ensure the first group will be at least as long as the second.
     " TODO: Decide whether lookback and threshold should be distinct.
+    call s:Dbg("finalize_seg: i=%d sidx=%d prev_sidx=%d", a:i, a:sidx, a:prev_sidx)
     if a:i - a:sidx <= g:sexp_align_eolc_greedy_lookback
         \ && a:prev_sidx >= 0 && a:prep[a:prev_sidx].seg.is_greedy
         \ && a:prep[a:prev_sidx].seg.eidx - a:prev_sidx + 1 >= 2 * g:sexp_align_eolc_greedy_lookback
@@ -3904,7 +3911,7 @@ endfunction
 " performs 'greedy' grouping of all elements, leaving only the creation of the reverse
 " chain for subsequent stages. For optimization level 1, performs greedy grouping, but may
 " also create an arbitrary number of segments for which DP optimization will be performed.
-" For optimization level 3, implements only the (option-specific) logic used to limit the
+" For optimization level 2, implements only the (option-specific) logic used to limit the
 " lookback performed by the DP optimization algorithm (e.g., due to line comments or too
 " long a run of lines with no eol comments). The 'sog' (start of group) key is used to set
 " lookback limits.
@@ -3912,7 +3919,7 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
     " Distinction: el.sog is needed only by DP optimization loop; unlike local sog, it
     " will not reflect bounding box processing, since the optimization loop does its own.
     let sog = 1            " start of group flag
-    let sidx = 0           " start of current group
+    let sidx = -1          " start of current group
     let prev_sidx = -1     " start of previous group
     let [ecol_min, ecol_max] = [0, 0] " bounding box extents
     " Cumulative ecol_max at each point in group.
@@ -3948,6 +3955,7 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
                     let sog = 1
                 else
                     " Save alignment in case this ends up being final element of greedy group.
+                    " FIXME: Don't do this for opt_lvl 1
                     call add(ecol_maxes, ecol_max)
                 endif
             endif
@@ -4030,7 +4038,7 @@ function! s:align_eol_comments(start, end, ps)
             call s:yankdel_range(
                     \ eolc.prev_e,
                     \ eolc.com_s,
-                    \ repeat(' ', align - eolc.prev_e[2] + 2),
+                    \ repeat(' ', align - eolc.prev_e[2] + g:sexp_align_eolc_preferred_spaces),
                     \ [1, 0],
                     \ a:ps)
         endfor

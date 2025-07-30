@@ -3918,13 +3918,14 @@ endfunction
 function! s:align_eolc__preproc_pass2(prep, opt_lvl)
     " Distinction: el.sog is needed only by DP optimization loop; unlike local sog, it
     " will not reflect bounding box processing, since the optimization loop does its own.
-    let sog = 1            " start of group flag
-    let sidx = -1          " start of current group
-    let prev_sidx = -1     " start of previous group
+    let sog = 1                       " start of group flag
+    let sidx = -1                     " start of current group
+    let prev_sidx = -1                " start of previous group
     let [ecol_min, ecol_max] = [0, 0] " bounding box extents
-    " Cumulative ecol_max at each point in group.
-    " Note: The _prev version is needed because the list is used only when the
-    " *subsequent* group is being processed.
+    let [ecol_min_prev, ecol_max_prev] = [0, 0]
+    " Cumulative list of ecol_max at each point in group. Needed only for opt_lvl 1.
+    " Note: The _prev version is needed because it applies to the group *before* the one
+    " that just ended.
     let [ecol_maxes, ecol_maxes_prev] = [[], []]
     " Loop over lines in range, augmenting elements in input list with a seg dict that
     " will facilitate transition between modes in the optimization/layout function.
@@ -3940,26 +3941,31 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
             " Gap between eol comment lines is too great to continue any open group.
             let [sog, el.sog] = [1, 1]
         else
+            " TODO: Probably do this only for opt_lvl == 2
             let el.sog = 0
         endif
         " opt_lvl 2 contains its own bounding box logic, and doesn't use 'seg' key.
         if a:opt_lvl < 2
             if !sog
                 " Update bounding box assuming same group.
-                let ecol_min = min([el.ecol, ecol_min])
+                let test_min = min([el.ecol, ecol_min])
                 " TODO: Consider using option to determine whether pre_max is considered.
-                let ecol_max = max([el.ecol, el.pre_max, ecol_max])
+                let test_max = max([el.ecol, el.pre_max, ecol_max])
                 " Is bounding box still within limits?
-                if ecol_max - ecol_min > g:sexp_align_eolc_maxshift
+                if test_max - test_min > g:sexp_align_eolc_maxshift
                     " Break group.
                     let sog = 1
                 else
-                    " Save alignment in case this ends up being final element of greedy group.
-                    " FIXME: Don't do this for opt_lvl 1
-                    call add(ecol_maxes, ecol_max)
+                    " Continuation of current group.
+                    let [ecol_min, ecol_max] = [test_min, test_max]
+                    " Save max in case this ends up being final element of greedy group.
+                    if a:opt_lvl == 1
+                        call add(ecol_maxes, ecol_max)
+                    endif
                 endif
             endif
             if sog 
+                " Skip prev group finalization if this is first element.
                 if i > 0
                     " Perform any requisite decoration of previous segment(s).
                     if a:opt_lvl == 1
@@ -3970,11 +3976,12 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
                         let a:prep[sidx].seg = {'is_greedy': 1, 'eidx': i - 1, 'ecol_max': ecol_max}
                     endif
                 endif
+                " Make next group current (or current group prev).
                 let sog = 0
                 let [prev_sidx, sidx] = [sidx, i]
                 let [ecol_min, ecol_max] = [el.ecol, el.ecol]
-                " This is used only with a lag.
-                let [ecol_maxes_prev, ecol_maxes] = [ecol_maxes, []]
+                " These are used only with a lag.
+                let [ecol_max_prev, ecol_maxes_prev, ecol_maxes] = [ecol_max, ecol_maxes, []]
             endif
         endif
         let i += 1

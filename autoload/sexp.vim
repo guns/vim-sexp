@@ -3598,7 +3598,8 @@ endfunction
 "   dp:          dynamic programming state list with one element for each eol comment
 "   idx:         current index
 "   dp_sidx:     start of the region on which to perform DP (always 0 for opt_lvl 3)
-function! s:align_eolc__update_dps(dp, idx, dp_sidx)
+"   opt_lvl:     current optimization level (0..2)
+function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl)
     let el = a:dp[a:idx]
     " Initialize DP state for current comment and add it to list.
     " Note: The 'grp' field will be updated within loop to reflect current best group
@@ -3637,7 +3638,7 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx)
             " Design Decision: Don't create multiple holes in same group.
             " Rationale: If it made sense, preceding group would already have been
             " combined (and may already have been).
-            let j = g:sexp_align_eolc_allow_split_group && hole[0] == -1
+            let j = a:opt_lvl == 2 && g:sexp_align_eolc_allow_split_group && hole[0] == -1
                 \ ? s:align_eolc__skip_hole(a:dp, i, ecol_min, ecol_max)
                 \ : -1
             if j == -1
@@ -3679,8 +3680,9 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx)
             call s:Dbg("\texisting: %s", string(el.grp))
             call s:Dbg("\tcandidat: %s", string(grp))
         endif
-        if el.sog
-            " Don't look back any further if this is start of group.
+        if el_s.sog
+            " Don't look back any further if preprocessing has determined this to be an
+            " unconditional start of group.
             " TODO: Consider treating sog as special case before the loop.
             break
         endif
@@ -3809,7 +3811,7 @@ function! s:align_eolc__optimize_range(prep, opt_lvl)
             let greedy_eidx = el.seg.eidx
         else
             " Use DP to find best of candidate groups ending at this element.
-            call s:align_eolc__update_dps(a:prep, i, greedy_eidx + 1)
+            call s:align_eolc__update_dps(a:prep, i, greedy_eidx + 1, a:opt_lvl)
         endif
         let i += 1
     endwhile
@@ -3827,20 +3829,25 @@ endfunction
 "   prep[]:       list of dicts characterizing eol comment lines
 "   ecol_max:     alignment for group just ended (TODO: rename 'align')
 "   ecol_maxes[]: alignment at each index in group *prior to* one that just ended
+"   opt_lvl:      current optimization level (0..2)
 " Note: ecol_maxes[] is used to determine new alignment value if we need to resize a long
 " greedy group.
-function! s:align_eolc__preproc_finalize_seg(i, sidx, prev_sidx, prep, ecol_max, ecol_maxes)
+function! s:align_eolc__preproc_finalize_seg(
+    \ i, sidx, prev_sidx, prep, ecol_max, ecol_maxes, opt_lvl)
     " If short group follows long, create a DP optimized region that includes all of the
     " short group and a configurable number of elements at the end of the long group.
     " Factor of 2 used to ensure the first group will be at least as long as the second.
     " TODO: Decide whether lookback and threshold should be distinct.
     call s:Dbg("finalize_seg: i=%d sidx=%d prev_sidx=%d", a:i, a:sidx, a:prev_sidx)
-    if a:i - a:sidx <= g:sexp_align_eolc_greedy_lookback
+    if a:opt_lvl == 0
+        " With opt lvl 0, all segments are greedy.
+        let a:prep[a:sidx].seg = {'is_greedy': 1, 'eidx': a:i - 1, 'ecol_max': a:ecol_max}
+    elseif a:i - a:sidx <= g:sexp_align_eolc_greedy_lookback
         \ && a:prev_sidx >= 0 && a:prep[a:prev_sidx].seg.is_greedy
         \ && a:prep[a:prev_sidx].seg.eidx - a:prev_sidx + 1 >= 2 * g:sexp_align_eolc_greedy_lookback
         " End of short group following long. Mark transition to dp mode a little
         " before the end of long group.
-        " Note: Unlike greedy case, no need to save eidx, since DP logic process every
+        " Note: Unlike greedy case, no need to save eidx, since DP logic processes every
         " element up to next 'seg' key.
         " TODO: Would it make sense to reach back even further into the long group,
         " taking care not to make it shorter than g:sexp_align_eolc_greedy_lookback?
@@ -3968,13 +3975,8 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
                 " Skip prev group finalization if this is first element.
                 if i > 0
                     " Perform any requisite decoration of previous segment(s).
-                    if a:opt_lvl == 1
-                        call s:align_eolc__preproc_finalize_seg(
-                            \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev)
-                    else " opt_lvl == 0
-                        " With opt lvl 0, all segments are greedy.
-                        let a:prep[sidx].seg = {'is_greedy': 1, 'eidx': i - 1, 'ecol_max': ecol_max}
-                    endif
+                    call s:align_eolc__preproc_finalize_seg(
+                        \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev, a:opt_lvl)
                 endif
                 " Make next group current (or current group prev).
                 let sog = 0
@@ -3986,10 +3988,11 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
         endif
         let i += 1
     endwhile
-    " Caveat: Guard needed in case there are no eol comments.
-    if a:opt_lvl < 2 && N > 0
+    " Caveat: Guard needed in case there are no eol comments in range.
+    if a:opt_lvl < 2 && i > 0
         " Process final group.
-        call s:align_eolc__preproc_finalize_seg(i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev)
+        call s:align_eolc__preproc_finalize_seg(
+            \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev, a:opt_lvl)
     endif
 endfunction
 

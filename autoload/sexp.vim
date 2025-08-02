@@ -282,7 +282,7 @@ function! s:current_top_list_bracket_by_first_column(closing)
     let [_b, line, col, _o] = sexp#current_element_terminal(0)
 
     if line > 0
-        call cursor(line, col)
+        keepjumps call cursor(line, col)
         let at_top = col == 1
     endif
 
@@ -313,7 +313,8 @@ function! s:current_top_list_bracket_by_maxlines(closing)
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, cursorline + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
                    \ : 0
-    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket, flags, s:match_ignored_region_fn, stopline)
+    let [topline, topcol] = searchpairpos(s:opening_bracket, '', s:closing_bracket,
+                \ flags, s:match_ignored_region_fn, stopline)
 
     if topline > 0
         return [0, topline, topcol, 0]
@@ -349,12 +350,12 @@ fu! s:current_atom_terminal_legacy(end)
         if s:is_atom(line, col)
             let termline = line
             let termcol = col
-            call cursor(line, col)
+            keepjumps call cursor(line, col)
         else
             break
         endif
     endwhile
-    call cursor(cursorline, cursorcol)
+    keepjumps call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
 endfu
 
@@ -404,7 +405,7 @@ function! s:current_string_terminal(end)
         endif
     endif
 
-    call cursor(cursorline, cursorcol)
+    keepjumps call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
 endfunction
 
@@ -414,7 +415,7 @@ function! s:current_comment_terminal(end)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
 
     let ret = s:current_region_terminal('comment', a:end)
-    call cursor(cursorline, cursorcol)
+    keepjumps call cursor(cursorline, cursorcol)
     return ret
 endfunction
 
@@ -445,13 +446,15 @@ function! s:current_macro_character_terminal(end)
         if stridx(macro, getline(line)[col - 1]) >= 0
             let termline = line
             let termcol = col
-            call cursor(line, col)
+            " Important TODO: Consider pros/cons of use of cursor() rather than
+            " s:setcursor(), or setpos('.').
+            keepjumps call cursor(line, col)
         else
             break
         endif
     endwhile
 
-    call cursor(cursorline, cursorcol)
+    keepjumps call cursor(cursorline, cursorcol)
     return [0, termline, termcol, 0]
 endfunction
 
@@ -492,7 +495,7 @@ function! sexp#current_element_terminal(end)
             " If the macro character is at the tail of an atom, treat it as
             " part of the atom and return the head of the preceding element.
             if !s:is_atom(line, col + 1) && s:is_atom(line, col - 1)
-                call cursor(line, col - 1)
+                keepjumps call cursor(line, col - 1)
                 let pos = sexp#current_element_terminal(0)
             else
                 let pos = [0, line, col, 0]
@@ -505,9 +508,9 @@ function! sexp#current_element_terminal(end)
             if empty(elem_char) || elem_char =~# '\v\s'
                 let pos = macro_tail
             else
-                call cursor(macro_tail[1], macro_tail[2] + 1)
+                keepjumps call cursor(macro_tail[1], macro_tail[2] + 1)
                 let pos = sexp#current_element_terminal(1)
-                call cursor(line, col)
+                keepjumps call cursor(line, col)
             endif
         endif
     else
@@ -520,9 +523,9 @@ function! sexp#current_element_terminal(end)
     else
         " Move cursor to left of start position and soak up any leading macro
         " characters
-        call cursor(pos[1], pos[2] - 1)
+        keepjumps call cursor(pos[1], pos[2] - 1)
         let pre = s:current_macro_character_terminal(0)
-        call cursor(line, col)
+        keepjumps call cursor(line, col)
         return pre[1] > 0 ? pre : pos
     endif
 endfunction
@@ -564,6 +567,7 @@ function! s:nearest_element_terminal(next, tail, ...)
             throw 'sexp-error'
         " Or we are at the head or tail of a list
         elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
+            " TODO: Profile to measure the performance penalty for this.
             throw 'sexp-error'
         endif
 
@@ -704,7 +708,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
         if empty(char) || char =~# '\v\s'
             let termline = line
             let termcol = col
-            call cursor(line, col)
+            keepjumps call cursor(line, col)
         else
             break
         endif
@@ -1024,6 +1028,7 @@ endfunction
 
 " Given start and end positions, returns new positions [start', end'],
 " according to logic described below.
+" TODO: Review this comment to make sure it's still correct...
 " If (bos or eos) and !(precedes_com || follows_com)
 " 	Include *all* leading and trailing whitespace.
 " ElseIf eol
@@ -1148,7 +1153,7 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
         " Start next iteration at next element if in ignored scope
         " Caveat: searchpos() returns [0,0] if no bracket found before EOF.
         if line && s:is_rgn_type('str_com_chr', line, col)
-            call cursor(line, col)
+            keepjumps call cursor(line, col)
             call s:move_to_adjacent_element(1, 0, 0)
             continue
         endif
@@ -1170,9 +1175,9 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
         if cmp == 0 | break | endif
 
         if col([line, '$']) - 1 == col
-            call cursor(line + 1, 1)
+            keepjumps call cursor(line + 1, 1)
         else
-            call cursor(line, col + 1)
+            keepjumps call cursor(line, col + 1)
         endif
     endwhile
 
@@ -1209,7 +1214,7 @@ function! s:offset_char(pos, dir, ...)
     let cursor = getpos('.')
     let inc_nl = a:0 && a:1
     " Ensure normalized col position (1st byte in char).
-    call cursor(a:pos[1], a:pos[2])
+    keepjumps call cursor(a:pos[1], a:pos[2])
     let [l0, c0] = [line('.'), col('.')]
     let [l, c, cn] = [l0, c0, c0]
     let lim = a:dir ? col([l0, '$']) : 1
@@ -1233,7 +1238,7 @@ function! s:offset_char(pos, dir, ...)
                 let [l, c] = [l - 1, col([l - 1, '$'])]
                 if !inc_nl && c > 1
                     " Goto first byte of final char.
-                    call cursor(l, c - 1)
+                    keepjumps call cursor(l, c - 1)
                     let [l, c] = [line('.'), col('.')]
                 endif
             else
@@ -1243,7 +1248,7 @@ function! s:offset_char(pos, dir, ...)
             break
         " No line wrap; see whether 1 byte movement constitutes char movement.
         else
-            call cursor(l, cn)
+            keepjumps call cursor(l, cn)
             let [l, c] = [line('.'), col('.')]
         endif
     endwhile
@@ -1482,7 +1487,7 @@ function! s:is_comment(line, col)
         " a comment.
         if getline(a:line)[a:col - 1] =~# '\v\s'
             let cursor = getpos('.')
-            call cursor(a:line, a:col)
+            keepjumps call cursor(a:line, a:col)
             let [pline, pcol] = s:findpos('\v\S', 0, a:line - 1)
             let [cline, ccol] = s:findpos('\v\S', 1, a:line)
             if pline && cline && s:is_rgn_type('comment', pline, pcol)
@@ -1499,7 +1504,7 @@ endfunction
 " Returns nonzero if input position is at toplevel.
 function! s:at_top(line, col)
     let cursor = getpos('.')
-    call cursor(a:line, a:col)
+    call s:setcursor([0, a:line, a:col, 0])
     let ret = !s:nearest_bracket(0)[1] || !s:nearest_bracket(1)[1]
     call s:setcursor(cursor)
     return ret
@@ -1687,7 +1692,7 @@ endfu
 " level than cursor(), omitting some UI niceties.
 " TODO: Re-examine this rationale...
 function! s:setcursor(pos)
-    call cursor(a:pos[1], a:pos[2])
+    keepjumps call cursor(a:pos[1], a:pos[2])
 endfunction
 
 " TODO: Remove...
@@ -1819,7 +1824,7 @@ function! sexp#move_to_nearest_bracket(mode, next)
         let [_b, l, c, _o] = s:move_to_nearest_bracket(0)
         if l > 0
             let [l, c] = s:findpos('\v\_.', 1)
-            call cursor(l, c)
+            keepjumps call cursor(l, c)
         endif
         return [0, l, c, 0]
     elseif a:mode ==? 'o' && getline('.')[col('.') - 1] =~# s:bracket
@@ -2559,7 +2564,8 @@ function! s:select_current_marks(mode, ...)
         if mode() !=? 'v'
             " Caveat: If we're already in visual mode, gv would revert to
             " *previous* visual marks!!!
-            normal! gv
+            " TODO: Remove the keepjumps if I determine gv can't affect jumplist.
+            keepjumps normal! gv
         endif
         if !s:is_characterwise(visualmode())
             normal! v
@@ -2574,11 +2580,12 @@ function! s:select_current_marks(mode, ...)
             " using normal! o in conjunction with getpos('.').
             let pos = getpos('.')
             " Jump to other side to see which side we're on.
-            normal! o
+            " TODO: Remove the keepjumps if I determine o can't affect jumplist.
+            keepjumps normal! o
             let cmp = s:compare_pos(getpos('.'), pos)
             if a:1 && cmp < 0 || !a:1 && cmp > 0
                 " We were already on the desired end.
-                normal! o
+                keepjumps normal! o
             endif
         endif
         return 1
@@ -3286,10 +3293,12 @@ function! s:has_eol_comment(line)
         return s:nullpos_pair
     endif
     " Position past (or on, depending on 've') last char.
-    call cursor(a:line, ecol)
+    call s:setcursor([0, a:line, ecol, 0])
     " Find last non-white char on line.
     " Note: 'c' flag needed because default 've' setting doesn't allow us to start *past*
     " the last char.
+    " TODO: Can search() without 'n' flag not affect jumplist? Docs don't state this, but
+    " it doesn't appear to. Decide whether a keepjumps is needed.
     if search('\S', 'bWc', a:line)
         " We're on non-whitespace; see whether it's a comment.
         if s:is_comment(line('.'), col('.'))
@@ -3309,7 +3318,7 @@ function! s:goto_last_non_ws(line)
         return 0
     endif
     " Position past (or on, depending on 've') last char.
-    call cursor(a:line, ecol)
+    keepjumps call cursor(a:line, ecol)
     " Find last non-white char on line.
     " Note: 'c' flag needed because default 've' setting doesn't allow us to start *past*
     " the last char.
@@ -4065,6 +4074,7 @@ endfunction
 " elements not contained in a compound form (e.g. top-level comments).
 function! sexp#indent(mode, top, count, clean, ...)
     let win = winsaveview()
+    " FIXME: Shouldn't need 2 representations of cur pos.
     let cursor = getpos('.')
     let [_b, line, col, _o] = getpos('.')
     let force_syntax = a:0 && !!a:1
@@ -4094,16 +4104,16 @@ function! sexp#indent(mode, top, count, clean, ...)
             let at_top = 1
             " At top-level. If current (or next) element is list, select it.
             " Note: When not within list, 'inner' includes brackets.
-            keepjumps call sexp#select_current_element('n', 1)
+            call sexp#select_current_element('n', 1)
         elseif a:top
             " Inside list. Select topmost list.
-            keepjumps call sexp#select_current_top_list('n', 0)
+            call sexp#select_current_top_list('n', 0)
         else
             " Inside list. Select [count]th containing list.
             " If performing clean, select only inner list.
             " Rationale: cleanup_ws will get any open or close adjacent to
             " selection, and we want to stop at the edge of current list.
-            keepjumps call sexp#docount(a:count, 'sexp#select_current_list', 'n', clean, 1)
+            call sexp#docount(a:count, 'sexp#select_current_list', 'n', clean, 1)
         endif
         " Cache visual start/end; end can actually be changed by s:cleanup_ws().
         let [start, end] = s:get_visual_marks()
@@ -4111,8 +4121,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         " with function calls).
         exe "normal! \<Esc>"
     else
-        " Treat visual mode specially.
-        " Rationalize visual range.
+        " Treat visual mode specially. Rationalize visual range.
         let [vs, ve] = s:get_visual_marks()
         let [start, end] = s:super_range(vs, ve)
     endif
@@ -4144,11 +4153,12 @@ function! sexp#indent(mode, top, count, clean, ...)
     let adj = s:indent_preadjust_positions(
         \ s:concat_positions(ps, start, end, cursor,
             \ a:mode ==? 'n' ? [vs, ve] : []))
-    silent keepjumps exe "normal! " . start[1] . 'G=' . end[1] . "G"
+    " Perform the indent.
+    silent exe "keepjumps normal! " . start[1] . 'G=' . end[1] . "G"
     " Position post-adjustment
     call s:indent_postadjust_positions(adj)
     " (Optional) end of line comment alignment
-    if g:sexp_align_eolc
+    if g:sexp_indent_aligns_eol_comments
         call s:align_eol_comments(start, end, ps)
     endif
     " Adjust window view object to account for buffer changes made by the
@@ -4243,7 +4253,7 @@ function! s:list_head()
         " Empty form
         return ret
     endif
-    call cursor(l, c) 
+    call s:setcursor([0, l, c, 0]) 
     " Just to be sure...
     let ret = sexp#current_element_terminal(0)
     " Restore original position.
@@ -4387,9 +4397,9 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         " (since it wasn't adjusted by yankdel_range).
         if done || !next[1] | break | endif
         " If here, there's another element at this level.
-        " Assumption: eff_next and next are the same except that the former has been
-        " adjusted.
-        call cursor(eff_next[1], eff_next[2])
+        " Assumption: eff_next and next are the same except that the former
+        " has been adjusted.
+        keepjumps call cursor(eff_next[1], eff_next[2])
         if s:is_list(eff_next[1], eff_next[2])
             let next = s:move_to_list_open()
             call s:cleanup_ws(next, 0, a:ps)
@@ -4542,7 +4552,7 @@ fu! sexp#convolute(count, ...)
     " If non-empty macro chars were pasted, move forward to bracket so we'll
     " know exactly what we're indenting.
     if len(bra) > 1
-        call cursor(line('.'), col('.') + len(bra) - 1)
+        keepjumps call cursor(line('.'), col('.') + len(bra) - 1)
     endif
 
     " Indent the outer list *and* the one that contains it.
@@ -4793,7 +4803,7 @@ function! sexp#stackop(mode, last, capture)
             call s:set_visual_marks(marks)
             normal! gv
         else
-            call cursor(cursorline, cursorcol)
+            keepjumps call cursor(cursorline, cursorcol)
         endif
     endtry
 endfunction
@@ -4957,6 +4967,7 @@ function! sexp#closing_insertion(ket)
 
     " Brackets are balanced, jump to closing bracket
     if close[1] > 0
+        " FIXME: keepjumps needed here?
         return "\<C-o>:\<C-u>call cursor(" . close[1] . ", " . close[2] . ")\<CR>"
     else
         return a:ket

@@ -76,8 +76,12 @@ if !exists('g:sexp_cleanup_colshift_slope')
 endif
 
 " TODO: Consider encapsulating related options in a dict.
-if !exists('g:sexp_align_eolc')
-    let g:sexp_align_eolc = 1
+if !exists('g:sexp_indent_aligns_eol_comments')
+    let g:sexp_indent_aligns_eol_comments = 1
+endif
+
+if !exists('g:sexp_indent_does_eolc_align')
+    let g:sexp_indent_does_eolc_align = 1
 endif
 
 if !exists('g:sexp_align_eolc_maxshift')
@@ -85,7 +89,7 @@ if !exists('g:sexp_align_eolc_maxshift')
 endif
 
 if !exists('g:sexp_align_eolc_maxgap')
-    let g:sexp_align_eolc_maxgap = 0
+    let g:sexp_align_eolc_maxgap = 100
 endif
 
 if !exists('g:sexp_align_eolc_break_at_linecom')
@@ -133,12 +137,12 @@ if !exists('g:sexp_align_eolc_greedy_lookback')
 endif
 
 " TODO: Better names...
-if !exists('g:sexp_align_eolc_optlvl_fallback1')
-    let g:sexp_align_eolc_optlvl_fallback1 = 0
+if !exists('g:sexp_align_eolc_optlvl1_thresh')
+    let g:sexp_align_eolc_optlvl1_thresh = 0
 endif
 
-if !exists('g:sexp_align_eolc_optlvl_fallback2')
-    let g:sexp_align_eolc_optlvl_fallback2 = 0
+if !exists('g:sexp_align_eolc_optlvl2_thresh')
+    let g:sexp_align_eolc_optlvl2_thresh = 0
 endif
 
 if !exists('g:sexp_mappings')
@@ -301,7 +305,7 @@ function! s:defplug(flags, mapmode, name, ...)
     let use_count = rhs =~ 'v:prevcount' && !s:have_cmd ? 'v:prevcount' : 'v:count'
     let prefix = lhs . ' '
                  \ . (s:have_cmd ? '<cmd>' : ':<c-u>') . ' let b:sexp_count = ' . use_count
-		 \ . (s:have_cmd ? ' \| call <SID>ensure_normal_mode()' : '') . ' \| '
+                 \ . (s:have_cmd ? ' \| call <SID>ensure_normal_mode()' : '') . ' \| '
                  \ . prefix
                  \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
                  \ . 'call ' . substitute(rhs, 'v:\%(prev\)\?count', 'b:sexp_count', 'g')
@@ -536,6 +540,12 @@ Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, -1)
 Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
 Defplug  xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:prevcount, 1)
 Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
+
+" TODO: Should these have dedicated default mappings, or just default to having it done by
+" indent and let user configure explicit maps if desired?
+Defplug! nnoremap sexp_align                 sexp#align_eol_comments('n', 0, v:count, -1)
+Defplug  xnoremap sexp_align                 sexp#align_eol_comments('x', 0, v:prevcount, -1)
+Defplug! nnoremap sexp_align_top             sexp#align_eol_comments('n', 1, v:count, -1)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

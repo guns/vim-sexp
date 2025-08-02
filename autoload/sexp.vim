@@ -3996,11 +3996,15 @@ function! s:align_eolc__preproc_pass2(prep, opt_lvl)
     endif
 endfunction
 
+" Return optimization level selected by input number of (eol) comments.
+" Logic: Optimization level with a threshold <= the input number of comments wins.
+" Although optimization level is always determined by number of comments, user can force
+" unconditional selection of a specific level by setting the corresponding threshold to 1
+" and all others to 0.
 function! s:align_eolc__opt_level(ncoms)
-    " FIXME!!!!! Consider options...
-    if g:sexp_align_eolc_optlvl_fallback2 && a:ncoms >= g:sexp_align_eolc_optlvl_fallback2
+    if g:sexp_align_eolc_optlvl2_thresh && a:ncoms >= g:sexp_align_eolc_optlvl2_thresh
         return 0
-    elseif g:sexp_align_eolc_optlvl_fallback1 && a:ncoms >= g:sexp_align_eolc_optlvl_fallback1
+    elseif g:sexp_align_eolc_optlvl1_thresh && a:ncoms >= g:sexp_align_eolc_optlvl1_thresh
         return 1
     else
         " No fallback thresholds reached.

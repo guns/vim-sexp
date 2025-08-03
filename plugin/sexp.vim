@@ -80,10 +80,6 @@ if !exists('g:sexp_indent_aligns_eol_comments')
     let g:sexp_indent_aligns_eol_comments = 1
 endif
 
-if !exists('g:sexp_indent_does_eolc_align')
-    let g:sexp_indent_does_eolc_align = 1
-endif
-
 if !exists('g:sexp_align_eolc_maxshift')
     let g:sexp_align_eolc_maxshift = 40
 endif
@@ -184,6 +180,8 @@ let s:sexp_mappings = {
     \ 'sexp_indent_top':                '=-',
     \ 'sexp_indent_and_clean':          '<M-=>',
     \ 'sexp_indent_and_clean_top':      '<M-->',
+    \ 'sexp_align':                     '<M-a>',
+    \ 'sexp_align_top':                 '<M-\>',
     \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
     \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
     \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -371,7 +369,8 @@ function! s:sexp_create_mappings()
 
     for plug in ['sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
                \ 'sexp_convolute',           'sexp_splice_list',
-               \ 'sexp_indent_top',          'sexp_indent_and_clean_top']
+               \ 'sexp_indent_top',          'sexp_indent_and_clean_top',
+               \ 'sexp_align',               'sexp_align_top']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -395,7 +394,8 @@ function! s:sexp_create_mappings()
                \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
                \ 'sexp_clone_list',               'sexp_clone_list_sl',
                \ 'sexp_clone_element',            'sexp_clone_element_sl',
-               \ 'sexp_indent',                   'sexp_indent_and_clean']
+               \ 'sexp_indent',                   'sexp_indent_and_clean',
+               \ 'sexp_align']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -543,9 +543,9 @@ Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
 
 " TODO: Should these have dedicated default mappings, or just default to having it done by
 " indent and let user configure explicit maps if desired?
-Defplug! nnoremap sexp_align                 sexp#align_eol_comments('n', 0, v:count, -1)
-Defplug  xnoremap sexp_align                 sexp#align_eol_comments('x', 0, v:prevcount, -1)
-Defplug! nnoremap sexp_align_top             sexp#align_eol_comments('n', 1, v:count, -1)
+Defplug! nnoremap sexp_align                 sexp#align_eol_comments('n', 0, v:count)
+Defplug  xnoremap sexp_align                 sexp#align_eol_comments('x', 0, v:prevcount)
+Defplug! nnoremap sexp_align_top             sexp#align_eol_comments('n', 1, v:count)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

@@ -3259,6 +3259,10 @@ function! s:adjust_saved_view(view, cursor)
     " column is visible.
 endfunction
 
+" Build and return a dict containing both the input position list and a dict mapping the
+" line numbers represented to the corresponding line end (col('$')).
+" Rationale: This information is required by indent_postadjust_positions() to adjust
+" positions after indentation has been performed on the lines containing the positions.
 function! s:indent_preadjust_positions(ps)
     let ret = {'ps': a:ps, 'line_ends': {}}
     let line_ends = ret.line_ends
@@ -3270,6 +3274,8 @@ function! s:indent_preadjust_positions(ps)
     return ret
 endfunction
 
+" Use the information in the input dict (recorded by indent_preadjust_positions()) to
+" adjust the positions in adj.ps[] for the indent that has just occurred.
 function! s:indent_postadjust_positions(adj)
     let line_ends = a:adj.line_ends
     for p in a:adj.ps
@@ -3279,6 +3285,7 @@ function! s:indent_postadjust_positions(adj)
         " is a lot of complexity for a small potential advantage.
         " Decision: For now, stay on this side of point of diminishing returns
         " by preserving byte distance from EOL.
+        " TODO: Consider using screen position as I do with comment alignment.
         let p[2] -= line_ends[p[1]] - col([p[1], '$'])
     endfor
 endfunction
@@ -4041,7 +4048,92 @@ function! s:align_eolc__preproc(start, end)
     return [prep, opt_level]
 endfunction
 
-" Align end of line comments within specified range, taking all options into account.
+" Calculate useful state (primarily target range) for an operation that operates on
+" either forms (possibly more than one, as determined by count) or visual range and needs
+" to preserve view and cursor position across the operation: e.g., indent and align.
+" Return a dict containing the calculated state.
+" Note: Currently, this function also handles saving window state, but I'm thinking
+" perhaps that should be pulled out.
+" TODO: Rename this to make it more general...
+function! s:pre_align_or_indent(mode, top, count, clean, ps)
+    let win = winsaveview()
+    let cursor = getpos('.')
+    let [line, col] = [cursor[1], cursor[2]]
+    " Note: This flag can be set (but not cleared) post init.
+    " Rationale: Even if user hasn't requested toplevel operation, it should be set if we
+    " are, in fact, at toplevel
+    let at_top = a:top
+
+    " Save original visual marks for restoration after adjustment.
+    " Rationale: For Normal mode invocation, we use visual selection to perform indent,
+    " but this is an implementation detail that should be transparent to user.
+    let [vs, ve] = s:get_visual_marks()
+    if a:mode ==? 'n'
+        " Move to current list tail since the expansion step of
+        " s:set_marks_around_current_list() happens at the tail.
+        if getline(line)[col - 1] =~ s:closing_bracket
+            \ && !s:is_rgn_type('str_com_chr', line, col)
+            let pos = [0, line, col, 0]
+        else
+            let pos = s:move_to_nearest_bracket(1)
+        endif
+
+        normal! v
+        if pos[1] < 1
+            let at_top = 1
+            " At top-level. If current (or next) element is list, select it.
+            " Note: When not within list, 'inner' includes brackets.
+            call sexp#select_current_element('n', 1)
+        elseif a:top
+            " Inside list. Select topmost list.
+            call sexp#select_current_top_list('n', 0)
+        else
+            " Inside list. Select [count]th containing list.
+            " If performing clean, select only inner list.
+            " Rationale: cleanup_ws will get any open or close adjacent to
+            " selection, and we want to stop at the edge of current list.
+            call sexp#docount(a:count, 'sexp#select_current_list', 'n', a:clean, 1)
+        endif
+        " Cache visual start/end; end can actually be changed by s:cleanup_ws().
+        let [start, end] = s:get_visual_marks()
+        " We're done with visual mode. Leave it to avoid problems below (eg,
+        " with function calls).
+        exe "normal! \<Esc>"
+    else
+        " Treat visual mode specially. Rationalize visual range.
+        let [start, end] = s:super_range(vs, ve)
+    endif
+    return {'win': win, 'at_top': at_top, 'ps': a:ps, 'cursor': cursor,
+            \ 'vs': vs, 've': ve, 'start': start, 'end': end}
+endfunction
+
+" Function containing common post-operation logic for both align and indent.
+" FIXME: Since this function is called internally (e.g., from sexp#clone), should probably
+" either factor out the cursor/window restoration (e.g., putting it into a static
+" workhorse function that can be called by sexp#clone as well), or make it selectable.
+function! s:post_align_or_indent(mode, state)
+    " Adjust window view object to account for buffer changes made by the
+    " indent (and possibly by s:cleanup_ws).
+    let a:state.win.lnum = a:state.cursor[1]
+    let a:state.win.col = a:state.cursor[2] - 1 " .col is zero-based
+    " Design Decision: In normal mode, restore old (adjusted) visual
+    " selection; in visual mode, restore the adjusted super-range.
+    call s:set_visual_marks(a:mode ==? 'n'
+            \ ? [a:state.vs, a:state.ve] : [a:state.start, a:state.end])
+    call winrestview(a:state.win)
+endfunction
+
+" API function implementing standalone eol comment alignment (i.e., not triggered by indent).
+function! sexp#align_eol_comments(mode, top, count)
+    " eol comment alignment doesn't support 'clean'; if user wants ws cleanup, he should
+    " be using indent commands, which can be configured to do both ws cleanup and eol
+    " comment alignment.
+    let state = s:pre_align_or_indent(a:mode, a:top, a:count, 0, [])
+    call s:align_eol_comments(state.start, state.end, state.ps)
+    call s:post_align_or_indent(a:mode, state)
+endfunction
+
+" Align end of line comments within specified range, taking all relevant options into account.
 function! s:align_eol_comments(start, end, ps)
     let ts = reltime()
     let [prep, opt_lvl] = s:align_eolc__preproc(a:start, a:end)
@@ -4073,68 +4165,20 @@ endfunction
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
 function! sexp#indent(mode, top, count, clean, ...)
-    let win = winsaveview()
-    " FIXME: Shouldn't need 2 representations of cur pos.
-    let cursor = getpos('.')
-    let [_b, line, col, _o] = getpos('.')
-    let force_syntax = a:0 && !!a:1
     " If caller hasn't specified clean, defer to option.
     let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
-    " Were positions supplied for adjustment?
-    let ps = a:0 > 1 ? a:2 : []
-    " Note: This flag can be set (but not cleared) post init.
-    let at_top = a:top
-
-    if a:mode ==? 'n'
-        " Save original visual marks for restoration after adjustment.
-        " Rationale: Use of visual selection to perform indent is an
-        " implementation detail that should be completely transparent.
-        let [vs, ve] = s:get_visual_marks()
-        " Move to current list tail since the expansion step of
-        " s:set_marks_around_current_list() happens at the tail.
-        if getline(line)[col - 1] =~ s:closing_bracket
-            \ && !s:is_rgn_type('str_com_chr', line, col)
-            let pos = [0, line, col, 0]
-        else
-            let pos = s:move_to_nearest_bracket(1)
-        endif
-
-        normal! v
-        if pos[1] < 1
-            let at_top = 1
-            " At top-level. If current (or next) element is list, select it.
-            " Note: When not within list, 'inner' includes brackets.
-            call sexp#select_current_element('n', 1)
-        elseif a:top
-            " Inside list. Select topmost list.
-            call sexp#select_current_top_list('n', 0)
-        else
-            " Inside list. Select [count]th containing list.
-            " If performing clean, select only inner list.
-            " Rationale: cleanup_ws will get any open or close adjacent to
-            " selection, and we want to stop at the edge of current list.
-            call sexp#docount(a:count, 'sexp#select_current_list', 'n', clean, 1)
-        endif
-        " Cache visual start/end; end can actually be changed by s:cleanup_ws().
-        let [start, end] = s:get_visual_marks()
-        " We're done with visual mode. Leave it to avoid problems below (eg,
-        " with function calls).
-        exe "normal! \<Esc>"
-    else
-        " Treat visual mode specially. Rationalize visual range.
-        let [vs, ve] = s:get_visual_marks()
-        let [start, end] = s:super_range(vs, ve)
-    endif
-    if clean
+    let state = s:pre_align_or_indent(a:mode, a:top, a:count, clean, a:0 ? a:1 : [])
+    let force_syntax = a:0 && !!a:1
+    if a:clean
         " Always force syntax update when we're modifying the buffer.
         let force_syntax = 1
         " Design Decision: Handle both non-list and list elements identically:
         " cleanup back to prev, but indent starting with current.
         " Note: Avoid unnecessary calls to at_top().
-        let at_top = at_top || s:at_top(end[1], end[2])
-        call s:cleanup_ws(start, at_top,
-            \ s:concat_positions(ps, start, end, cursor,
-                \ a:mode ==? 'n' ? [vs, ve] : []), end)
+        let at_top = state.at_top || s:at_top(state.end[1], state.end[2])
+        call s:cleanup_ws(state.start, at_top,
+            \ s:concat_positions(state.ps, state.start, state.end, state.cursor,
+                \ a:mode ==? 'n' ? [state.vs, state.ve] : []), state.end)
     endif
     " Caveat: Attempting to apply = operator in visual mode does not work
     " consistently.
@@ -4147,32 +4191,22 @@ function! sexp#indent(mode, top, count, clean, ...)
         " syntax recalculated (e.g., because the paste and subsequent indent
         " happen in a single command). Caller should set the force_syntax flag
         " in such scenarios to force syntax recalculation prior to the =.
-        exe start[1] . ',' . end[1] . 'call synID(line("."), col("."), 1)'
+        exe state.start[1] . ',' . state.end[1] . 'call synID(line("."), col("."), 1)'
     endif
     " Position pre-adjustment
     let adj = s:indent_preadjust_positions(
-        \ s:concat_positions(ps, start, end, cursor,
-            \ a:mode ==? 'n' ? [vs, ve] : []))
+        \ s:concat_positions(state.ps, state.start, state.end, state.cursor,
+            \ a:mode ==? 'n' ? [state.vs, state.ve] : []))
     " Perform the indent.
-    silent exe "keepjumps normal! " . start[1] . 'G=' . end[1] . "G"
+    silent exe "keepjumps normal! " . state.start[1] . 'G=' . state.end[1] . "G"
     " Position post-adjustment
     call s:indent_postadjust_positions(adj)
     " (Optional) end of line comment alignment
     if g:sexp_indent_aligns_eol_comments
-        call s:align_eol_comments(start, end, ps)
+        call s:align_eol_comments(state.start, state.end, state.ps)
     endif
-    " Adjust window view object to account for buffer changes made by the
-    " indent (and possibly by s:cleanup_ws).
-    " FIXME: Since this function is called internally (e.g., from sexp#clone),
-    " should probably either factor out the cursor/window restoration (e.g.,
-    " putting it into a static workhorse function that can be called by
-    " sexp#clone as well), or make it selectable.
-    let win.lnum = cursor[1]
-    let win.col = cursor[2] - 1 " .col is zero-based
-    " Design Decision: In normal mode, restore old (adjusted) visual
-    " selection; in visual mode, restore the adjusted super-range.
-    call s:set_visual_marks(a:mode ==? 'n' ? [vs, ve] : [start, end])
-    call winrestview(win)
+    " Restore window and such.
+    call s:post_align_or_indent(a:mode, state)
 endfunction
 
 " Create a flat list encompassing all input positions.
@@ -4402,6 +4436,7 @@ function! s:cleanup_ws(start, at_top, ps, ...)
         keepjumps call cursor(eff_next[1], eff_next[2])
         if s:is_list(eff_next[1], eff_next[2])
             let next = s:move_to_list_open()
+            " Note: Hardcode at_top to 0 since for recursive call.
             call s:cleanup_ws(next, 0, a:ps)
             " Assumption: Restore cursor pos (potentially changed by
             " recursion) to next (which can't be invalidated by recursion).

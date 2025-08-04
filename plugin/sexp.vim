@@ -76,8 +76,8 @@ if !exists('g:sexp_cleanup_colshift_slope')
 endif
 
 " TODO: Consider encapsulating related options in a dict.
-if !exists('g:sexp_indent_aligns_eol_comments')
-    let g:sexp_indent_aligns_eol_comments = 1
+if !exists('g:sexp_indent_aligns_comments')
+    let g:sexp_indent_aligns_comments = 1
 endif
 
 if !exists('g:sexp_align_eolc_maxshift')
@@ -116,8 +116,8 @@ if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
 endif
 
-if !exists('g:sexp_align_eolc_preferred_spaces')
-    let g:sexp_align_eolc_preferred_spaces = 2
+if !exists('g:sexp_align_eolc_preferred_margin')
+    let g:sexp_align_eolc_preferred_margin = 2
 endif
 
 if !exists('g:sexp_align_eolc_allow_split_group')
@@ -133,12 +133,12 @@ if !exists('g:sexp_align_eolc_greedy_lookback')
 endif
 
 " TODO: Better names...
-if !exists('g:sexp_align_eolc_optlvl1_thresh')
-    let g:sexp_align_eolc_optlvl1_thresh = 0
+if !exists('g:sexp_align_eolc_optlvl0_thresh')
+    let g:sexp_align_eolc_optlvl0_thresh = 0
 endif
 
-if !exists('g:sexp_align_eolc_optlvl2_thresh')
-    let g:sexp_align_eolc_optlvl2_thresh = 0
+if !exists('g:sexp_align_eolc_optlvl1_thresh')
+    let g:sexp_align_eolc_optlvl1_thresh = 0
 endif
 
 if !exists('g:sexp_mappings')

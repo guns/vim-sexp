@@ -477,6 +477,127 @@ INDENT COMMANDS (normal, visual)~
         behavior.
 
 
+INDENT COMMANDS (normal, visual)~
+
+<M-a>                                            *<Plug>(sexp_align_comments)*
+<M-\>                                        *<Plug>(sexp_align_comments_top)*
+        In normal mode, align end-of-line comments within [count] surrounding
+        lists (compound FORMs) or visual selection (<M-a>) or current top-level
+        list (<M-\>) without moving the cursor. If the cursor is not in a
+        compound FORM, targets the current element instead.
+        *Note:* End-of-line comment alignment makes the most sense on ranges
+        spanning more than a few lines; thus, the `sexp_align_comments_top`
+        (<M-\>) command is probably the most useful.
+        
+        In visual mode, the selection is first expanded to cover all partially
+        selected lists and elements.
+        Note: Visual mappings are not created for the "top" variants of align
+        commands; such commands would be pointless because "top" implies
+        ignoring the visual selection.
+
+                                                 *comment-alignment-algorithm*
+        
+        The default alignment mode uses a weighted "Dynamic Programming"
+        algorithm to partition the eol comments into aligned groups, with the
+        goal of keeping the comments in the grouping sufficiently close to the
+        code they describe to prevent disorientation, but not so close as to
+        necessitate many small groups, which would defeat the purpose of
+        alignment. Obviously, there are tradeoffs involved here, and the
+        optimal balance is a matter of user preference. Accordingly, a set of
+        options are provided to allow the user to tweak the algorithm to
+        taste. Some of these options establish limits and thresholds: e.g.,
+        the maximum number of screen columns a comment can be shifted from the
+        code it describes. Others set the relative importance (weighting) of
+        various criteria used to compare the "cost" of each candidate grouping
+        against competing candidates. These options are described in detail in
+        the option section; however, an overview of the costing criteria
+        considered by the algorithm is provided below...
+
+                                              *comment-alignment-cost-criteria*
+        In no particular order, these are the comment grouping criteria that
+        the dynamic programming optimization attempts to balance.
+                shift     the number of screen columns comments must be
+                          shifted rightward to align all comments in a group.
+                          Obviously, the amount may not be the same for all
+                          comments in a group, so the algorithm uses the
+                          average shift per comment line as the figure of
+                          merit.
+                ngrps     total number of comment groups required by the
+                          alignment. As a general rule, fewer groups is
+                          better, but of course, fewer groups tend to result
+                          in larger average shift.
+                size      For groups whose span meets or exceeds a minimum
+                          desirable threshold (g:sexp_align_eolc_runt_thresh),
+                          this figure of merit has no impact on alignment; it
+                          simply deprioritizes smaller groups with a cost
+                          penalty that grows non-linearly as the length of the
+                          span decreases. The purpose of this figure of merit
+                          is to discourage very small ("runt") groups.
+                density   comments per line within the group. Used primarily
+                          to minimize groups with "bookend" comments: i.e., a
+                          single comment at each end of the group.
+
+                                            *comment-alignment-criteria-weights*
+        By default, all criteria have the same relative importance, but each
+        has a dedicated option variable with a name given by
+        `g:sexp_align_eolc_{<criteria>}_weight`, which can be set to any value
+        in the range 0..10 to adjust its relative weight. For instance, a user
+        with a strong preference for long blocks of comments, who doesn't mind
+        comments being shifted a significant distance from the code they
+        describe, might bump the 'shift' weight from 5 up to 7 or 8, and may
+        also set the g:sexp_align_eolc_maxshift value higher than the default
+        of 40 screen columns. Similarly, a user who doesn't care about keeping
+        the total number of comment blocks low, as long as none of the blocks
+        are "too small", could reduce the ngrps weight to 3 or 4, and possibly
+        increase the 'size' weight to reduce the probability of "runt" groups.
+        Feel free to experiment with the weights on a sample block of code
+        until you find the weight combination that produces results you like.
+
+                                                    *layout-optimization-levels*
+        The aforementioned dynamic programming algorithm is reasonably fast,
+        and is unlikely to cause performance issues in common usage scenarios.
+        However, because it's difficult to predict the size blocks users will
+        attempt to format, vim-sexp provides several simpler (and faster)
+        algorithms, which can be selected either unconditionally, or as a
+        fallback when the number of end-of-line comments being aligned exceeds
+        a configurable threshold. The optimization levels currently supported
+        are as follows (fastest to slowest):
+        0    Greedy
+                 Make each group as large as possible without violating one of
+                 the user-specified limits: e.g., g:sexp_align_eolc_maxshift.
+                 *Disadvantage:* May produce layouts with long groups followed
+                 by very short ones.
+        1    Greedy with lookback
+                 Similar to "Greedy", but when a short group
+                 (< g:sexp_align_eolc_greedy_lookback) follows a long group,
+                 a localized full optimization is performed on the boundary
+                 region in an attempt to "rebalance" the groups.
+        2    Full dynamic programming optimization (the default)
+
+        *Recommendation:* If you're happy with the performance, always use level
+        2 (full optimization). If you sometimes align very large comment
+        ranges and notice performance issues, set either
+        g:sexp_align_eolc_optlvl0_thresh or g:sexp_align_eolc_optlvl1_thresh
+        to indicate the number of comments at which you'd like to fallback to
+        the corresponding optimization level: e.g.,
+>
+        " Fallack to "Greedy with lookback" optimation for ranges containing
+        " 5000 or more end-of-line comments.
+        let g:sexp_align_eolc_optlvl0_thresh = 5000
+<
+        *Note:* You can set separate thresholds for optimization levels 1 and
+        2, but if you do so, be sure to set a higher threshold for the lower
+        optimization level.
+
+        Just as it's possible to configure the indent commands to trigger an
+        automatic whitespace cleanup, it's also possible to configure the
+        indent commands to perform end-of-line comment alignment
+        automatically. Unlike "whitespace cleanup", this behavior is enabled
+        by default, but you can disable it with...
+>
+        let g:sexp_indent_aligns_eol_comments = 0
+<
+
 WRAP COMMANDS (normal, visual)~
 
 <LocalLeader>i                             *<Plug>(sexp_round_head_wrap_list)*
@@ -686,7 +807,6 @@ indent and clone commands. For details, see sections |clean-indent| and
         " Default
         let g:sexp_indent_does_clean = 0
 <
-
                                                     *g:sexp_clone_does_indent*
 Indent the elements involved in a multi-line clone operation. For details, see
 section |indent-after-clone|.
@@ -833,6 +953,96 @@ increases with the number of empty lines susceptible to removal.
         " Default
         let g:sexp_cleanup_colshift_slope = 8
 <
+                                                *g:sexp_indent_aligns_comments*
+Align end-of-line comments automatically after performing an indent.
+>
+        " Default
+        let g:sexp_indent_aligns_comments = 1
+<
+
+                                                   *g:sexp_align_eolc_maxshift*
+Number of screen columns an end-of-line comment is allowed to shift rightward
+to align with other columns in an end-of-line comment block.
+>
+        " Default
+        let g:sexp_align_eolc_maxshift = 40
+<
+
+                                                     *g:sexp_align_eolc_maxgap*
+The maximum line gap permitted between successive end-of-line comments in the
+same group: i.e., comments separated by more than this distance will not be
+considered for inclusion in the same comment block.
+Rationale: When successive comments are separated by significant vertical
+distance, the benefit of combining them into a single group decreases, and may
+even by outweighed by the performance penalty of long groups.
+>
+        " Default
+        let g:sexp_align_eolc_maxgap = 3
+<
+                                           *g:sexp_align_eolc_break_at_linecom*
+Full line comments always separate end-of-line comment groups. If this option
+is not set, line comments have no impact on alignment.
+>
+        " Default
+        let g:sexp_align_eolc_break_at_linecom = 0
+<
+                                                *g:sexp_align_eolc_runt_thresh*
+
+>
+        " Default
+        let g:sexp_align_eolc_runt_thresh = 5
+<
+                                           *g:sexp_align_eolc_preferred_margin*
+>
+        " Default
+        let g:sexp_align_eolc_preferred_margin = 2
+<
+                                          *g:sexp_align_eolc_allow_split_group*
+>
+        " Default
+        let g:sexp_align_eolc_allow_split_group = 1
+<
+                                         *g:sexp_align_eolc_split_group_maxgap*
+>
+        " Default
+        let g:sexp_align_eolc_split_group_maxgap = 3
+<
+                                            *g:sexp_align_eolc_greedy_lookback*
+>
+        " Default
+        let g:sexp_align_eolc_greedy_lookback = 4
+<
+                                             *g:sexp_align_eolc_optlvl0_thresh*
+>
+        " Default
+        let g:sexp_align_eolc_optlvl0_thresh = 0
+<
+                                             *g:sexp_align_eolc_optlvl1_thresh*
+>
+        " Default
+        let g:sexp_align_eolc_optlvl1_thresh = 0
+<
+                                               *g:sexp_align_eolc_ngrps_weight*
+>
+        " Default
+        let g:sexp_align_eolc_ngrps_weight = 5
+<
+                                               *g:sexp_align_eolc_shift_weight*
+>
+        " Default
+        let g:sexp_align_eolc_shift_weight = 5
+<
+                                                *g:sexp_align_eolc_runt_weight*
+>
+        " Default
+        let g:sexp_align_eolc_runt_weight = 5
+<
+                                             *g:sexp_align_eolc_density_weight*
+>
+        " Default
+        let g:sexp_align_eolc_density_weight = 5
+<
+
 
                                                              *g:sexp_mappings*
 Dictionary of user vim-sexp mappings. Keys are the <Plug> names without

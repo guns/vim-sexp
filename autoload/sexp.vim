@@ -4018,9 +4018,9 @@ endfunction
 " unconditional selection of a specific level by setting the corresponding threshold to 1
 " and all others to 0.
 function! s:align_eolc__opt_level(ncoms)
-    if g:sexp_align_eolc_optlvl2_thresh && a:ncoms >= g:sexp_align_eolc_optlvl2_thresh
+    if g:sexp_align_eolc_optlvl1_thresh && a:ncoms >= g:sexp_align_eolc_optlvl1_thresh
         return 0
-    elseif g:sexp_align_eolc_optlvl1_thresh && a:ncoms >= g:sexp_align_eolc_optlvl1_thresh
+    elseif g:sexp_align_eolc_optlvl0_thresh && a:ncoms >= g:sexp_align_eolc_optlvl0_thresh
         return 1
     else
         " No fallback thresholds reached.
@@ -4153,7 +4153,7 @@ function! s:align_eol_comments(start, end, ps)
             call s:yankdel_range(
                     \ eolc.prev_e,
                     \ eolc.com_s,
-                    \ repeat(' ', align - eolc.prev_e[2] + g:sexp_align_eolc_preferred_spaces),
+                    \ repeat(' ', align - eolc.prev_e[2] + g:sexp_align_eolc_preferred_margin),
                     \ [1, 0],
                     \ a:ps)
         endfor
@@ -4202,7 +4202,7 @@ function! sexp#indent(mode, top, count, clean, ...)
     " Position post-adjustment
     call s:indent_postadjust_positions(adj)
     " (Optional) end of line comment alignment
-    if g:sexp_indent_aligns_eol_comments
+    if g:sexp_indent_aligns_comments
         call s:align_eol_comments(state.start, state.end, state.ps)
     endif
     " Restore window and such.

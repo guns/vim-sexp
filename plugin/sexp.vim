@@ -92,6 +92,10 @@ if !exists('g:sexp_align_eolc_break_at_linecom')
     let g:sexp_align_eolc_break_at_linecom = 0
 endif
 
+if !exists('g:sexp_align_eolc_textwidth')
+    let g:sexp_align_eolc_textwidth = -1
+endif
+
 " Set these weights to values between 0 and 10 to adjust default weights.
 " Value of 5 corresponds to plugin-defined default. Each increment above or below 5
 " adjusts up or down by an plugin-defined, criterion-specific adjustment value.
@@ -114,6 +118,10 @@ endif
 
 if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
+endif
+
+if !exists('g:sexp_align_eolc_margin_thresh')
+    let g:sexp_align_eolc_margin_thresh = 5
 endif
 
 if !exists('g:sexp_align_eolc_preferred_margin')

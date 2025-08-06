@@ -986,8 +986,18 @@ is not set, line comments have no impact on alignment.
         " Default
         let g:sexp_align_eolc_break_at_linecom = 0
 <
+                                                  *g:sexp_align_eolc_textwidth*
+End-of-line comment alignment optimization deprioritizes comment groupings
+that produce lines longer than this, with a penalty proportional to the
+overrun.
+  -1  use &tw
+   0  ignore line length (same as let g:sexp_align_eolc_margin_weight = 0)
+  >0  max desired line length
+>
+        " Default
+        let g:sexp_align_eolc_textwidth = -1
+<
                                                 *g:sexp_align_eolc_runt_thresh*
-
 >
         " Default
         let g:sexp_align_eolc_runt_thresh = 5
@@ -1036,6 +1046,11 @@ is not set, line comments have no impact on alignment.
 >
         " Default
         let g:sexp_align_eolc_runt_weight = 5
+<
+                                              *g:sexp_align_eolc_margin_weight*
+>
+        " Default
+        let g:sexp_align_eolc_margin_weight = 5
 <
                                              *g:sexp_align_eolc_density_weight*
 >

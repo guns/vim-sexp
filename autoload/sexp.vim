@@ -89,6 +89,7 @@ let s:align_eolc_weights = {
     \ 'ngrps':   {'default': 50, 'adjust': 0.10},
     \ 'shift':   {'default': 50, 'adjust': 0.20},
     \ 'runt':    {'default': 50, 'adjust': 0.20},
+    \ 'margin':  {'default': 50, 'adjust': 0.20},
     \ 'density': {'default': 50, 'adjust': 0.20},
 \ }
 
@@ -3358,8 +3359,8 @@ endfunction
 "                 non-ws on line if no eol comment
 "   is_com:       1 iff specified line ends in comment (eol or otherwise)
 "   is_eol_com:   1 iff specified line ends in eol comment
-"   com_start:    VimPos indicating start of eol comment (else s:nullpos)
 "   eff_linelen:  screen col just past last non-ws char on line
+"   com_start:    VimPos indicating start of eol comment (else s:nullpos)
 " Cursor Preservation: None (caller expected to handle)
 " Terminology: There's an ambiguity inherent in the phrase "ends in comment": if an inline
 " (self-contained, not eol-style) comment occurs at the end of a line, but followed by
@@ -3376,12 +3377,14 @@ function! s:align_eolc__characterize(line)
     let p = s:goto_last_non_ws(a:line)
     if !p
         " Nothing to do for blank line
-        return [0, 0, 0, s:nullpos]
+        return [0, 0, 0, 0, s:nullpos]
     endif
     " This will be adjusted later for eol comment, but if there's no eol comment, we'll
     " need screen pos just past last non-ws for alignment purposes.
     let ecol = virtcol('.') + 1
     let eol_ecol = ecol
+    " Effective linelen is needed only for eol comment lines.
+    let eff_linelen = 0
     " Figure out which type of comment (if any) we have.
     let [is_eol_com, com_start] = [0, s:nullpos]
     " TODO: Should we use p instead of ecol?
@@ -3410,7 +3413,7 @@ function! s:align_eolc__characterize(line)
             let eff_linelen = eol_ecol - (virtcol([com_start[1], com_start[2]]) - ecol)
         endif
     endif
-    return [ecol, is_com, is_eol_com, com_start, eff_linelen]
+    return [ecol, is_com, is_eol_com, eff_linelen, com_start]
 endfunction
 
 " Calculate and return the criteria weights, taking user options into account.
@@ -3525,14 +3528,13 @@ endfunction
 "   hole:      dict representing hole in split group (null sentinel if no hole)
 function! s:align_eolc__create_group_candidate(
         \ dp, sidx, eidx, area, margin, ecol_min, align, dp_sidx, hole)
-    let dp = a:dp
     " Calculate figures of merit for the *current* group.
-    let nlines = dp[a:eidx].line - dp[a:sidx].line + 1
+    let nlines = a:dp[a:eidx].line - a:dp[a:sidx].line + 1
     let ncoms = a:eidx - a:sidx + 1
     if a:hole.idxs[0] != -1
         " Deduct lines/comments corresponding to the hole before runt calculation.
-        let nlines -= a:dp[a:hole.idx[1]].line - a:dp[a:hole.idx[0]].line + 1
-        let ncoms -= a:hole.idx[1] - a:hole.idx[0] + 1
+        let nlines -= a:dp[a:hole.idxs[1]].line - a:dp[a:hole.idxs[0]].line + 1
+        let ncoms -= a:hole.idxs[1] - a:hole.idxs[0] + 1
     endif
     " Calculate runtness now, though it won't be used till this element is at sidx-1.
     " TODO: Should this take "effective" group size into account?
@@ -3548,7 +3550,7 @@ function! s:align_eolc__create_group_candidate(
     let self = {'area': a:area, 'margin': margin, 'nlines': nlines, 'ncoms': ncoms, 'runt': runt}
     if a:sidx > a:dp_sidx
         " Get previous grp in chain to support accumulation.
-        let pgrp = dp[a:sidx - 1].grp
+        let pgrp = a:dp[a:sidx - 1].grp
         " Aggregate cost-related data that applies to the current candidate and its chain
         " of predecessors.
         let cumul = {
@@ -3560,7 +3562,7 @@ function! s:align_eolc__create_group_candidate(
                     \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
         " Adjust for presence of hole if necessary.
-        if a:hole[0] != -1
+        if a:hole.idxs[0] != -1
             " Adjust cumulative cost to account for the hole.
             " Note: nlines and ncoms have already been correctly calculated.
             let cumul.ngrps += a:hole.cost.cumul.ngrps
@@ -3611,6 +3613,12 @@ function! s:align_eolc__skip_hole(dp, idx, ecol_min, ecol_max)
     return -1
 endfunction
 
+" Create a "hole" representing the element sidx..eidx in the layout represented by dp[].
+" The hole is represented as a dict with a fully populated, completely independent dp[]
+" covering only the elements within the hole, as well as a 'grps' key containing the
+" hole's final layout.
+" Note: Creation of a hole does not imply that the hole will actually be used.
+" Precondition: Full (opt_lvl 2) dp optimization in progress
 function! s:align_eolc__create_hole(dp, sidx, eidx)
     let hole = {'idxs': [a:sidx, a:eidx]}
     " Run s:align_eolc__optimize_range() on a copy of the portion of the toplevel dp[]
@@ -3618,13 +3626,13 @@ function! s:align_eolc__create_hole(dp, sidx, eidx)
     " Caveat: Make deep copy to avoid modifying the original dp[], which may still be
     " needed, as there's no guarantee any of the group candidates containing this hole
     " will be selected.
-    let a:hole.dp = deepcopy(a:dp[a:sidx : a:eidx])
+    let hole.dp = deepcopy(a:dp[a:sidx : a:eidx])
     " Optimize the hole as a standalone range.
     " Note: Hole processing implies opt_lvl 2.
-    let a:hole.grps = s:align_eolc__optimize_range(a:hole.dp, 2)
+    let hole.grps = s:align_eolc__optimize_range(hole.dp, 2)
     " Note: Cost dict on last element of the hole's dp contains cumulative costs for the
     " hole, but cache it on the hole dict itself for convenience.
-    let a:hole.cost = a:hole.dp[-1].grp.cost
+    let hole.cost = hole.dp[-1].grp.cost
     return hole
 endfunction
 
@@ -3634,11 +3642,21 @@ function! s:align_eolc__textwidth()
     return g:sexp_align_eolc_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_align_eolc_textwidth
 endfunction
 
+" Return a possibly updated min_margin, taking both current min and most-recently added
+" element of candidate group into account.
+" Inputs:
+"   min_margin:  the candidate group's current worst-case margin
+"   tw:          effective 'textwidth' for determining overrun
+"                TODO: Probably record this in a script var up front.
+"   el:          element of eol comment being added to group
+"   shift_inc:   amount that new element has shifted the align col (0 if no shift)
 function! s:align_eolc__update_min_margin(min_margin, tw, el, shift_inc)
     let min_margin = a:min_margin
-    if shift_inc > 0
-        let min_margin -= shift_inc
+    if a:shift_inc > 0
+        " Current worst-case margin just got worse.
+        let min_margin -= a:shift_inc
     endif
+    " See whether new element's margin is worse than current worst.
     let el_margin = a:tw - a:el.eff_linelen
     if el_margin < min_margin
         let min_margin = el_margin
@@ -3671,7 +3689,7 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
     let area = 0
     " Keep up with worst-case textwidth overrun per candidate group.
     let tw = s:align_eolc__textwidth()
-    let min_margin = s:MAXCOL
+    let min_margin = tw > 0 ? s:MAXCOL : 0
     " Keep up with longest line in group for the purpose of overrun calculation.
     let maxcol = 0
     " Will be set to start/end indices of hole if we decide to create a split group.
@@ -3701,10 +3719,15 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
         " Is this a valid start candidate? I.e., is bounding box still within limits?
         if try_max - try_min > g:sexp_align_eolc_maxshift
             " We've gone too far unless we can create a hole in a split group...
-            " Design Decision: Don't create multiple holes in same group.
-            " Rationale: If it made sense, preceding group would already have been
-            " combined (and may already have been).
-            " Also, don't create hole within hole.
+            " Design Decision: Don't create multiple holes in same group, and don't create
+            " hole within hole.
+            " Rationale: If it made sense to create a hole within the first part of a
+            " split group, or within the hole itself, it would already have been done. In
+            " fact, hole may already exist within first part of split group. It's unlikely
+            " one exists within the hole, since holes are by definition small (<=
+            " g:sexp_align_eolc_split_group_maxgap), and in any case, the recursive call
+            " to s:align_eolc__optimize_range() will effectively erase any hole within
+            " hole.
             let j = a:opt_lvl == 2 && g:sexp_align_eolc_allow_split_group
                 \ && !a:no_holes && hole.idxs[0] == -1
                 \ ? s:align_eolc__skip_hole(a:dp, i, ecol_min, ecol_max)
@@ -3728,7 +3751,7 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
         " This is a candidate group. Determine its effect on integral.
         let area += ecol_max - el_s.ecol
         let shift_inc = 0
-        if ecol_max_prev > 0 && ecol_max > ecol_max_prev
+        if  g:sexp_align_eolc_shift_weight > 0 && ecol_max_prev > 0 && ecol_max > ecol_max_prev
             " Account for area increase due to entire "curve" shifting up by constant amount.
             " Note: Shift could be due to either the newly-considered eol comment *or*
             " non-comment lines between elements.
@@ -3736,7 +3759,9 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
             let area += (ecol_max - ecol_max_prev) * (a:idx - i)
         endif
         " As we work backwards, keep up with the worst-case margin.
-        let min_margin = s:align_eolc__update_min_margin(min_margin, tw, el_s, shift_inc)
+        if g:sexp_align_eolc_margin_weight > 0 && tw > 0
+            let min_margin = s:align_eolc__update_min_margin(min_margin, tw, el_s, shift_inc)
+        endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:align_eolc__create_group_candidate(
@@ -3789,8 +3814,8 @@ endfunction
 " Note: Recursive calls are intended to handle only the following:
 " * holes (potentially, but rarely, consisting of multiple groups)
 "   Note: hole processing never uses alignment override
-" * second part of split group, which will be exactly one group, whose el.group is
-"   correct, requiring no override
+" * second part of split group, which will be exactly one group, whose el.grp is correct,
+"   requiring no override
 " * first part of split group, which definitely requires alignment override, and may
 "   itself be a split group.
 "   Note: In the event that first part of split group is also a split group, recursive
@@ -3823,7 +3848,7 @@ function! s:align_eolc__finalize_groups(dp, opt_lvl, ...)
         let sidx = !subrange ? el.grp.sidx : stop_sidx
         if hole.idxs[0] > 0 && hole.idxs[1] > sidx
             " Recursively process the split group as 3 distinct groups.
-            " Process 2nd part of split group.
+            " Process 2nd part of split group first.
             " Caveat: Must use alignment override (if provided) because the group
             " represented by el could itself be the first part of a split group, in which
             " case, el.grp.align is not the *effective* alignment.
@@ -3832,7 +3857,7 @@ function! s:align_eolc__finalize_groups(dp, opt_lvl, ...)
             call s:align_eolc__finalize_groups(hole.dp, a:opt_lvl, grps, hole.idxs[1], hole.idxs[0])
             " Process 1st part of split group, overriding its alignment.
             call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, hole.idxs[0] - 1, el.grp.sidx, align)
-        else
+        else " regular group (no hole processing)
             let grp = {'align': align, 'eolcs': []}
             " Add elements to the group.
             let idx = sidx
@@ -3898,6 +3923,8 @@ function! s:align_eolc__optimize_range(prep, opt_lvl, ...)
     endwhile
     " Reformat the list for easy group traversal.
     call s:Dbg("\n\nPost-Prep: %s\n\n", json_encode(a:prep))
+    " FIXME!!!: Bug in hole processing here; also, this is currently being done again for
+    " holes in recursive calls later. Don't do it both places...
     return s:align_eolc__finalize_groups(a:prep, a:opt_lvl)
 endfunction
 
@@ -3975,12 +4002,11 @@ function! s:align_eolc__preproc_pass1(start, end)
         " contain comment).
         " TODO: Probably encapsulate all this in a dict (created by
         " align_eolc__characterize()).
-        let [ecol, is_com, is_eol_com, com_start, eol_ecol, eff_linelen] = s:align_eolc__characterize(l)
+        let [ecol, is_com, is_eol_com, eff_linelen, com_start] = s:align_eolc__characterize(l)
         if is_eol_com
             let el = {
                 \ 'line': l, 'ecol': ecol, 'is_eol_com': is_eol_com, 'is_com': is_com,
-                \ 'com_s': com_start, 'pre_max': pre_max, 'eol_ecol': eol_ecol,
-                \ 'eff_lineline': eff_lineline}
+                \ 'com_s': com_start, 'pre_max': pre_max, 'eff_linelen': eff_linelen}
             call add(ret, el)
             let pre_max = 0
         else

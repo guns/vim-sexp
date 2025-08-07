@@ -116,14 +116,15 @@ if !exists('g:sexp_align_eolc_runt_weight')
     let g:sexp_align_eolc_runt_weight = 5
 endif
 
+if !exists('g:sexp_align_eolc_margin_weight')
+    let g:sexp_align_eolc_margin_weight = 5
+endif
+
 if !exists('g:sexp_align_eolc_runt_thresh')
     let g:sexp_align_eolc_runt_thresh = 5
 endif
 
-if !exists('g:sexp_align_eolc_margin_thresh')
-    let g:sexp_align_eolc_margin_thresh = 5
-endif
-
+" TODO: Consider renaming this 'spacing' to avoid overloading 'margin'.
 if !exists('g:sexp_align_eolc_preferred_margin')
     let g:sexp_align_eolc_preferred_margin = 2
 endif

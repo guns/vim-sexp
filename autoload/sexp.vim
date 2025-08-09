@@ -3772,6 +3772,7 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
         if el.sog || empty(el.grp) || s:align_eolc__compare_costs(a:dp, el.grp, grp) > 0
             " Make this the new best candidate.
             let el.grp = grp
+            call s:Dbg("New best!!!!!")
         else
             call s:Dbg("Kept existing grp for line %d", el.line)
             call s:Dbg("\texisting: %s", string(el.grp))
@@ -3805,7 +3806,7 @@ endfunction
 " dp:      the list produced by optimization/layout
 " opt_lvl: 0=greedy 1=greedy with lookback 2=dynamic programming
 " -- optional args (to support recursive calls for split group processing) --
-"    Note: If extra args are provided, at least 3 are required.
+"    Note: If extra args are provided, only 1 is required.
 " a:1      grps[] list to *augment* ([] if not provided)
 " a:2      eidx of first-processed group
 " a:3      sidx at which to stop processing
@@ -3825,36 +3826,39 @@ endfunction
 function! s:align_eolc__finalize_groups(dp, opt_lvl, ...)
     " Loop over elements in reverse, skipping nodes that are not the end of a group.
     " Assumption: Final element always ends a group.
-    let subrange = !!a:0
+    let recursive = !!a:0
     let grps = a:0 ? a:1 : []
-    let eidx = a:0 ? a:2 : len(a:dp) - 1
+    let eidx = a:0 >= 2 ? a:2 : len(a:dp) - 1
     let stop_sidx = a:0 >= 3 ? a:3 : 0
-    let [align_ovrd, align] = [a:0 == 4, a:0 == 4 ? a:4 : -1]
+    let align = a:0 >= 4 ? a:4 : -1
     call s:Dbg("Finalizing dp: stop_sidx=%d eidx=%d align=%d", stop_sidx, eidx, align)
     while eidx >= stop_sidx
         let el = a:dp[eidx]
         " Check for alignment override. See note in header comment.
-        if !subrange || align < 0
+        if !recursive || align < 0
             let align = el.grp.align
         endif
         " Is this a split group?
         let hole = g:sexp_align_eolc_allow_split_group && a:opt_lvl == 2
-                \ ? el.grp.hole : [-1, -1]
+                \ ? el.grp.hole : {'idxs': [-1, -1]}
         " Caveat: A hole that ends before sidx is a hole that's being handled by caller;
         " the only type of hole dealt with by a recursive call to this function is a hole
         " within the first part of a split group, and such holes will always be within
         " range. Get *effective* sidx for sub-range about to be processed. (For the second
         " part of a split group, this will not be the sidx stored on the element.)
-        let sidx = !subrange ? el.grp.sidx : stop_sidx
+        " FIXME!!!: I think setting sidx this way is wrong...
+        let sidx = !recursive ? el.grp.sidx : stop_sidx
         if hole.idxs[0] > 0 && hole.idxs[1] > sidx
-            " Recursively process the split group as 3 distinct groups.
+            call s:Dbg("Processing group with sidx=%d and hole from %d to %d", sidx, hole.idxs[0], hole.idxs[1])
+            " Recursively process the split group as 3 distinct groups, always processing
+            " groups in reverse order.
             " Process 2nd part of split group first.
             " Caveat: Must use alignment override (if provided) because the group
             " represented by el could itself be the first part of a split group, in which
             " case, el.grp.align is not the *effective* alignment.
             call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, eidx, hole.idxs[1] + 1, align)
             " Process hole using its dedicated dp[], whose alignment requires no override.
-            call s:align_eolc__finalize_groups(hole.dp, a:opt_lvl, grps, hole.idxs[1], hole.idxs[0])
+            call s:align_eolc__finalize_groups(hole.dp, a:opt_lvl, grps)
             " Process 1st part of split group, overriding its alignment.
             call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, hole.idxs[0] - 1, el.grp.sidx, align)
         else " regular group (no hole processing)
@@ -3871,12 +3875,13 @@ function! s:align_eolc__finalize_groups(dp, opt_lvl, ...)
             endwhile
             " Accumulate group, then move to last element of previous group.
             call add(grps, grp)
+            call s:Dbg("Finalized grp: sidx=%d eidx=%d align=%d", sidx, eidx, align)
         endif
         let eidx = sidx - 1
     endwhile
     " Since the list was built in reverse order, reverse it before return, but only if
     " this is the top-level, non-recursive call.
-    return a:0 ? grps : reverse(grps)
+    return recursive ? grps : reverse(grps)
 endfunction
 
 " TEMP DEBUG ONLY!!! Remove...
@@ -3923,9 +3928,6 @@ function! s:align_eolc__optimize_range(prep, opt_lvl, ...)
     endwhile
     " Reformat the list for easy group traversal.
     call s:Dbg("\n\nPost-Prep: %s\n\n", json_encode(a:prep))
-    " FIXME!!!: Bug in hole processing here; also, this is currently being done again for
-    " holes in recursive calls later. Don't do it both places...
-    return s:align_eolc__finalize_groups(a:prep, a:opt_lvl)
 endfunction
 
 " Update the 'seg' dict for a group that has just ended (and if necessary, its
@@ -4233,9 +4235,14 @@ endfunction
 " Align end of line comments within specified range, taking all relevant options into account.
 function! s:align_eol_comments(start, end, ps)
     let ts = reltime()
+    " Preprocess the range, building a list of dicts that will facilitate layout.
     let [prep, opt_lvl] = s:align_eolc__preproc(a:start, a:end)
-    let grps = s:align_eolc__optimize_range(prep, opt_lvl)
+    " Perform the optimization/layout.
+    call s:align_eolc__optimize_range(prep, opt_lvl)
+    " Iterate the reverse chain of groups in prep to produce a forward list of groups.
+    let grps = s:align_eolc__finalize_groups(prep, opt_lvl)
     call s:dbg_show_eolcs(grps)
+    " Iterate groups, performing alignment of each eol comment.
     for grp in grps
         let [align, eolcs] = [grp.align, grp.eolcs]
         " Loop over the comments in this group.

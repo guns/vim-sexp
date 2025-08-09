@@ -571,7 +571,8 @@ function! s:nearest_element_terminal(next, tail, ...)
             throw 'sexp-error'
         " Or we are at the head or tail of a list
         elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
-            " TODO: Profile to measure the performance penalty for this.
+            " TODO: Profile to measure the performance penalty for this. It's thrown a
+            " lot...
             throw 'sexp-error'
         endif
 
@@ -3525,17 +3526,11 @@ endfunction
 "   align:     alignment column for all eol comments in this group (excluding any
 "              separating spaces we may add).
 "   dp_sidx:   start of region on which dp[] is being performed (always 0 for opt_lvl 3)
-"   hole:      dict representing hole in split group (null sentinel if no hole)
 function! s:align_eolc__create_group_candidate(
-        \ dp, sidx, eidx, area, margin, ecol_min, align, dp_sidx, hole)
+        \ dp, sidx, eidx, area, margin, ecol_min, align, dp_sidx)
     " Calculate figures of merit for the *current* group.
     let nlines = a:dp[a:eidx].line - a:dp[a:sidx].line + 1
     let ncoms = a:eidx - a:sidx + 1
-    if a:hole.idxs[0] != -1
-        " Deduct lines/comments corresponding to the hole before runt calculation.
-        let nlines -= a:dp[a:hole.idxs[1]].line - a:dp[a:hole.idxs[0]].line + 1
-        let ncoms -= a:hole.idxs[1] - a:hole.idxs[0] + 1
-    endif
     " Calculate runtness now, though it won't be used till this element is at sidx-1.
     " TODO: Should this take "effective" group size into account?
     " Note: Runtness is a step function equal to square of the delta between actual group
@@ -3545,8 +3540,7 @@ function! s:align_eolc__create_group_candidate(
             \ : 0
     " Negative margin is positive cost, but there's no penalty for a nonnegative margin.
     let margin = a:margin < 0 ? -a:margin : 0
-    " Save the current group's (non-cumulative) values (needed by hole/split group
-    " processing).
+    " Save the current group's (non-cumulative) values (TODO: Still needed???)
     let self = {'area': a:area, 'margin': margin, 'nlines': nlines, 'ncoms': ncoms, 'runt': runt}
     if a:sidx > a:dp_sidx
         " Get previous grp in chain to support accumulation.
@@ -3558,20 +3552,9 @@ function! s:align_eolc__create_group_candidate(
                     \ 'nlines': pgrp.cost.cumul.nlines + nlines,
                     \ 'ncoms': pgrp.cost.cumul.ncoms + ncoms,
                     \ 'area': pgrp.cost.cumul.area + a:area,
-                    \ 'margin': pgrp.cost.cumul.margin + a:margin,
+                    \ 'margin': pgrp.cost.cumul.margin + margin,
                     \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
-        " Adjust for presence of hole if necessary.
-        if a:hole.idxs[0] != -1
-            " Adjust cumulative cost to account for the hole.
-            " Note: nlines and ncoms have already been correctly calculated.
-            let cumul.ngrps += a:hole.cost.cumul.ngrps
-            let cumul.nlines += a:hole.cost.cumul.nlines
-            let cumul.ncoms += a:hole.cost.cumul.ncoms
-            let cumul.area += a:hole.cost.cumul.area
-            let cumul.margin += a:hole.cost.cumul.margin
-            let cumul.runt += a:hole.cost.cumul.runt
-        endif
     else
         " First element needs no accumulation.
         " TODO: Toying with idea that we don't really need a cost structure for the first
@@ -3582,58 +3565,13 @@ function! s:align_eolc__create_group_candidate(
             \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': a:area, 'margin': margin, 'runt': 0
         \ }
     endif
+    " TODO: If self ends up not being required, pull cumul up.
     let cost = {'self': self, 'cumul': cumul}
     " Wrap all into a single grp dict.
     " Note: 'sidx' is needed to support backwards traversal of group chain.
-    let ret = {'ecol_min': a:ecol_min, 'align': a:align, 'sidx': a:sidx, 'cost': cost, 'hole': a:hole}
+    " TODO: Is ecol_min still needed now that hole processing has been removed?
+    let ret = {'ecol_min': a:ecol_min, 'align': a:align, 'sidx': a:sidx, 'cost': cost}
     return ret
-endfunction
-
-" If there's a preceding group within g:sexp_align_eolc_split_group_maxgap of specified
-" idx, with which the group beginning at idx could be combined, return its eidx, else -1.
-function! s:align_eolc__skip_hole(dp, idx, ecol_min, ecol_max)
-    let el2 = a:dp[a:idx]
-    let i = a:idx
-    while i >= 0
-        let el1 = a:dp[i]
-        " Determine size of required bounding box for combined group.
-        let min = min([el1.grp.ecol_min, a:ecol_min])
-        let max = max([el1.grp.align, a:ecol_max])
-        if max - min <= g:sexp_align_eolc_maxshift
-            " Groups can be combined.
-            return i
-        endif
-        if el2.line - el1.line >= g:sexp_align_eolc_split_group_maxgap
-            " Can't look back any further...
-            break
-        endif
-        let i -= 1
-    endwhile
-    " No hole creation possible
-    return -1
-endfunction
-
-" Create a "hole" representing the element sidx..eidx in the layout represented by dp[].
-" The hole is represented as a dict with a fully populated, completely independent dp[]
-" covering only the elements within the hole, as well as a 'grps' key containing the
-" hole's final layout.
-" Note: Creation of a hole does not imply that the hole will actually be used.
-" Precondition: Full (opt_lvl 2) dp optimization in progress
-function! s:align_eolc__create_hole(dp, sidx, eidx)
-    let hole = {'idxs': [a:sidx, a:eidx]}
-    " Run s:align_eolc__optimize_range() on a copy of the portion of the toplevel dp[]
-    " list corresponding to the hole.
-    " Caveat: Make deep copy to avoid modifying the original dp[], which may still be
-    " needed, as there's no guarantee any of the group candidates containing this hole
-    " will be selected.
-    let hole.dp = deepcopy(a:dp[a:sidx : a:eidx])
-    " Optimize the hole as a standalone range.
-    " Note: Hole processing implies opt_lvl 2.
-    let hole.grps = s:align_eolc__optimize_range(hole.dp, 2)
-    " Note: Cost dict on last element of the hole's dp contains cumulative costs for the
-    " hole, but cache it on the hole dict itself for convenience.
-    let hole.cost = hole.dp[-1].grp.cost
-    return hole
 endfunction
 
 " TODO: Consider having functions place their values in a script-scoped dict once per
@@ -3675,9 +3613,8 @@ endfunction
 "   dp:          dynamic programming state list with one element for each eol comment
 "   idx:         current index
 "   dp_sidx:     start of the region on which to perform DP (always 0 for opt_lvl 3)
-"   opt_lvl:     current optimization level (0..2)
-"   no_holes:    1 iff hole processing should be inhibited
-function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
+"   opt_lvl:     current optimization level (0..2) (TODO: Still needed?)
+function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl)
     let el = a:dp[a:idx]
     " Initialize DP state for current comment and add it to list.
     " Note: The 'grp' field will be updated within loop to reflect current best group
@@ -3692,9 +3629,6 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
     let min_margin = tw > 0 ? s:MAXCOL : 0
     " Keep up with longest line in group for the purpose of overrun calculation.
     let maxcol = 0
-    " Will be set to start/end indices of hole if we decide to create a split group.
-    " Will also be augmented with its own dp[].
-    let hole = {'idxs': [-1, -1]}
     " Keep up with horizontal extents of the "box" containing end of code for all lines in
     " the group. Each time we move to earlier line, we must account for lines with no eol
     " comment if bounded by line with eol comment.
@@ -3713,40 +3647,14 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
         " Get DP element representing current group start candidate.
         let el_s = a:dp[i]
         " Update bounding box assuming this candidate is valid, then verify.
-        let [try_min, try_max] = [min([el_s.ecol, ecol_min]), max([el_s.ecol, ecol_max])]
-        call s:Dbg("Trying new head: i=%d line=%d try_min=%d min=%d try_max=%d max=%d",
-            \ i, el_s.line, try_min, ecol_min, try_max, ecol_max)
+        if el_s.ecol < ecol_min | let ecol_min = el_s.ecol
+        elseif el_s.ecol > ecol_max | let ecol_max = el_s.ecol
+        endif
+        call s:Dbg("Trying new head: i=%d line=%d min=%d max=%d", i, el_s.line, ecol_min, ecol_max)
         " Is this a valid start candidate? I.e., is bounding box still within limits?
-        if try_max - try_min > g:sexp_align_eolc_maxshift
-            " We've gone too far unless we can create a hole in a split group...
-            " Design Decision: Don't create multiple holes in same group, and don't create
-            " hole within hole.
-            " Rationale: If it made sense to create a hole within the first part of a
-            " split group, or within the hole itself, it would already have been done. In
-            " fact, hole may already exist within first part of split group. It's unlikely
-            " one exists within the hole, since holes are by definition small (<=
-            " g:sexp_align_eolc_split_group_maxgap), and in any case, the recursive call
-            " to s:align_eolc__optimize_range() will effectively erase any hole within
-            " hole.
-            let j = a:opt_lvl == 2 && g:sexp_align_eolc_allow_split_group
-                \ && !a:no_holes && hole.idxs[0] == -1
-                \ ? s:align_eolc__skip_hole(a:dp, i, ecol_min, ecol_max)
-                \ : -1
-            if j == -1
-                " Can't or won't create hole and can't continue without it.
-                break
-            else
-                " Create and fully process the hole.
-                let hole = s:align_eolc__create_hole(a:dp, j + 1, i)
-                call s:Dbg("Creating hole: %s", string(hole))
-                " Bypass hole and continue in first part of split group. Note that
-                " s:align_eolc__skip_hole() guarantees at least 1 iteration on other side.
-                let i = j
-                continue " current element already completely processed
-            endif
-        else
-            " Update valid min/max.
-            let [ecol_min, ecol_max] = [try_min, try_max]
+        if ecol_max - ecol_min > g:sexp_align_eolc_maxshift
+            " We've gone too far: no more candidate groups ending at current line.
+            break
         endif
         " This is a candidate group. Determine its effect on integral.
         let area += ecol_max - el_s.ecol
@@ -3760,12 +3668,15 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl, no_holes)
         endif
         " As we work backwards, keep up with the worst-case margin.
         if g:sexp_align_eolc_margin_weight > 0 && tw > 0
+            let old_margin = min_margin " TEMP DEBUG
             let min_margin = s:align_eolc__update_min_margin(min_margin, tw, el_s, shift_inc)
+            call s:Dbg("Updating margin: min_margin=%d tw=%d shift_inc=%d, eff_linelen=%d new_margin=%d",
+                        \ old_margin, tw, shift_inc, el_s.eff_linelen, min_margin, min_margin)
         endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:align_eolc__create_group_candidate(
-                \ a:dp, i, a:idx, area, min_margin, ecol_min, ecol_max, a:dp_sidx, hole)
+                \ a:dp, i, a:idx, area, min_margin, ecol_min, ecol_max, a:dp_sidx)
         call s:Dbg("Created candidate grp: %s", string(grp))
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
@@ -3805,83 +3716,31 @@ endfunction
 " -- Args --
 " dp:      the list produced by optimization/layout
 " opt_lvl: 0=greedy 1=greedy with lookback 2=dynamic programming
-" -- optional args (to support recursive calls for split group processing) --
-"    Note: If extra args are provided, only 1 is required.
-" a:1      grps[] list to *augment* ([] if not provided)
-" a:2      eidx of first-processed group
-" a:3      sidx at which to stop processing
-"          Note: The previous 2 args facilitate processing sub-ranges with recursive calls.
-" a:4      alignment override.
-" Note: Recursive calls are intended to handle only the following:
-" * holes (potentially, but rarely, consisting of multiple groups)
-"   Note: hole processing never uses alignment override
-" * second part of split group, which will be exactly one group, whose el.grp is correct,
-"   requiring no override
-" * first part of split group, which definitely requires alignment override, and may
-"   itself be a split group.
-"   Note: In the event that first part of split group is also a split group, recursive
-"   calls are possible, but multiple iterations are not.
-" Implication: Recursive calls may make recursive calls, but will never involve more than
-" a single iteration.
-function! s:align_eolc__finalize_groups(dp, opt_lvl, ...)
+function! s:align_eolc__finalize_groups(dp, opt_lvl)
     " Loop over elements in reverse, skipping nodes that are not the end of a group.
     " Assumption: Final element always ends a group.
-    let recursive = !!a:0
-    let grps = a:0 ? a:1 : []
-    let eidx = a:0 >= 2 ? a:2 : len(a:dp) - 1
-    let stop_sidx = a:0 >= 3 ? a:3 : 0
-    let align = a:0 >= 4 ? a:4 : -1
-    call s:Dbg("Finalizing dp: stop_sidx=%d eidx=%d align=%d", stop_sidx, eidx, align)
-    while eidx >= stop_sidx
+    let eidx = len(a:dp) - 1
+    let grps = []
+    while eidx >= 0
         let el = a:dp[eidx]
-        " Check for alignment override. See note in header comment.
-        if !recursive || align < 0
-            let align = el.grp.align
-        endif
-        " Is this a split group?
-        let hole = g:sexp_align_eolc_allow_split_group && a:opt_lvl == 2
-                \ ? el.grp.hole : {'idxs': [-1, -1]}
-        " Caveat: A hole that ends before sidx is a hole that's being handled by caller;
-        " the only type of hole dealt with by a recursive call to this function is a hole
-        " within the first part of a split group, and such holes will always be within
-        " range. Get *effective* sidx for sub-range about to be processed. (For the second
-        " part of a split group, this will not be the sidx stored on the element.)
-        " FIXME!!!: I think setting sidx this way is wrong...
-        let sidx = !recursive ? el.grp.sidx : stop_sidx
-        if hole.idxs[0] > 0 && hole.idxs[1] > sidx
-            call s:Dbg("Processing group with sidx=%d and hole from %d to %d", sidx, hole.idxs[0], hole.idxs[1])
-            " Recursively process the split group as 3 distinct groups, always processing
-            " groups in reverse order.
-            " Process 2nd part of split group first.
-            " Caveat: Must use alignment override (if provided) because the group
-            " represented by el could itself be the first part of a split group, in which
-            " case, el.grp.align is not the *effective* alignment.
-            call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, eidx, hole.idxs[1] + 1, align)
-            " Process hole using its dedicated dp[], whose alignment requires no override.
-            call s:align_eolc__finalize_groups(hole.dp, a:opt_lvl, grps)
-            " Process 1st part of split group, overriding its alignment.
-            call s:align_eolc__finalize_groups(a:dp, a:opt_lvl, grps, hole.idxs[0] - 1, el.grp.sidx, align)
-        else " regular group (no hole processing)
-            let grp = {'align': align, 'eolcs': []}
-            " Add elements to the group.
-            let idx = sidx
-            while idx <= eidx
-                " Accumulate a single eol comment line item with all the information required
-                " to align it.
-                let o = a:dp[idx]
-                " Note: No need to save 'line', since it's inherent in the positions.
-                call add(grp.eolcs, {'com_s': o.com_s, 'prev_e': [0, o.line, o.ecol, 0]})
-                let idx += 1
-            endwhile
-            " Accumulate group, then move to last element of previous group.
-            call add(grps, grp)
-            call s:Dbg("Finalized grp: sidx=%d eidx=%d align=%d", sidx, eidx, align)
-        endif
-        let eidx = sidx - 1
+        let grp = {'align': el.grp.align, 'eolcs': []}
+        " Add elements to the group.
+        let idx = el.grp.sidx
+        while idx <= eidx
+            " Accumulate a single eol comment line item with all the information required
+            " to align it.
+            let o = a:dp[idx]
+            " Note: No need to save 'line', since it's inherent in the positions.
+            call add(grp.eolcs, {'com_s': o.com_s, 'prev_e': [0, o.line, o.ecol, 0]})
+            let idx += 1
+        endwhile
+        " Accumulate group, then move to last element of previous group.
+        call add(grps, grp)
+        call s:Dbg("Finalized grp: sidx=%d eidx=%d align=%d", el.grp.sidx, eidx, el.grp.align)
+        let eidx = el.grp.sidx - 1
     endwhile
-    " Since the list was built in reverse order, reverse it before return, but only if
-    " this is the top-level, non-recursive call.
-    return recursive ? grps : reverse(grps)
+    " Since the list was built in reverse order...
+    return reverse(grps)
 endfunction
 
 " TEMP DEBUG ONLY!!! Remove...
@@ -3902,9 +3761,7 @@ endfunction
 " dict, but having it allows us to skip checks when full optimization is requested.
 " Note: This function builds a reverse chain of groups in the same format for all 3
 " optimization levels.
-" TODO: Document optional arg, possibly giving it a name.
-function! s:align_eolc__optimize_range(prep, opt_lvl, ...)
-    let recursive = a:0 ? a:1 : 0
+function! s:align_eolc__optimize_range(prep, opt_lvl)
     let [i, N] = [0, len(a:prep)]
     call s:Dbg("\n\nPre-Prep: %s\n\n", json_encode(a:prep))
     let greedy_eidx = -1
@@ -3922,7 +3779,7 @@ function! s:align_eolc__optimize_range(prep, opt_lvl, ...)
             let greedy_eidx = el.seg.eidx
         else
             " Use DP to find best of candidate groups ending at this element.
-            call s:align_eolc__update_dps(a:prep, i, greedy_eidx + 1, a:opt_lvl, recursive)
+            call s:align_eolc__update_dps(a:prep, i, greedy_eidx + 1, a:opt_lvl)
         endif
         let i += 1
     endwhile

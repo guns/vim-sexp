@@ -481,11 +481,11 @@ INDENT COMMANDS (normal, visual)~
 
 <M-a>                                            *<Plug>(sexp_align_comments)*
 <M-\>                                        *<Plug>(sexp_align_comments_top)*
-        In normal mode, align end-of-line comments within [count] surrounding
-        lists (compound FORMs) or visual selection (<M-a>) or current top-level
-        list (<M-\>) without moving the cursor. If the cursor is not in a
-        compound FORM, targets the current element instead.
-        *Note:* End-of-line comment alignment makes the most sense on ranges
+        In normal mode, align trailing comments within [count] surrounding
+        lists (compound FORMs) or visual selection (<M-a>) or current
+        top-level list (<M-\>) without moving the cursor. If the cursor is not
+        in a compound FORM, targets the current element instead.
+        *Note:* Trailing comment alignment makes the most sense on ranges
         spanning more than a few lines; thus, the `sexp_align_comments_top`
         (<M-\>) command is probably the most useful.
         
@@ -496,7 +496,6 @@ INDENT COMMANDS (normal, visual)~
         ignoring the visual selection.
 
                                                  *comment-alignment-algorithm*
-        
         The default alignment mode uses a weighted "Dynamic Programming"
         algorithm to partition the eol comments into aligned groups, with the
         goal of keeping the comments in the grouping sufficiently close to the
@@ -527,7 +526,7 @@ INDENT COMMANDS (normal, visual)~
                           better, but of course, fewer groups tend to result
                           in larger average shift.
                 size      For groups whose span meets or exceeds a minimum
-                          desirable threshold (g:sexp_align_eolc_runt_thresh),
+                          desirable threshold (g:sexp_align_eolc_size_thresh),
                           this figure of merit has no impact on alignment; it
                           simply deprioritizes smaller groups with a cost
                           penalty that grows non-linearly as the length of the
@@ -536,6 +535,10 @@ INDENT COMMANDS (normal, visual)~
                 density   comments per line within the group. Used primarily
                           to minimize groups with "bookend" comments: i.e., a
                           single comment at each end of the group.
+                overrun   proportional to the amount by which the longest
+                          trailing comment line in a group exceeds configured
+                          desired textwidth.
+                          (See |g:sexp_align_eolc_textwidth|.)
 
                                             *comment-alignment-criteria-weights*
         By default, all criteria have the same relative importance, but each
@@ -551,7 +554,7 @@ INDENT COMMANDS (normal, visual)~
         are "too small", could reduce the ngrps weight to 3 or 4, and possibly
         increase the 'size' weight to reduce the probability of "runt" groups.
         Feel free to experiment with the weights on a sample block of code
-        until you find the weight combination that produces results you like.
+        until you find a combination that produces results you like.
 
                                                     *layout-optimization-levels*
         The aforementioned dynamic programming algorithm is reasonably fast,
@@ -580,6 +583,11 @@ INDENT COMMANDS (normal, visual)~
         g:sexp_align_eolc_optlvl0_thresh or g:sexp_align_eolc_optlvl1_thresh
         to indicate the number of comments at which you'd like to fallback to
         the corresponding optimization level: e.g.,
+
+        IMPORTANT NOTE: In the current release, whitespace cleanup tends to be
+        much slower than trailing comment alignment; thus, you should run the
+        standalone comment alignment commands before concluding that comment
+        alignment is causing performance issues.
 >
         " Fallack to "Greedy with lookback" optimation for ranges containing
         " 5000 or more end-of-line comments.
@@ -979,80 +987,137 @@ even by outweighed by the performance penalty of long groups.
         " Default
         let g:sexp_align_eolc_maxgap = 3
 <
-                                           *g:sexp_align_eolc_break_at_linecom*
+                                           *g:sexp_align_eolc_break_at_comment*
 Full line comments always separate end-of-line comment groups. If this option
 is not set, line comments have no impact on alignment.
 >
         " Default
-        let g:sexp_align_eolc_break_at_linecom = 0
+        let g:sexp_align_eolc_break_at_comment = 0
+<
+                                        *g:sexp_align_eolc_ignore_non_comments*
+Lines without comments have no effect on trailing comment alignment.
+Examples:
+>
+        let g:sexp_align_eolc_ignore_non_comments = 1
+<
+        (foo)     ; comment
+        (bar)     ; comment
+        (no-eol-comment)
+        (baz)     ; comment
+        (blammo)  ; comment
+>
+        let g:sexp_align_eolc_ignore_non_comments = 0
+<
+        (foo)             ; comment
+        (bar)             ; comment
+        (no-eol-comment)
+        (baz)             ; comment
+        (blammo)          ; comment
+>
+        " Default
+        let g:sexp_align_eolc_ignore_non_comments = 0
 <
                                                   *g:sexp_align_eolc_textwidth*
 End-of-line comment alignment optimization deprioritizes comment groupings
 that produce lines longer than this, with a penalty proportional to the
 overrun.
   -1  use &tw
-   0  ignore line length (same as let g:sexp_align_eolc_margin_weight = 0)
+   0  ignore line length (same as let g:sexp_align_eolc_overrun_weight = 0)
   >0  max desired line length
 >
         " Default
         let g:sexp_align_eolc_textwidth = -1
 <
-                                                *g:sexp_align_eolc_runt_thresh*
+                                                *g:sexp_align_eolc_size_thresh*
+End-of-line comment groups with fewer trailing comments than this are
+considered "runt" groups, and deprioritized with a cost proportional to the
+square of the shortfall.
 >
         " Default
-        let g:sexp_align_eolc_runt_thresh = 5
+        let g:sexp_align_eolc_size_thresh = 5
 <
-                                           *g:sexp_align_eolc_preferred_margin*
+                                             *g:sexp_align_eolc_min_separation*
+Minimum number of spaces needed between end of code and start of trailing
+comment. Note that this is only a minimum; maximum depends on specific
+alignment and |g:sexp_align_eolc_maxshift|.
 >
         " Default
-        let g:sexp_align_eolc_preferred_margin = 2
+        let g:sexp_align_eolc_min_separation = 2
 <
-                                          *g:sexp_align_eolc_allow_split_group*
+                                                   *g:sexp_align_eolc_colstops*
+Analogous to a 'tabstop' for trailing comments. If set to a nonzero value,
+trailing comments will be aligned to screen columns which are multiples of
+this value. Setting this option to a small value > 1 will prevent adjacent
+blocks of trailing comments whose alignment is "off-by-one". In the author's
+opinion, such blocks can look unsightly, though this is obviously entirely
+subjective. Another advantage of setting this option to a small value > 1 is
+that it introduces a bit of "wiggle room" into the alignment, preventing small
+shifts to trailing comment placement when a block of code is re-indented after
+a minor code change.
 >
         " Default
-        let g:sexp_align_eolc_allow_split_group = 1
-<
-                                         *g:sexp_align_eolc_split_group_maxgap*
->
-        " Default
-        let g:sexp_align_eolc_split_group_maxgap = 3
+        let g:sexp_align_eolc_colstops = 2
 <
                                             *g:sexp_align_eolc_greedy_lookback*
+The number of lines from preceding long group to include in localized
+optimization when performing "greedy with lookback" (level 1) optimization.
+See |layout-optimization-levels| for details.
 >
         " Default
         let g:sexp_align_eolc_greedy_lookback = 4
 <
                                              *g:sexp_align_eolc_optlvl0_thresh*
+Select optimization level 0 ("Greedy") if number of end-of-line comments in
+range to be aligned is greater than or equal to this threshold. Set to 1 to
+enable optimization level 0 unconditionally.
 >
         " Default
         let g:sexp_align_eolc_optlvl0_thresh = 0
 <
                                              *g:sexp_align_eolc_optlvl1_thresh*
+Select optimization level 1 ("Greedy with Lookback") if number of end-of-line
+comments in range to be aligned is greater than or equal to this threshold.
+Set to 1 to enable optimization level 1 unconditionally.
 >
         " Default
         let g:sexp_align_eolc_optlvl1_thresh = 0
 <
                                                *g:sexp_align_eolc_ngrps_weight*
+The relative importance (0-10) of minimizing the total number of groups when
+partitioning lines into alignment groups. Applies only to full (level 2)
+optimization.
 >
         " Default
         let g:sexp_align_eolc_ngrps_weight = 5
 <
                                                *g:sexp_align_eolc_shift_weight*
+The relative importance (0-10) of minimizing the distance by which trailing
+comments are separated from the code they describe. Applies only to full
+(level 2) optimization.
 >
         " Default
         let g:sexp_align_eolc_shift_weight = 5
 <
-                                                *g:sexp_align_eolc_runt_weight*
+                                                *g:sexp_align_eolc_size_weight*
+The relative importance (0-10) of preventing the formation of "runt" comment
+groups: i.e., groups with fewer than |g:sexp_align_eolc_size_thresh| trailing
+comments. Applies only to full (level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_runt_weight = 5
+        let g:sexp_align_eolc_size_weight = 5
 <
-                                              *g:sexp_align_eolc_margin_weight*
+                                           *g:sexp_align_eolc_textwidth_weight*
+The relative importance (0-10) of reducing the amount of trailing comment
+overrun, as determined by |g:sexp_align_eolc_textwidth|. Applies only to full
+(level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_margin_weight = 5
+        let g:sexp_align_eolc_textwidth_weight = 5
 <
                                              *g:sexp_align_eolc_density_weight*
+The relative importance (0-10) of avoiding trailing comment groups with
+"bookends": i.e., a comment at each end, but none between. Applies only to
+full (level 2) optimization.
 >
         " Default
         let g:sexp_align_eolc_density_weight = 5

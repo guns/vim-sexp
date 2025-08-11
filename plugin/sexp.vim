@@ -88,12 +88,20 @@ if !exists('g:sexp_align_eolc_maxgap')
     let g:sexp_align_eolc_maxgap = 100
 endif
 
-if !exists('g:sexp_align_eolc_break_at_linecom')
-    let g:sexp_align_eolc_break_at_linecom = 0
+if !exists('g:sexp_align_eolc_break_at_comment')
+    let g:sexp_align_eolc_break_at_comment = 0
+endif
+
+if !exists('g:sexp_align_eolc_ignore_non_comments')
+    let g:sexp_align_eolc_ignore_non_comments = 0
 endif
 
 if !exists('g:sexp_align_eolc_textwidth')
     let g:sexp_align_eolc_textwidth = -1
+endif
+
+if !exists('g:sexp_align_eolc_colstops')
+    let g:sexp_align_eolc_colstops = 2
 endif
 
 " Set these weights to values between 0 and 10 to adjust default weights.
@@ -112,25 +120,21 @@ if !exists('g:sexp_align_eolc_density_weight')
     let g:sexp_align_eolc_density_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_runt_weight')
-    let g:sexp_align_eolc_runt_weight = 5
+if !exists('g:sexp_align_eolc_size_weight')
+    let g:sexp_align_eolc_size_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_margin_weight')
-    let g:sexp_align_eolc_margin_weight = 5
+if !exists('g:sexp_align_eolc_overrun_weight')
+    let g:sexp_align_eolc_overrun_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_runt_thresh')
-    let g:sexp_align_eolc_runt_thresh = 5
+if !exists('g:sexp_align_eolc_size_thresh')
+    let g:sexp_align_eolc_size_thresh = 5
 endif
 
 " TODO: Consider renaming this 'spacing' to avoid overloading 'margin'.
-if !exists('g:sexp_align_eolc_preferred_margin')
-    let g:sexp_align_eolc_preferred_margin = 2
-endif
-
-if !exists('g:sexp_align_eolc_allow_split_group')
-    let g:sexp_align_eolc_allow_split_group = 1
+if !exists('g:sexp_align_eolc_min_separation')
+    let g:sexp_align_eolc_min_separation = 2
 endif
 
 if !exists('g:sexp_align_eolc_split_group_maxgap')
@@ -141,7 +145,6 @@ if !exists('g:sexp_align_eolc_greedy_lookback')
     let g:sexp_align_eolc_greedy_lookback = 4
 endif
 
-" TODO: Better names...
 if !exists('g:sexp_align_eolc_optlvl0_thresh')
     let g:sexp_align_eolc_optlvl0_thresh = 0
 endif
@@ -155,72 +158,72 @@ if !exists('g:sexp_mappings')
 endif
 
 let s:sexp_mappings = {
-    \ 'sexp_outer_list':                'af',
-    \ 'sexp_inner_list':                'if',
-    \ 'sexp_outer_top_list':            'aF',
-    \ 'sexp_inner_top_list':            'iF',
-    \ 'sexp_outer_string':              'as',
-    \ 'sexp_inner_string':              'is',
-    \ 'sexp_outer_element':             'ae',
-    \ 'sexp_inner_element':             'ie',
-    \ 'sexp_outer_child_tail':          'aC',
-    \ 'sexp_outer_child_head':          'ac',
-    \ 'sexp_inner_child_tail':          'iC',
-    \ 'sexp_inner_child_head':          'ic',
-    \ 'sexp_move_to_prev_bracket':      '(',
-    \ 'sexp_move_to_next_bracket':      ')',
-    \ 'sexp_move_to_prev_element_head': '<M-b>',
-    \ 'sexp_move_to_next_element_head': '<M-w>',
-    \ 'sexp_move_to_prev_element_tail': 'g<M-e>',
-    \ 'sexp_move_to_next_element_tail': '<M-e>',
-    \ 'sexp_flow_to_prev_close':        '<M-[>',
-    \ 'sexp_flow_to_next_open':         '<M-]>',
-    \ 'sexp_flow_to_prev_open':         '<M-{>',
-    \ 'sexp_flow_to_next_close':        '<M-}>',
-    \ 'sexp_flow_to_prev_leaf_head':    '<M-S-b>',
-    \ 'sexp_flow_to_next_leaf_head':    '<M-S-w>',
-    \ 'sexp_flow_to_prev_leaf_tail':    '<M-S-g>',
-    \ 'sexp_flow_to_next_leaf_tail':    '<M-S-e>',
-    \ 'sexp_move_to_prev_top_element':  '[[',
-    \ 'sexp_move_to_next_top_element':  ']]',
-    \ 'sexp_select_prev_element':       '[e',
-    \ 'sexp_select_next_element':       ']e',
-    \ 'sexp_indent':                    '==',
-    \ 'sexp_indent_top':                '=-',
-    \ 'sexp_indent_and_clean':          '<M-=>',
-    \ 'sexp_indent_and_clean_top':      '<M-->',
-    \ 'sexp_align':                     '<M-a>',
-    \ 'sexp_align_top':                 '<M-\>',
-    \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
-    \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
-    \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
-    \ 'sexp_square_tail_wrap_list':     '<LocalLeader>]',
-    \ 'sexp_curly_head_wrap_list':      '<LocalLeader>{',
-    \ 'sexp_curly_tail_wrap_list':      '<LocalLeader>}',
-    \ 'sexp_round_head_wrap_element':   '<LocalLeader>w',
-    \ 'sexp_round_tail_wrap_element':   '<LocalLeader>W',
-    \ 'sexp_square_head_wrap_element':  '<LocalLeader>e[',
-    \ 'sexp_square_tail_wrap_element':  '<LocalLeader>e]',
-    \ 'sexp_curly_head_wrap_element':   '<LocalLeader>e{',
-    \ 'sexp_curly_tail_wrap_element':   '<LocalLeader>e}',
-    \ 'sexp_insert_at_list_head':       '<LocalLeader>h',
-    \ 'sexp_insert_at_list_tail':       '<LocalLeader>l',
-    \ 'sexp_splice_list':               '<LocalLeader>@',
-    \ 'sexp_convolute':                 '<LocalLeader>?',
-    \ 'sexp_clone_list':                '<LocalLeader>c',
-    \ 'sexp_clone_list_sl':             '<LocalLeader><LocalLeader>c',
-    \ 'sexp_clone_element':             '<LocalLeader>C',
-    \ 'sexp_clone_element_sl':          '<LocalLeader><LocalLeader>C',
-    \ 'sexp_raise_list':                '<LocalLeader>o',
-    \ 'sexp_raise_element':             '<LocalLeader>O',
-    \ 'sexp_swap_list_backward':        '<M-k>',
-    \ 'sexp_swap_list_forward':         '<M-j>',
-    \ 'sexp_swap_element_backward':     '<M-h>',
-    \ 'sexp_swap_element_forward':      '<M-l>',
-    \ 'sexp_emit_head_element':         '<M-S-j>',
-    \ 'sexp_emit_tail_element':         '<M-S-k>',
-    \ 'sexp_capture_prev_element':      '<M-S-h>',
-    \ 'sexp_capture_next_element':      '<M-S-l>',
+    \ 'sexp_outer_list':                   'af',
+    \ 'sexp_inner_list':                   'if',
+    \ 'sexp_outer_top_list':               'aF',
+    \ 'sexp_inner_top_list':               'iF',
+    \ 'sexp_outer_string':                 'as',
+    \ 'sexp_inner_string':                 'is',
+    \ 'sexp_outer_element':                'ae',
+    \ 'sexp_inner_element':                'ie',
+    \ 'sexp_outer_child_tail':             'aC',
+    \ 'sexp_outer_child_head':             'ac',
+    \ 'sexp_inner_child_tail':             'iC',
+    \ 'sexp_inner_child_head':             'ic',
+    \ 'sexp_move_to_prev_bracket':         '(',
+    \ 'sexp_move_to_next_bracket':         ')',
+    \ 'sexp_move_to_prev_element_head':    '<M-b>',
+    \ 'sexp_move_to_next_element_head':    '<M-w>',
+    \ 'sexp_move_to_prev_element_tail':    'g<M-e>',
+    \ 'sexp_move_to_next_element_tail':    '<M-e>',
+    \ 'sexp_flow_to_prev_close':           '<M-[>',
+    \ 'sexp_flow_to_next_open':            '<M-]>',
+    \ 'sexp_flow_to_prev_open':            '<M-{>',
+    \ 'sexp_flow_to_next_close':           '<M-}>',
+    \ 'sexp_flow_to_prev_leaf_head':       '<M-S-b>',
+    \ 'sexp_flow_to_next_leaf_head':       '<M-S-w>',
+    \ 'sexp_flow_to_prev_leaf_tail':       '<M-S-g>',
+    \ 'sexp_flow_to_next_leaf_tail':       '<M-S-e>',
+    \ 'sexp_move_to_prev_top_element':     '[[',
+    \ 'sexp_move_to_next_top_element':     ']]',
+    \ 'sexp_select_prev_element':          '[e',
+    \ 'sexp_select_next_element':          ']e',
+    \ 'sexp_indent':                       '==',
+    \ 'sexp_indent_top':                   '=-',
+    \ 'sexp_indent_and_clean':             '<M-=>',
+    \ 'sexp_indent_and_clean_top':         '<M-->',
+    \ 'sexp_align_comments':               '<M-a>',
+    \ 'sexp_align_comments_top':           '<M-\>',
+    \ 'sexp_round_head_wrap_list':         '<LocalLeader>i',
+    \ 'sexp_round_tail_wrap_list':         '<LocalLeader>I',
+    \ 'sexp_square_head_wrap_list':        '<LocalLeader>[',
+    \ 'sexp_square_tail_wrap_list':        '<LocalLeader>]',
+    \ 'sexp_curly_head_wrap_list':         '<LocalLeader>{',
+    \ 'sexp_curly_tail_wrap_list':         '<LocalLeader>}',
+    \ 'sexp_round_head_wrap_element':      '<LocalLeader>w',
+    \ 'sexp_round_tail_wrap_element':      '<LocalLeader>W',
+    \ 'sexp_square_head_wrap_element':     '<LocalLeader>e[',
+    \ 'sexp_square_tail_wrap_element':     '<LocalLeader>e]',
+    \ 'sexp_curly_head_wrap_element':      '<LocalLeader>e{',
+    \ 'sexp_curly_tail_wrap_element':      '<LocalLeader>e}',
+    \ 'sexp_insert_at_list_head':          '<LocalLeader>h',
+    \ 'sexp_insert_at_list_tail':          '<LocalLeader>l',
+    \ 'sexp_splice_list':                  '<LocalLeader>@',
+    \ 'sexp_convolute':                    '<LocalLeader>?',
+    \ 'sexp_clone_list':                   '<LocalLeader>c',
+    \ 'sexp_clone_list_sl':                '<LocalLeader><LocalLeader>c',
+    \ 'sexp_clone_element':                '<LocalLeader>C',
+    \ 'sexp_clone_element_sl':             '<LocalLeader><LocalLeader>C',
+    \ 'sexp_raise_list':                   '<LocalLeader>o',
+    \ 'sexp_raise_element':                '<LocalLeader>O',
+    \ 'sexp_swap_list_backward':           '<M-k>',
+    \ 'sexp_swap_list_forward':            '<M-j>',
+    \ 'sexp_swap_element_backward':        '<M-h>',
+    \ 'sexp_swap_element_forward':         '<M-l>',
+    \ 'sexp_emit_head_element':            '<M-S-j>',
+    \ 'sexp_emit_tail_element':            '<M-S-k>',
+    \ 'sexp_capture_prev_element':         '<M-S-h>',
+    \ 'sexp_capture_next_element':         '<M-S-l>',
     \ }
 
 if !empty(g:sexp_filetypes)
@@ -379,7 +382,7 @@ function! s:sexp_create_mappings()
     for plug in ['sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
                \ 'sexp_convolute',           'sexp_splice_list',
                \ 'sexp_indent_top',          'sexp_indent_and_clean_top',
-               \ 'sexp_align',               'sexp_align_top']
+               \ 'sexp_align_comments',      'sexp_align_comments_top']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -404,7 +407,7 @@ function! s:sexp_create_mappings()
                \ 'sexp_clone_list',               'sexp_clone_list_sl',
                \ 'sexp_clone_element',            'sexp_clone_element_sl',
                \ 'sexp_indent',                   'sexp_indent_and_clean',
-               \ 'sexp_align']
+               \ 'sexp_align_comments']
         let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
         if !empty(lhs)
             execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
@@ -552,9 +555,9 @@ Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
 
 " TODO: Should these have dedicated default mappings, or just default to having it done by
 " indent and let user configure explicit maps if desired?
-Defplug! nnoremap sexp_align                 sexp#align_eol_comments('n', 0, v:count)
-Defplug  xnoremap sexp_align                 sexp#align_eol_comments('x', 0, v:prevcount)
-Defplug! nnoremap sexp_align_top             sexp#align_eol_comments('n', 1, v:count)
+Defplug! nnoremap sexp_align_comments        sexp#align_comments('n', 0, v:count)
+Defplug  xnoremap sexp_align_comments        sexp#align_comments('x', 0, v:prevcount)
+Defplug! nnoremap sexp_align_comments_top    sexp#align_comments('n', 1, v:count)
 
 " Wrap list
 Defplug! nnoremap sexp_round_head_wrap_list  sexp#wrap('f', '(', ')', 0, g:sexp_insert_after_wrap)

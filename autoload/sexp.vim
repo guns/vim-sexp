@@ -86,11 +86,11 @@ let s:rgn_patts = {
 " the weight from dropping all the way to zero.
 " TODO: Is a more complex approach warranted? E.g., an offset in addition to the slope?
 let s:align_eolc_weights = {
-    \ 'ngrps':   {'default': 50, 'adjust': 0.10},
-    \ 'shift':   {'default': 50, 'adjust': 0.20},
-    \ 'size':    {'default': 50, 'adjust': 0.20},
-    \ 'overrun': {'default': 50, 'adjust': 0.20},
-    \ 'density': {'default': 50, 'adjust': 0.20},
+    \ 'groupcnt':  {'default': 50, 'adjust': 0.10},
+    \ 'shift':     {'default': 50, 'adjust': 0.20},
+    \ 'size':      {'default': 50, 'adjust': 0.20},
+    \ 'textwidth': {'default': 50, 'adjust': 0.20},
+    \ 'density':   {'default': 50, 'adjust': 0.20},
 \ }
 
 let s:nullpos = [0,0,0,0]
@@ -3469,11 +3469,11 @@ function! s:align_eolc__compare_costs(dp, grp1, grp2)
     " Sign Logic: Add cost if larger signed value represents higher cost, else subtract.
     let ret = 0
     let weights = s:align_eol_comment__get_weights()
-    " -- Ngrps --
-    " Note: ngrps can't be totally disabled, since if it were, there would be no point to
+    " -- Groupcnt --
+    " Note: groupcnt can't be totally disabled, since if it were, there would be no point to
     " alignment.
-    let ret += weights.ngrps * s:percent_diff(c1.cumul.ngrps, c2.cumul.ngrps)
-    " -- Area (Shift) --
+    let ret += weights.groupcnt * s:percent_diff(c1.cumul.ngrps, c2.cumul.ngrps)
+    " -- Shift (area under curve) --
     if weights.shift > 0
         " Area/shift requires normalization, but also, we need an approach that prevents
         " spurious boosting of single-element (inherently zero-shift) groups, which is a
@@ -3492,18 +3492,18 @@ function! s:align_eolc__compare_costs(dp, grp1, grp2)
         let density2 = 1.0 * c2.cumul.ncoms / c2.cumul.nlines
         let ret -= weights.density * s:percent_diff(density1, density2)
     endif
-    " -- Size (runtness factor) --
+    " -- Grouplen (runtness factor) --
     if weights.size > 0
         let ret += weights.size * s:percent_diff(c1.cumul.runt, c2.cumul.runt)
     endif
     " -- Textwidth overrun --
-    if weights.overrun > 0
+    if weights.textwidth > 0
         " Convert margin to fractional default tabwidths (8) and add bias of 2 tabwidths.
         " Rationale: Without the bias, use of zero in percent difference calculation would
         " result in excessive preference for groups with 0 overrun.
         let overrun1 = c1.cumul.overrun / 8.0 + 2
         let overrun2 = c2.cumul.overrun / 8.0 + 2
-        let ret += weights.overrun * s:percent_diff(overrun1, overrun2)
+        let ret += weights.textwidth * s:percent_diff(overrun1, overrun2)
     endif
     " Return the signed comparison value.
     return ret
@@ -3532,8 +3532,8 @@ function! s:align_eolc__create_group_candidate(
     " TODO: Should this take "effective" group size into account?
     " Note: Runtness is a step function equal to square of the delta between actual group
     " size and runt threshold when size is under the threshold, else 0.
-    let runt = nlines < g:sexp_align_eolc_size_thresh
-            \ ? (g:sexp_align_eolc_size_thresh - nlines) * (g:sexp_align_eolc_size_thresh - nlines)
+    let runt = nlines < g:sexp_align_eolc_grouplen_thresh
+            \ ? (g:sexp_align_eolc_grouplen_thresh - nlines) * (g:sexp_align_eolc_grouplen_thresh - nlines)
             \ : 0
     " Convert negative margin to positive overrun, with no penalty for nonnegative margin.
     let overrun = a:margin < 0 ? -a:margin : 0
@@ -3572,6 +3572,7 @@ function! s:align_eolc__create_group_candidate(
     return ret
 endfunction
 
+" Return the preferred max line length (in screen cols) for lines with trailing comments.
 " TODO: Consider having functions place their values in a script-scoped dict once per
 " alignment.
 function! s:align_eolc__textwidth()
@@ -3665,7 +3666,7 @@ function! s:align_eolc__update_dps(dp, idx, dp_sidx, opt_lvl)
             let area += (ecol_max - ecol_max_prev) * (a:idx - i)
         endif
         " As we work backwards, keep up with the worst-case margin.
-        if g:sexp_align_eolc_overrun_weight > 0 && tw > 0
+        if g:sexp_align_eolc_textwidth_weight > 0 && tw > 0
             let old_margin = min_margin " TEMP DEBUG
             let min_margin = s:align_eolc__update_min_margin(min_margin, tw, el_s, shift_inc)
             call s:Dbg("Updating margin: min_margin=%d tw=%d shift_inc=%d, eff_linelen=%d new_margin=%d",
@@ -3769,7 +3770,8 @@ endfunction
 "                            a 'seg' key with is_greedy set is encountered, fully process
 "                            as greedy segment and advance past the segment. Process all
 "                            elements which aren't part of a greedy segment with
-"                            s:align_eolc__update_dps().
+"                            s:align_eolc__update_dps(). (End of non-greedy segment will
+"                            be determined by next element with 'seg' key.)
 " 2 (Full DP)                All elements processed by s:align_eolc__update_dps().
 "
 function! s:align_eolc__optimize_range(prep, opt_lvl)

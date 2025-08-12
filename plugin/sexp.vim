@@ -108,8 +108,8 @@ endif
 " Value of 5 corresponds to plugin-defined default. Each increment above or below 5
 " adjusts up or down by an plugin-defined, criterion-specific adjustment value.
 " TODO: Probably encapsulate in a dict.
-if !exists('g:sexp_align_eolc_ngrps_weight')
-    let g:sexp_align_eolc_ngrps_weight = 5
+if !exists('g:sexp_align_eolc_groupcnt_weight')
+    let g:sexp_align_eolc_groupcnt_weight = 5
 endif
 
 if !exists('g:sexp_align_eolc_shift_weight')
@@ -124,12 +124,12 @@ if !exists('g:sexp_align_eolc_size_weight')
     let g:sexp_align_eolc_size_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_overrun_weight')
-    let g:sexp_align_eolc_overrun_weight = 5
+if !exists('g:sexp_align_eolc_textwidth_weight')
+    let g:sexp_align_eolc_textwidth_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_size_thresh')
-    let g:sexp_align_eolc_size_thresh = 5
+if !exists('g:sexp_align_eolc_grouplen_thresh')
+    let g:sexp_align_eolc_grouplen_thresh = 5
 endif
 
 " TODO: Consider renaming this 'spacing' to avoid overloading 'margin'.

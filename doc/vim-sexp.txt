@@ -515,30 +515,31 @@ INDENT COMMANDS (normal, visual)~
                                               *comment-alignment-cost-criteria*
         In no particular order, these are the comment grouping criteria that
         the dynamic programming optimization attempts to balance.
-                shift     the number of screen columns comments must be
-                          shifted rightward to align all comments in a group.
-                          Obviously, the amount may not be the same for all
-                          comments in a group, so the algorithm uses the
-                          average shift per comment line as the figure of
-                          merit.
-                ngrps     total number of comment groups required by the
-                          alignment. As a general rule, fewer groups is
-                          better, but of course, fewer groups tend to result
-                          in larger average shift.
-                size      For groups whose span meets or exceeds a minimum
-                          desirable threshold (g:sexp_align_eolc_size_thresh),
-                          this figure of merit has no impact on alignment; it
-                          simply deprioritizes smaller groups with a cost
-                          penalty that grows non-linearly as the length of the
-                          span decreases. The purpose of this figure of merit
-                          is to discourage very small ("runt") groups.
-                density   comments per line within the group. Used primarily
-                          to minimize groups with "bookend" comments: i.e., a
-                          single comment at each end of the group.
-                overrun   proportional to the amount by which the longest
-                          trailing comment line in a group exceeds configured
-                          desired textwidth.
-                          (See |g:sexp_align_eolc_textwidth|.)
+                shift      the number of screen columns comments must be
+                           shifted rightward to align all comments in a group.
+                           Obviously, the amount may not be the same for all
+                           comments in a group, so the algorithm uses the
+                           average shift per comment line as the figure of
+                           merit.
+                groupcnt   total number of comment groups required by the
+                           alignment. As a general rule, fewer groups is
+                           better, but of course, fewer groups tend to result
+                           in larger average shift.
+                grouplen   For groups whose span meets or exceeds a minimum
+                           threshold (g:sexp_align_eolc_grouplen_thresh), this
+                           figure of merit has no impact on alignment; it
+                           simply deprioritizes smaller groups with a cost
+                           penalty that grows non-linearly as the length of
+                           the span decreases. The purpose of this figure of
+                           merit is to discourage very small ("runt") groups.
+                density    comments per line within the group. Used primarily
+                           to minimize groups with "bookend" comments: i.e., a
+                           single comment at each end of the group.
+                textwidth  how well the aligned comments stay within the
+                           configured textwidth. Groups that force trailing
+                           comments to exceed this limit are assessed a cost
+                           penalty commensurate with the overrun.
+                           (See |g:sexp_align_eolc_textwidth|.)
 
                                             *comment-alignment-criteria-weights*
         By default, all criteria have the same relative importance, but each
@@ -551,10 +552,11 @@ INDENT COMMANDS (normal, visual)~
         also set the g:sexp_align_eolc_maxshift value higher than the default
         of 40 screen columns. Similarly, a user who doesn't care about keeping
         the total number of comment blocks low, as long as none of the blocks
-        are "too small", could reduce the ngrps weight to 3 or 4, and possibly
-        increase the 'size' weight to reduce the probability of "runt" groups.
-        Feel free to experiment with the weights on a sample block of code
-        until you find a combination that produces results you like.
+        are "too small", could reduce the groupcnt weight to 3 or 4, and
+        possibly increase the 'size' weight to reduce the probability of
+        "runt" groups. Feel free to experiment with the weights on a sample
+        block of code until you find a combination that produces results you
+        like.
 
                                                     *layout-optimization-levels*
         The aforementioned dynamic programming algorithm is reasonably fast,
@@ -1022,19 +1024,19 @@ End-of-line comment alignment optimization deprioritizes comment groupings
 that produce lines longer than this, with a penalty proportional to the
 overrun.
   -1  use &tw
-   0  ignore line length (same as let g:sexp_align_eolc_overrun_weight = 0)
+   0  ignore line length (same as let g:sexp_align_eolc_textwidth_weight = 0)
   >0  max desired line length
 >
         " Default
         let g:sexp_align_eolc_textwidth = -1
 <
-                                                *g:sexp_align_eolc_size_thresh*
+                                            *g:sexp_align_eolc_grouplen_thresh*
 End-of-line comment groups with fewer trailing comments than this are
 considered "runt" groups, and deprioritized with a cost proportional to the
 square of the shortfall.
 >
         " Default
-        let g:sexp_align_eolc_size_thresh = 5
+        let g:sexp_align_eolc_grouplen_thresh = 5
 <
                                              *g:sexp_align_eolc_min_separation*
 Minimum number of spaces needed between end of code and start of trailing
@@ -1082,13 +1084,13 @@ Set to 1 to enable optimization level 1 unconditionally.
         " Default
         let g:sexp_align_eolc_optlvl1_thresh = 0
 <
-                                               *g:sexp_align_eolc_ngrps_weight*
+                                            *g:sexp_align_eolc_groupcnt_weight*
 The relative importance (0-10) of minimizing the total number of groups when
 partitioning lines into alignment groups. Applies only to full (level 2)
 optimization.
 >
         " Default
-        let g:sexp_align_eolc_ngrps_weight = 5
+        let g:sexp_align_eolc_groupcnt_weight = 5
 <
                                                *g:sexp_align_eolc_shift_weight*
 The relative importance (0-10) of minimizing the distance by which trailing
@@ -1098,13 +1100,13 @@ comments are separated from the code they describe. Applies only to full
         " Default
         let g:sexp_align_eolc_shift_weight = 5
 <
-                                                *g:sexp_align_eolc_size_weight*
+                                            *g:sexp_align_eolc_grouplen_weight*
 The relative importance (0-10) of preventing the formation of "runt" comment
-groups: i.e., groups with fewer than |g:sexp_align_eolc_size_thresh| trailing
-comments. Applies only to full (level 2) optimization.
+groups: i.e., groups with fewer than |g:sexp_align_eolc_grouplen_thresh|
+trailing comments. Applies only to full (level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_size_weight = 5
+        let g:sexp_align_eolc_grouplen_weight = 5
 <
                                            *g:sexp_align_eolc_textwidth_weight*
 The relative importance (0-10) of reducing the amount of trailing comment
@@ -1122,7 +1124,6 @@ full (level 2) optimization.
         " Default
         let g:sexp_align_eolc_density_weight = 5
 <
-
 
                                                              *g:sexp_mappings*
 Dictionary of user vim-sexp mappings. Keys are the <Plug> names without

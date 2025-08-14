@@ -13,6 +13,14 @@ local bracket = [[\v\(|\)|\[|\]|\{|\}]]
 local delimiter = bracket .. [[|\s]]
 local re_delimiter = vim.regex(delimiter)
 
+-- Lua patterns for opening/closing brackets
+local opening_bracket = [[\v\(|\[|\{]]
+local closing_bracket = [[\v\)|\]|\}]]
+-- Lua pattern used to check whether a TSNode looks like a list.
+-- TODO: Decide whether this is safe for all targeted lisps; if not, we'll need more
+-- complex test.
+local list_node_patt = [[list]]
+
 local cache = require'sexp.cache':new()
 
 -- Compile the primitive regexes.
@@ -353,6 +361,75 @@ function M.super_range(beg, end_)
   -- possible one or both are not within an element (i.e., blank or whitespace).
   --dbg:logf("super_range returning %s-%s", vim.inspect(svp), vim.inspect(evp))
   return {svp, evp}
+end
+
+-- Return VimPos4 representing the position of nearest containing bracket of specified type.
+-- Cursor Positioning: Legacy version of this function leaves cursor on found bracket, so
+-- we do too.
+---@param closing boolean # true to look forward for closing bracket
+---@param open_re string? # Regex corresponding to open bracket, nil for default
+---@param close_re string? # Regex corresponding to close bracket, nil for default
+---@return [boolean, VimPos4|string] # success flag, followed by location of bracket, else error string
+function M.nearest_bracket(closing, open_re, close_re)
+  -- Get cursor pos as ApiIndex.
+  local pos = ApiPos:from_vim4(vim.fn.getpos('.'))
+  -- Grab the active Treesitter root.
+  local root = M.get_root()
+  if not root then
+    return {false, "Unable to get Treesitter root for buffer"}
+  end
+  local row, col = pos:positions()
+  -- Convert pos to an exclusive range containing a single char.
+  ---@type TSNode?
+  local node = root:named_descendant_for_range(row, col, row, col + 1)
+  if not node then
+    return {false, "Unable to get Treesitter node"}
+  end
+  -- Get pattern used to determine whether start/end of range is desired bracket.
+  local bracket_re = closing and (close_re or closing_bracket) or (open_re or opening_bracket)
+  -- Look upwards for containing bracket of desired type in indicated direction.
+  while node do
+    -- Check the current node.
+    local node_type = node:type()
+    -- TODO: Decide whether this test is a reliable indication of a list node across the various
+    -- lisps; if not, we may need another type check to ensure a bracket is not within
+    -- string/regex/comment/etc...
+    if node_type:find(list_node_patt) then
+      -- Looks promising, but does the node start/end with correct bracket?
+      -- TODO: Consider enhancing ApiPos to simplify the following.
+      ---@type integer
+      local r, c
+      if closing then
+        r, c = node:end_()
+        c = c - 1 -- make inclusive
+      else
+        r, c = node:start()
+      end
+      -- TODO: Determine whether this is faster than getline() (for typical line lengths)
+      -- and switch to getline() if not.
+      -- Note: nvim_buf_get_text() returns empty array on empty buffer, in which case the
+      -- table index of 1 will extract nil.
+      ---@type string
+      local ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
+      if not ch then
+        -- TODO: This shouldn't happen. Can it even, given that node is non-nil?
+        return {false, "Internal error: Unable to obtain buffer text"}
+      end
+      if vim.fn.match(ch, bracket_re) >= 0 then
+        -- Found desired bracket! Return inclusive ApiPos as VimPos4.
+        return {true, {0, r + 1, c + 1, 0}}
+      else
+        -- Found a containing list with incorrect bracket type.
+        -- TODO: How should this be handled? For now, just give up and let legacy logic handle.
+        -- I don't think this should ever happen.
+        return {false, "Wrong bracket type"}
+      end
+    end
+    -- Keep looking upwards till we find what we're seeking or hit root...
+    node = node:parent()
+  end
+  -- Reached toplevel without finding containing list.
+  return {false, "Not found"}
 end
 
 return M

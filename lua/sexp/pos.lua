@@ -54,7 +54,7 @@ function ApiPos:positions()
   return self.r, self.c
 end
 
--- If input end pos is BOL, adjust to EOL of previous line.
+-- If input end pos is BOL (happens for line comments), adjust to EOL of previous line.
 -- Design Decision: Leaving non-BOL alone accomplishes the 0-based exclusive to 1-based
 -- inclusive conversion naturally, with the caveat that the 1-based position will be the
 -- *end* of a multi-byte char (probably what we want).

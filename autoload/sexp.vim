@@ -206,6 +206,10 @@ function! s:findpos(pattern, next, ...)
     return searchpos(a:pattern, a:next ? 'nW' : 'bnW', a:0 ? a:1 : 0)
 endfunction
 
+function! s:nearest_bracket_ts(closing, open_re, close_re)
+    return v:lua.require'sexp.ts'.nearest_bracket(a:closing, a:open_re, a:close_re)
+endfunction
+
 " Position of nearest paired bracket: 0 for opening, 1 for closing. Returns
 " [0, 0, 0, 0] if none found.
 "
@@ -221,6 +225,18 @@ endfunction
 "
 " Accepts alternate beginning and ending patterns as optional parameters.
 function! s:nearest_bracket(closing, ...)
+    " Attempt to use faster Treesitter-based logic if it's available and caller hasn't
+    " specified open/close regexes, thereby necessitating use of searchpairpos().
+    if s:prefer_treesitter()
+        " Note: Either both open and close patterns are provided or none are...
+        let [ok, pos] = s:nearest_bracket_ts(!!a:closing,
+                \ a:0 >= 2 ? a:1 : v:null, a:0 >= 2 ? a:2 : v:null)
+        " Fall through to slower legacy logic if Treesitter version can't be definitive.
+        if ok
+            return pos
+        endif
+    endif
+    call s:Dbg("Fell through to legcy nearest_bracket logic!")
     let flags = a:closing ? 'nW' : 'bnW'
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])

@@ -18,8 +18,8 @@ local opening_bracket = [[\v\(|\[|\{]]
 local closing_bracket = [[\v\)|\]|\}]]
 -- Lua pattern used to check whether a TSNode looks like a list.
 -- TODO: Decide whether this is safe for all targeted lisps; if not, we'll need more
--- complex test.
-local list_node_patt = [[list]]
+-- complex test. NO!!!!! Don't do this! Check ignored rgn types instead!
+local list_node_patt = [[\vlist|map_lit|vec_lit|anon_fn_lit]]
 
 local cache = require'sexp.cache':new()
 
@@ -371,8 +371,10 @@ end
 ---@param close_re string? # Regex corresponding to close bracket, nil for default
 ---@return [boolean, VimPos4|string] # success flag, followed by location of bracket, else error string
 function M.nearest_bracket(closing, open_re, close_re)
+  local save_curpos = vim.fn.getcurpos()
   -- Get cursor pos as ApiIndex.
-  local pos = ApiPos:from_vim4(vim.fn.getpos('.'))
+  local pos = ApiPos:from_vim4(save_curpos)
+  dbg:logf("curpos: %s", vim.inspect(pos))
   -- Grab the active Treesitter root.
   local root = M.get_root()
   if not root then
@@ -386,7 +388,12 @@ function M.nearest_bracket(closing, open_re, close_re)
     return {false, "Unable to get Treesitter node"}
   end
   -- Get pattern used to determine whether start/end of range is desired bracket.
-  local bracket_re = closing and (close_re or closing_bracket) or (open_re or opening_bracket)
+  local bracket_re = closing
+    and (close_re and close_re ~= vim.NIL and close_re or closing_bracket)
+    or (open_re and open_re ~= vim.NIL and open_re or opening_bracket)
+  -- After this point, cursor may need to be restored, so set 'ret' and break in lieu of
+  -- immediate return from loop.
+  local ret
   -- Look upwards for containing bracket of desired type in indicated direction.
   while node do
     -- Check the current node.
@@ -394,42 +401,61 @@ function M.nearest_bracket(closing, open_re, close_re)
     -- TODO: Decide whether this test is a reliable indication of a list node across the various
     -- lisps; if not, we may need another type check to ensure a bracket is not within
     -- string/regex/comment/etc...
-    if node_type:find(list_node_patt) then
-      -- Looks promising, but does the node start/end with correct bracket?
+    if vim.fn.match(node_type, list_node_patt) >= 0 then
+      -- Looks promising, but does the node start/end with correct bracket? Also, is it
+      -- different from starting pos?
       -- TODO: Consider enhancing ApiPos to simplify the following.
       ---@type integer
       local r, c
-      if closing then
+      if closing ~= 0 then
         r, c = node:end_()
         c = c - 1 -- make inclusive
       else
+        dbg:logf("Yep: got start...")
         r, c = node:start()
       end
-      -- TODO: Determine whether this is faster than getline() (for typical line lengths)
-      -- and switch to getline() if not.
-      -- Note: nvim_buf_get_text() returns empty array on empty buffer, in which case the
-      -- table index of 1 will extract nil.
-      ---@type string
-      local ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
-      if not ch then
-        -- TODO: This shouldn't happen. Can it even, given that node is non-nil?
-        return {false, "Internal error: Unable to obtain buffer text"}
-      end
-      if vim.fn.match(ch, bracket_re) >= 0 then
-        -- Found desired bracket! Return inclusive ApiPos as VimPos4.
-        return {true, {0, r + 1, c + 1, 0}}
-      else
-        -- Found a containing list with incorrect bracket type.
-        -- TODO: How should this be handled? For now, just give up and let legacy logic handle.
-        -- I don't think this should ever happen.
-        return {false, "Wrong bracket type"}
+      dbg:logf("closing=%s node_type=%s (%s) row=%d col=%d r=%d c=%d", closing, node_type, node:sexpr(), row, col, r, c)
+      -- Make sure this isn't starting position.
+      if row ~= r or col ~= c then
+        -- TODO: Determine whether this is faster than getline() (for typical line lengths)
+        -- and switch to getline() if not.
+        -- Note: nvim_buf_get_text() returns empty array on empty buffer, in which case the
+        -- table index of 1 will extract nil.
+        ---@type string
+        local ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
+        if not ch then
+          -- TODO: This shouldn't happen. Can it even, given that node is non-nil?
+          ret = {false, "Internal error: Unable to obtain buffer text"}
+          break
+        end
+        -- Check for macro chars.
+        if vim.fn['sexp#is_macro_char'](ch) ~= 0 then
+          local macro_end = vim.fn['sexp#current_macro_character_terminal'](1)
+          -- Assumption: Get the char *past* the leading macro.
+          c = macro_end[3]
+          dbg:logf("Updated c=%d", c)
+          ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
+        end
+        dbg:logf("Testing %s against %s", ch, bracket_re)
+        if vim.fn.match(ch, bracket_re) >= 0 then
+          -- Found desired bracket! Return inclusive ApiPos as VimPos4.
+          ret = {true, {0, r + 1, c + 1, 0}}
+          break
+        else
+          -- Found a containing list with incorrect bracket type.
+          -- TODO: How should this be handled? For now, just give up and let legacy logic handle.
+          -- I don't think this should ever happen.
+          ret = {false, "Wrong bracket type"}
+          break
+        end
       end
     end
     -- Keep looking upwards till we find what we're seeking or hit root...
     node = node:parent()
   end
   -- Reached toplevel without finding containing list.
-  return {false, "Not found"}
+  vim.fn.setpos('.', save_curpos)
+  return ret and ret or {false, "Not found"}
 end
 
 return M

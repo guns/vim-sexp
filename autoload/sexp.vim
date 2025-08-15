@@ -18,7 +18,7 @@ endif
 let g:sexp_autoloaded = 1
 
 fu! s:Dbg(...)
-    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
 "let s:prof_ts = 0
@@ -229,14 +229,17 @@ function! s:nearest_bracket(closing, ...)
     " specified open/close regexes, thereby necessitating use of searchpairpos().
     if s:prefer_treesitter()
         " Note: Either both open and close patterns are provided or none are...
-        let [ok, pos] = s:nearest_bracket_ts(!!a:closing,
+        let cp = getpos('.')
+        let [ok, pos] = s:nearest_bracket_ts(a:closing,
                 \ a:0 >= 2 ? a:1 : v:null, a:0 >= 2 ? a:2 : v:null)
+        call s:Dbg("nearest_bracket_ts returned %s: %s for curpos %s",
+                    \ string(ok), string(pos), string(cp))
         " Fall through to slower legacy logic if Treesitter version can't be definitive.
         if ok
             return pos
         endif
     endif
-    call s:Dbg("Fell through to legcy nearest_bracket logic!")
+    call s:Dbg("closing=%d - Fell through to legacy nearest_bracket logic!", a:closing)
     let flags = a:closing ? 'nW' : 'bnW'
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
@@ -244,6 +247,14 @@ function! s:nearest_bracket(closing, ...)
     let open = a:0 ? a:1 : s:opening_bracket
     let close = a:0 ? a:2 : s:closing_bracket
     let [line, col] = searchpairpos(open, '', close, flags, s:match_ignored_region_fn, stopline)
+    if line != pos[1] || col != pos[2]
+        if type(pos) == type("")
+            call s:Dbg("ts returned string in lieu of pos: %s", pos)
+        else
+            call s:Dbg("TS and Legacy mismatch!: legacy=(%d,%d) ts=(%d,%d) closing=%d", line, col, pos[1], pos[2], a:closing)
+            echoerr("Mismatch!!!!!")
+        endif
+    endif
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
@@ -1494,6 +1505,18 @@ function! s:is_macro_char(char)
     " Caveat: stridx returns 0 for empty needle.
     return !empty(a:char) && stridx(s:macro_chars(), a:char) >= 0
 endfunction
+
+" FIXME: Don't leave these like this!!!!!!!!!!!!!!!! But they need to be accessible from
+" lua...
+function! sexp#is_macro_char(char)
+    call s:Dbg("sexp#is_macro_char: char=%s type=%s", string(a:char), type(a:char))
+    return s:is_macro_char(a:char)
+endfunction
+
+function! sexp#current_macro_character_terminal(end)
+    return s:current_macro_character_terminal(a:end)
+endfunction
+
 
 " Returns 1 if character at position is in a comment, or is in the whitespace
 " between two line comments.

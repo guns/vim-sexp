@@ -49,28 +49,36 @@ function ApiPos:__eq(rhs)
   return self.r == rhs.r and self.c == rhs.c
 end
 
+---@param is_end boolean? # if true, convert exclusive col to inclusive
 ---@return integer, integer
-function ApiPos:positions()
-  return self.r, self.c
+function ApiPos:positions(is_end)
+  return self.r, is_end and self.c - 1 or self.c
 end
 
--- If input end pos is BOL (happens for line comments), adjust to EOL of previous line.
--- Design Decision: Leaving non-BOL alone accomplishes the 0-based exclusive to 1-based
--- inclusive conversion naturally, with the caveat that the 1-based position will be the
--- *end* of a multi-byte char (probably what we want).
+-- Return ApiPos (either self or new one) that does not end in column 0.
+-- Adjustment Logic: If self end pos is BOL (e.g., for end of line comment), adjust to EOL
+-- of previous line.
+-- Precondition: This method should be called only for ApiPos representing exclusive end.
+---@return ApiPos
+function ApiPos:canonical_end()
+  if self.c == 0 then
+    -- Convert exclusive end at SOL to exclusive end at EOL of previous line.
+    -- Design Decision: Ensure col >= 1 (in case of empty lines).
+    return ApiPos:new(self.r - 1, math.max(1, vim.fn.col({self.r, '$'}) - 1))
+  else
+    -- No adjustment required
+    return self
+  end
+end
+
+-- Return 1-based row,col indices corresponding to the invocant, making BOL to EOL
+-- adjustment if applicable.
 ---@param is_end boolean?
 ---@return integer, integer
 function ApiPos:vim_adjust(is_end)
-  if is_end and self.c == 0 then
-    -- Convert exclusive end at SOL to inclusive end at EOL of previous line.
-    -- Note: Row is unchanged because the indexing and line pullback adjustments cancel.
-    return self.r, vim.fn.col({self.r, '$'}) - 1
-  else
-    -- No special BOL end logic (though may still be normal end).
-    -- Note: Col is unchanged in is_end case because [0,0) col position is identical to
-    -- the corresponding [1,1] position.
-    return self.r + 1, is_end and self.c or self.c + 1
-  end
+  local pos = is_end and self:canonical_end() or self
+  -- Note: The col adjustment returns end of multi-byte char (probably what is desired).
+  return pos.r + 1, is_end and pos.c or pos.c + 1
 end
 
 -- Design Decision: Providing an is_end arg for the to_vim* methods can obviate the need

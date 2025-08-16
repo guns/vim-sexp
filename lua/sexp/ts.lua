@@ -231,41 +231,72 @@ function M.is_atom(line, col)
   return M.is_rgn_type('str_com', line, col)
 end
 
+TT = {}
+function ProfStart(k)
+  local ts = vim.fn.reltime()
+  if not TT[k] then
+    TT[k] = {ts = ts, tot = 0.0}
+  else
+    TT[k].ts = ts
+  end
+end
+function ProfEnd(k)
+  TT[k].tot = TT[k].tot + vim.fn.reltimefloat(vim.fn.reltime(TT[k].ts))
+end
+
 ---@param dir 0|1
 ---@return [integer, integer, integer, integer]
 function M.current_atom_terminal(dir)
+  ProfStart('get_cursor')
   local pos = vim.api.nvim_win_get_cursor(0)
+  ProfEnd('get_cursor')
   local line, col = pos[1], pos[2] + 1
+  dbg:logf("current_atom_terminal(%d) curpos=%d,%d", dir, line, col)
   local fwd = dir == 1
   -- Note: If termcol is still 0 at return, return null pos.
   local termcol = 0
+  ProfStart('getline')
   local linetext = vim.fn.getline(line)
+  ProfEnd('getline')
   -- Blank line can't contain atom.
   if #linetext == 0 then return {0, 0, 0, 0} end
   -- Use nearest whitespace on current line in desired direction as boundary.
   -- If no such whitespace, leave limcol nil to use BOL and EOL.
+  ProfStart('searchpos')
   local limit = vim.fn.searchpos([[\v\s]], fwd and 'nW' or 'nbW', line)
+  ProfEnd('searchpos')
   ---@type integer?
   local limcol = limit[2] > 0 and limit[2] or nil
   -- Loop over bytes starting at cursor, adjusting termcol as atom chars are verified.
   ---@type integer
+  ProfStart('col')
   local eol = vim.fn.col({line, '$'})
+  ProfEnd('col')
+  ProfStart('Loop')
   while fwd and col < (limcol or eol) or not fwd and col > (limcol or 0) do
     -- Check col position.
     --dbg:logf("Checking %s at %d, %d", linetext:sub(col, col), line, col)
+    ProfStart('re_delimiter:match_str')
     if re_delimiter:match_str(linetext:sub(col, col)) and not M.is_rgn_type('str_com_chr', line, col) then
       -- Unignored bracket is not part of atom.
+      ProfEnd('re_delimiter:match_str')
       break
     end
+    ProfEnd('re_delimiter:match_str')
     -- Get ts node at current position.
     --dbg:logf("limcol: %s", limcol)
+    ProfStart('get_node')
     local node = vim.treesitter.get_node({pos = {line-1, col-1}})
+    ProfEnd('get_node')
     if node and not is_node_rgn_type(node, 'str_com') then
       -- Still within atom. If node is leaf, skip to its end (limit permitting).
       if node:child_count() == 0 then
+        dbg:logf("Skipping in %s direction from %d,%d", (fwd and "fwd" or "bck"), line, col)
         -- Get [1,1] indexed pos.
         -- FIXME: Remove this in favor of ApiRange methods.
+        ProfStart('convert_node_range')
         local sr, sc, er, ec = convert_node_range(node)
+        ProfEnd('convert_node_range')
         --dbg:logf("Leaf! %d, %d, %d, %d", sr, sc, er, ec)
         if fwd and er ~= line or not fwd and sr ~= line then
           -- This really shouldn't happen; use whitespace as limit.
@@ -277,6 +308,7 @@ function M.current_atom_terminal(dir)
           -- Use node terminal as limit, provided it's within whitespace limit.
           termcol = fwd and math.min(limcol and limcol-1 or eol-1, ec) --[[@as integer]]
             or not fwd and math.max(limcol and limcol+1 or 1, sc)
+          dbg:logf("fwd=%s Set termcol=%d line=%d col=%d", fwd, termcol, line, col)
         end
       else
         -- Need to keep checking col-by-col, since a non-leaf node can contain a child
@@ -285,12 +317,14 @@ function M.current_atom_terminal(dir)
       end
       -- Note: Don't worry about redundant iterations in multi-byte chars.
       col = termcol + (fwd and 1 or -1)
-      --dbg:logf("Updated col to %d", col)
+      dbg:logf("Updated col to %d", col)
     else
       --dbg:logf("Breaking because no node termcol=%d col=%d", termcol, col)
       break
     end
   end
+  ProfEnd('Loop')
+  dbg:logf("Leaving current_atom_terminal()...")
   return {0, termcol ~= 0 and line or 0, termcol, 0}
 end
 
@@ -371,10 +405,9 @@ end
 ---@param close_re string? # Regex corresponding to close bracket, nil for default
 ---@return [boolean, VimPos4|string] # success flag, followed by location of bracket, else error string
 function M.nearest_bracket(closing, open_re, close_re)
-  local save_curpos = vim.fn.getcurpos()
   -- Get cursor pos as ApiIndex.
-  local pos = ApiPos:from_vim4(save_curpos)
-  dbg:logf("curpos: %s", vim.inspect(pos))
+  local pos = ApiPos:from_vim4(vim.fn.getcurpos())
+  --dbg:logf("curpos: %s", vim.inspect(pos))
   -- Grab the active Treesitter root.
   local root = M.get_root()
   if not root then
@@ -387,51 +420,46 @@ function M.nearest_bracket(closing, open_re, close_re)
   if not node then
     return {false, "Unable to get Treesitter node"}
   end
-  -- Get pattern used to determine whether start/end of range is desired bracket.
+  -- Get pattern matching desired bracket type.
   local bracket_re = closing
     and (close_re and close_re ~= vim.NIL and close_re or closing_bracket)
     or (open_re and open_re ~= vim.NIL and open_re or opening_bracket)
-  -- After this point, cursor may need to be restored, so set 'ret' and break in lieu of
-  -- immediate return from loop.
-  local ret
-  -- Look upwards for containing bracket of desired type in indicated direction.
+  -- Traverse nodes upwards looking for containing (or matching) bracket of desired type
+  -- in indicated direction.
   while node do
-    -- Check the current node.
-    local node_type = node:type()
-    -- TODO: Decide whether this test is a reliable indication of a list node across the various
-    -- lisps; if not, we may need another type check to ensure a bracket is not within
-    -- string/regex/comment/etc...
-    if vim.fn.match(node_type, list_node_patt) >= 0 then
-      -- Looks promising, but does the node start/end with correct bracket? Also, is it
-      -- different from starting pos?
+    -- Check current node, skipping ignored regions, as we're interested only in
+    -- "list-like" nodes.
+    if not is_node_rgn_type(node, "str_com_chr") then
+      -- Get position of node terminal in desired direction.
       -- TODO: Consider enhancing ApiPos to simplify the following.
       ---@type integer
       local r, c
       if closing ~= 0 then
-        r, c = node:end_()
-        c = c - 1 -- make inclusive
+        -- Convert exclusive end to inclusve, canonicalizing to avoid an end in col 0.
+        r, c = ApiPos:new(node:end_()):canonical_end():positions(true)
       else
         dbg:logf("Yep: got start...")
         r, c = node:start()
       end
-      dbg:logf("closing=%s node_type=%s (%s) row=%d col=%d r=%d c=%d", closing, node_type, node:sexpr(), row, col, r, c)
-      -- Make sure this isn't starting position.
+      --dbg:logf("closing=%s (%s) row=%d col=%d r=%d c=%d", closing, node:sexpr(), row, col, r, c)
+      -- We're interested only in brackets in desired (open/close) category, which are not
+      -- at cursor position.
       if row ~= r or col ~= c then
-        -- TODO: Determine whether this is faster than getline() (for typical line lengths)
-        -- and switch to getline() if not.
+        -- Get the char at node terminal to see whether it's the desired bracket.
+        -- TODO: Compare performance of nvim_buf_get_text() to getline().
         -- Note: nvim_buf_get_text() returns empty array on empty buffer, in which case the
         -- table index of 1 will extract nil.
         ---@type string
         local ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
         if not ch then
           -- TODO: This shouldn't happen. Can it even, given that node is non-nil?
-          ret = {false, "Internal error: Unable to obtain buffer text"}
-          break
+          return {false, "Internal error: Unable to obtain buffer text"}
         end
         -- Check for macro chars.
         if vim.fn['sexp#is_macro_char'](ch) ~= 0 then
           local macro_end = vim.fn['sexp#current_macro_character_terminal'](1)
-          -- Assumption: Get the char *past* the leading macro.
+          -- Get the char just *past* the end of the leading macro, which will be bracket
+          -- if this is some sort of special form.
           c = macro_end[3]
           dbg:logf("Updated c=%d", c)
           ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
@@ -439,23 +467,14 @@ function M.nearest_bracket(closing, open_re, close_re)
         dbg:logf("Testing %s against %s", ch, bracket_re)
         if vim.fn.match(ch, bracket_re) >= 0 then
           -- Found desired bracket! Return inclusive ApiPos as VimPos4.
-          ret = {true, {0, r + 1, c + 1, 0}}
-          break
-        else
-          -- Found a containing list with incorrect bracket type.
-          -- TODO: How should this be handled? For now, just give up and let legacy logic handle.
-          -- I don't think this should ever happen.
-          ret = {false, "Wrong bracket type"}
-          break
+          return {true, {0, r + 1, c + 1, 0}}
         end
       end
     end
     -- Keep looking upwards till we find what we're seeking or hit root...
     node = node:parent()
   end
-  -- Reached toplevel without finding containing list.
-  vim.fn.setpos('.', save_curpos)
-  return ret and ret or {false, "Not found"}
+  return {false, "Not found"}
 end
 
 return M

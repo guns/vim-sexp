@@ -4122,12 +4122,21 @@ endfunction
 
 " API function implementing standalone eol comment alignment (i.e., not triggered by indent).
 function! sexp#align_comments(mode, top, count)
-    " eol comment alignment doesn't support 'clean'; if user wants ws cleanup, he should
-    " be using indent commands, which can be configured to do both ws cleanup and eol
-    " comment alignment.
-    let state = s:pre_align_or_indent(a:mode, a:top, a:count, 0, [])
-    call s:align_comments(state.start, state.end, state.ps)
-    call s:post_align_or_indent(a:mode, state)
+    try
+        " CursorMoved autocmd callbacks for CursorMoved/TextChanged events (e.g.,
+        " matchparen's s:Highlight_Matching_Pair()) can really slow things down...
+        let ei_save = &ei
+        set ei=CursorMoved,TextChanged
+        " eol comment alignment doesn't support 'clean'; if user wants ws cleanup, he should
+        " be using indent commands, which can be configured to do both ws cleanup and eol
+        " comment alignment.
+        let state = s:pre_align_or_indent(a:mode, a:top, a:count, 0, [])
+        call s:align_comments(state.start, state.end, state.ps)
+        call s:post_align_or_indent(a:mode, state)
+    finally
+        " Re-enable autocmds.
+        let &ei = ei_save
+    endtry
 endfunction
 
 " Align end of line comments within specified range, taking all relevant options into account.
@@ -4169,48 +4178,58 @@ endfunction
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
 function! sexp#indent(mode, top, count, clean, ...)
-    " If caller hasn't specified clean, defer to option.
-    let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
-    let state = s:pre_align_or_indent(a:mode, a:top, a:count, clean, a:0 ? a:1 : [])
-    let force_syntax = a:0 && !!a:1
-    if a:clean
-        " Always force syntax update when we're modifying the buffer.
-        let force_syntax = 1
-        " Design Decision: Handle both non-list and list elements identically:
-        " cleanup back to prev, but indent starting with current.
-        " Note: Avoid unnecessary calls to at_top().
-        let at_top = state.at_top || s:at_top(state.end[1], state.end[2])
-        call s:cleanup_ws(state.start, at_top,
+    try
+        " CursorMoved autocmd callbacks for CursorMoved/TextChanged events (e.g.,
+        " matchparen's s:Highlight_Matching_Pair()) can really slow things down,
+        " especially if we're cleaning up whitespace.
+        let ei_save = &ei
+        set ei=CursorMoved,TextChanged
+        " If caller hasn't specified clean, defer to option.
+        let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
+        let state = s:pre_align_or_indent(a:mode, a:top, a:count, clean, a:0 ? a:1 : [])
+        let force_syntax = a:0 && !!a:1
+        if a:clean
+            " Always force syntax update when we're modifying the buffer.
+            let force_syntax = 1
+            " Design Decision: Handle both non-list and list elements identically:
+            " cleanup back to prev, but indent starting with current.
+            " Note: Avoid unnecessary calls to at_top().
+            let at_top = state.at_top || s:at_top(state.end[1], state.end[2])
+            call s:cleanup_ws(state.start, at_top,
+                \ s:concat_positions(state.ps, state.start, state.end, state.cursor,
+                    \ a:mode ==? 'n' ? [state.vs, state.ve] : []), state.end)
+        endif
+        " Caveat: Attempting to apply = operator in visual mode does not work
+        " consistently.
+        if force_syntax
+            " Force syntax update on visual lines before running indent.
+            " Rationale: Certain indent functions rely on syntax attributes to
+            " calculate indent: e.g., GetClojureIndent() contains a call to
+            " s:MatchPairs(), which in turn contains a call to searchpairpos(),
+            " which can find the wrong bracket if pasted text has not yet had its
+            " syntax recalculated (e.g., because the paste and subsequent indent
+            " happen in a single command). Caller should set the force_syntax flag
+            " in such scenarios to force syntax recalculation prior to the =.
+            exe state.start[1] . ',' . state.end[1] . 'call synID(line("."), col("."), 1)'
+        endif
+        " Position pre-adjustment
+        let adj = s:indent_preadjust_positions(
             \ s:concat_positions(state.ps, state.start, state.end, state.cursor,
-                \ a:mode ==? 'n' ? [state.vs, state.ve] : []), state.end)
-    endif
-    " Caveat: Attempting to apply = operator in visual mode does not work
-    " consistently.
-    if force_syntax
-        " Force syntax update on visual lines before running indent.
-        " Rationale: Certain indent functions rely on syntax attributes to
-        " calculate indent: e.g., GetClojureIndent() contains a call to
-        " s:MatchPairs(), which in turn contains a call to searchpairpos(),
-        " which can find the wrong bracket if pasted text has not yet had its
-        " syntax recalculated (e.g., because the paste and subsequent indent
-        " happen in a single command). Caller should set the force_syntax flag
-        " in such scenarios to force syntax recalculation prior to the =.
-        exe state.start[1] . ',' . state.end[1] . 'call synID(line("."), col("."), 1)'
-    endif
-    " Position pre-adjustment
-    let adj = s:indent_preadjust_positions(
-        \ s:concat_positions(state.ps, state.start, state.end, state.cursor,
-            \ a:mode ==? 'n' ? [state.vs, state.ve] : []))
-    " Perform the indent.
-    silent exe "keepjumps normal! " . state.start[1] . 'G=' . state.end[1] . "G"
-    " Position post-adjustment
-    call s:indent_postadjust_positions(adj)
-    " (Optional) end of line comment alignment
-    if g:sexp_indent_aligns_comments
-        call s:align_comments(state.start, state.end, state.ps)
-    endif
-    " Restore window and such.
-    call s:post_align_or_indent(a:mode, state)
+                \ a:mode ==? 'n' ? [state.vs, state.ve] : []))
+        " Perform the indent.
+        silent exe "keepjumps normal! " . state.start[1] . 'G=' . state.end[1] . "G"
+        " Position post-adjustment
+        call s:indent_postadjust_positions(adj)
+        " (Optional) end of line comment alignment
+        if g:sexp_indent_aligns_comments
+            call s:align_comments(state.start, state.end, state.ps)
+        endif
+        " Restore window and such.
+        call s:post_align_or_indent(a:mode, state)
+    finally
+        " Re-enable autocmds.
+        "let &ei = ei_save
+    endtry
 endfunction
 
 " Create a flat list encompassing all input positions.

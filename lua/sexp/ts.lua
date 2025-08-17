@@ -16,10 +16,6 @@ local re_delimiter = vim.regex(delimiter)
 -- Lua patterns for opening/closing brackets
 local opening_bracket = [[\v\(|\[|\{]]
 local closing_bracket = [[\v\)|\]|\}]]
--- Lua pattern used to check whether a TSNode looks like a list.
--- TODO: Decide whether this is safe for all targeted lisps; if not, we'll need more
--- complex test. NO!!!!! Don't do this! Check ignored rgn types instead!
-local list_node_patt = [[\vlist|map_lit|vec_lit|anon_fn_lit]]
 
 local cache = require'sexp.cache':new()
 
@@ -106,16 +102,11 @@ function M.is_rgn_type(rgn, line, col)
   local pos = ApiPos:new(line-1, col-1)
   local ts = reltime()
   local key, node = cache:lookup(pos, true)
-  --dbg:logf("cache:lookup: pos=%s, node=%s", pos, vim.inspect(node))
-  local tsf = reltimefloat(reltime(ts))
 
   if key then
-    -- Cache hit!
-    --dbg:logf("found cached %s", key)
-    --prof:add(string.format("Cache hit: %s", key), tsf)
     -- Cache hit! But does the matching primitive satisfy rgn?
     --dbg:logf("Cache %s", primitives[key][rgn] and "hit" or "miss")
-    -- Caveat: First return mustn't be nil.
+    -- Caveat: First return mustn't be nil, since result is definitive.
     return primitives[key][rgn] or false, node, key
   end
   -- No cache hit, but do we have a node?
@@ -398,12 +389,13 @@ function M.super_range(beg, end_)
 end
 
 -- Return VimPos4 representing the position of nearest containing bracket of specified type.
--- Cursor Positioning: Legacy version of this function leaves cursor on found bracket, so
--- we do too.
----@param closing boolean # true to look forward for closing bracket
+-- Note: Since this is called from Vim script, we wrap what would be a multi-return in a
+-- single list.
+-- Cursor Positioning: Doesn't move cursor.
+---@param closing integer # 0=backward 1=forward
 ---@param open_re string? # Regex corresponding to open bracket, nil for default
 ---@param close_re string? # Regex corresponding to close bracket, nil for default
----@return [boolean, VimPos4|string] # success flag, followed by location of bracket, else error string
+---@return [boolean, VimPos4|string] # success flag, followed by position of bracket, else error string
 function M.nearest_bracket(closing, open_re, close_re)
   -- Get cursor pos as ApiIndex.
   local pos = ApiPos:from_vim4(vim.fn.getcurpos())
@@ -421,7 +413,7 @@ function M.nearest_bracket(closing, open_re, close_re)
     return {false, "Unable to get Treesitter node"}
   end
   -- Get pattern matching desired bracket type.
-  local bracket_re = closing
+  local bracket_re = closing ~= 0
     and (close_re and close_re ~= vim.NIL and close_re or closing_bracket)
     or (open_re and open_re ~= vim.NIL and open_re or opening_bracket)
   -- Traverse nodes upwards looking for containing (or matching) bracket of desired type
@@ -435,17 +427,16 @@ function M.nearest_bracket(closing, open_re, close_re)
       ---@type integer
       local r, c
       if closing ~= 0 then
-        -- Convert exclusive end to inclusve, canonicalizing to avoid an end in col 0.
+        -- Convert exclusive end to inclusive, canonicalizing to avoid an end in col 0.
         r, c = ApiPos:new(node:end_()):canonical_end():positions(true)
       else
-        dbg:logf("Yep: got start...")
         r, c = node:start()
       end
-      --dbg:logf("closing=%s (%s) row=%d col=%d r=%d c=%d", closing, node:sexpr(), row, col, r, c)
       -- We're interested only in brackets in desired (open/close) category, which are not
       -- at cursor position.
       if row ~= r or col ~= c then
-        -- Get the char at node terminal to see whether it's the desired bracket.
+        -- Get the char at node terminal to see whether it's the desired bracket (or macro
+        -- chars preceding it).
         -- TODO: Compare performance of nvim_buf_get_text() to getline().
         -- Note: nvim_buf_get_text() returns empty array on empty buffer, in which case the
         -- table index of 1 will extract nil.
@@ -461,7 +452,6 @@ function M.nearest_bracket(closing, open_re, close_re)
           -- Get the char just *past* the end of the leading macro, which will be bracket
           -- if this is some sort of special form.
           c = macro_end[3]
-          dbg:logf("Updated c=%d", c)
           ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
         end
         dbg:logf("Testing %s against %s", ch, bracket_re)

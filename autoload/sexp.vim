@@ -3384,6 +3384,7 @@ endfunction
 "   eff_linelen:  minimum possible length of line (in screen cols), taking both
 "                 g:sexp_aligncom_min_separation and g:sexp_aligncom_colstops
 "                 into account
+"   comlen:       length of trailing comment (else 0)
 " Cursor Preservation: None (caller expected to handle)
 " Terminology: There's an ambiguity inherent in the phrase "ends in comment": if an
 " *inline* (self-contained, not eol-style) comment occurs at the end of a line, but is
@@ -3408,7 +3409,7 @@ function! s:aligncom__characterize(line)
     let eol_ecol = virtcol('.') + 1
     " These two will be adjusted below for lines with eol comments.
     let ecol = eol_ecol
-    let eff_linelen = 0
+    let [eff_linelen, comlen] = [0, 0]
     " Figure out which type of comment (if any) we have.
     let [is_eol_com, prev_e, com_s] = [0, s:nullpos, s:nullpos]
     let is_com = s:is_comment(a:line, c)
@@ -3447,11 +3448,13 @@ function! s:aligncom__characterize(line)
             " whose screen width could change if comment is shifted? Possibly not, since
             " eff_linelen is used for cost calculation, not alignment.
             let eff_linelen = eol_ecol - 1 - (virtcol([com_s[1], com_s[2]]) - ecol)
+            " Also calculate length of trailing comment, which is needed by overrun logic.
+            let comlen = eff_linelen - prev_e[2]
         endif
     endif
     return {
             \ 'ecol': ecol, 'is_com': is_com, 'is_eol_com': is_eol_com,
-            \ 'eff_linelen': eff_linelen, 'prev_e': prev_e, 'com_s': com_s
+            \ 'eff_linelen': eff_linelen, 'comlen': comlen, 'prev_e': prev_e, 'com_s': com_s
     \ }
 endfunction
 
@@ -3554,17 +3557,19 @@ endfunction
 " The dict must contain a cost dict with everything needed by the comparison function to
 " compare this candidate with another.
 " Inputs:
-"   dp:        dynamic programming state list with one element for each eol comment 
-"   sidx:      index of element corresponding to start of candidate group
-"   eidx:      index of element corresponding to end of candidate group
-"   area:      "area under the curve" for group being created: i.e., sum of all gaps
-"              between end of code and start of eol comment
-"   margin:    cumulative (min) margin, negative indicating textwidth overrun
-"   align:     alignment column for all eol comments in this group
-"   dp_sidx:   start of region on which dp[] is being performed (always 0 for opt_lvl 2)
-"              Note: Prevents looking back too far in opt_lvl 1 ("Greedy with Lookback").
+"   dp:         dynamic programming state list with one element for each eol comment 
+"   sidx:       index of element corresponding to start of candidate group
+"   eidx:       index of element corresponding to end of candidate group
+"   area:       "area under the curve" for group being created: i.e., sum of all gaps
+"               between end of code and start of eol comment
+"   margin:     cumulative (min) margin, negative indicating textwidth overrun
+"   comlen_sum: sum of trailing comment lengths, needed to calculate average
+"   tw:         effective 'textwidth' for overrun calculations
+"   align:      alignment column for all eol comments in this group
+"   dp_sidx:    start of region on which dp[] is being performed (always 0 for opt_lvl 2)
+"               Note: Prevents looking back too far in opt_lvl 1 ("Greedy with Lookback").
 function! s:aligncom__create_group_candidate(
-        \ dp, sidx, eidx, area, margin, align, dp_sidx)
+        \ dp, sidx, eidx, area, margin, comlen_sum, tw, align, dp_sidx)
     " Calculate figures of merit for the *current* group.
     let nlines = a:dp[a:eidx].line - a:dp[a:sidx].line + 1
     let ncoms = a:eidx - a:sidx + 1
@@ -3577,6 +3582,14 @@ function! s:aligncom__create_group_candidate(
             \ : 0
     " Convert negative margin to positive overrun, with no penalty for nonnegative margin.
     let overrun = a:margin < 0 ? -a:margin : 0
+    " In addition to worst-case margin, calculate avg overrun and combine with worst-case
+    " to create the effective overrun to used in cost calculations.
+    " Rationale: Considering only worst-case overrun tends to allow large groups with lots
+    " of overrun, since once the penalty is incurred for worst-case, it might as well be
+    " amortized... To avoid this, we need a penalty for additional overrunning lines, but
+    " calculating it for all lines individually is problematic for performance reasons, so
+    " we use the average, scaled by number of trailing comments in group.
+    let overrun += max([0, a:align + a:comlen_sum / ncoms - a:tw - 1]) * ncoms
     " Save the current group's (non-cumulative) values
     " TODO: Needed for anything other than debug?
     let self = {'area': a:area, 'overrun': overrun, 'nlines': nlines, 'ncoms': ncoms, 'runt': runt}
@@ -3662,6 +3675,8 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
     " Keep running sum of gaps between end of code and start of aligned eol comment: i.e.,
     " integral under curve represented by the space between eol comment and end of code.
     let area = 0
+    " Keep up with sum of trailing comment lengths to support overrun logic.
+    let comlen_sum = 0
     " Keep up with worst-case textwidth overrun per candidate group.
     let tw = s:aligncom__textwidth()
     let min_margin = tw > 0 ? s:MAXCOL : 0
@@ -3706,15 +3721,13 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         endif
         " As we work backwards, keep up with the worst-case margin.
         if g:sexp_aligncom_textwidth_weight > 0 && tw > 0
-            let old_margin = min_margin " TEMP DEBUG
             let min_margin = s:aligncom__update_min_margin(min_margin, tw, el_s, shift_inc)
-            call s:Dbg("Updating margin: min_margin=%d tw=%d shift_inc=%d, eff_linelen=%d new_margin=%d",
-                        \ old_margin, tw, shift_inc, el_s.eff_linelen, min_margin, min_margin)
+            let comlen_sum += el_s.comlen
         endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:aligncom__create_group_candidate(
-                \ a:dp, i, a:idx, area, min_margin, ecol_max, a:dp_sidx)
+                \ a:dp, i, a:idx, area, min_margin, comlen_sum, tw, ecol_max, a:dp_sidx)
         call s:Dbg("Created candidate grp for comparison:")
         call s:Dbg("\texisting: %s", string(el.grp))
         call s:Dbg("\tcandidat: %s", string(grp))

@@ -81,11 +81,11 @@ if !exists('g:sexp_indent_aligns_comments')
 endif
 
 if !exists('g:sexp_aligncom_maxshift')
-    let g:sexp_aligncom_maxshift = 40
+    let g:sexp_aligncom_maxshift = 60
 endif
 
 if !exists('g:sexp_aligncom_maxgap')
-    let g:sexp_aligncom_maxgap = 5
+    let g:sexp_aligncom_maxgap = 7
 endif
 
 if !exists('g:sexp_aligncom_break_at_comment')
@@ -135,10 +135,6 @@ endif
 " TODO: Consider renaming this 'spacing' to avoid overloading 'margin'.
 if !exists('g:sexp_aligncom_min_separation')
     let g:sexp_aligncom_min_separation = 2
-endif
-
-if !exists('g:sexp_aligncom_split_group_maxgap')
-    let g:sexp_aligncom_split_group_maxgap = 3
 endif
 
 if !exists('g:sexp_aligncom_greedy_lookback')

@@ -67,7 +67,7 @@ more explicit, opt-in configuration should read |sexp-explicit-mappings|.
 [2]: https://github.com/tpope/vim-fireplace
 [3]: https://github.com/ervandew/screen
 
-TEXT OBJECT SELECTIONS (visual, operator-pending)~
+TEXT OBJECT SELECTIONS (visual, operator-pending) ~
 
 af                                                   *<Plug>(sexp_outer_list)*
 if                                                   *<Plug>(sexp_inner_list)*
@@ -167,7 +167,7 @@ ie                                                *<Plug>(sexp_inner_element)*
         selection: thus, a default [count] of 1 performs cleanup only, and a
         count of 2 would pull in 1 additional element.
 
-        Examples: (spaces in key sequences shown for readability only)~
+        Examples: (spaces in key sequences shown for readability only) ~
 >
         Delete 2 outer elements at cursor
           d2ae
@@ -201,7 +201,7 @@ ic                                             *<Plug>(sexp_inner_child_head)*
         the cursor position. Depending on the use case, one set of commands
         may be significantly more convenient than the other.
 
-TEXT OBJECT MOTIONS (normal, visual, operator-pending)~
+TEXT OBJECT MOTIONS (normal, visual, operator-pending) ~
 
 (                                          *<Plug>(sexp_move_to_prev_bracket)*
 )                                          *<Plug>(sexp_move_to_next_bracket)*
@@ -257,7 +257,7 @@ g<M-e>                                *<Plug>(sexp_move_to_prev_element_tail)*
         c]e will delete and insert at the "then" form, while c2]e will delete
         and insert at the "else" form.
 
-"FLOW" COMMANDS (normal, visual)~
+"FLOW" COMMANDS (normal, visual) ~
 
 Although the preceding commands are useful for moving forward and backward
 within a list, sometimes you want to "escape" from the current list, or
@@ -275,7 +275,7 @@ categories:
 2. Leaf
    Land only on leaf (non-list) elements (atoms, strings, comments)
 
-Visualizing forms as trees~
+Visualizing forms as trees ~
 It may be helpful to visualize a top-level form as a "tree" whose nodes can be
 either branches (lists) or leaves (atoms, strings, comments). One pair of list
 flow commands traverses the trees in depth-first fashion, skipping over leaf
@@ -289,7 +289,7 @@ the target of a list flow command can never be the target of a leaf flow
 command, and vice-versa; moreover, every element in the buffer can be reached
 using either list or leaf flow commands, but not both.
 
-Visual and operator-pending mode note~
+Visual and operator-pending mode note ~
 Because the flow commands are designed to cross list boundaries,
 operator-pending commands and commands that extend the visual selection would
 make it too easy for the user to destroy bracket balance. For this reason, the
@@ -304,7 +304,7 @@ element from cursor. (Once you get the hang of ignoring brackets, it's easy to
 select an arbitrary child, grandchild or even more deeply-nested element with
 a single command.)
 
-List flow commands~
+List flow commands ~
 
 <M-]>                                         *<Plug>(sexp_flow_to_next_open)*
         [count] open brackets forward (ignoring any close brackets). Movement
@@ -339,37 +339,37 @@ the square-bracket commands also move out of lists, they do so only when they
 can go no deeper. In this way, they are exactly like depth-first tree
 traversals, which always choose to descend when descent is possible.
 
-List flow command examples:~
+List flow command examples: ~
         Note: | denotes starting cursor position.
               ^ denotes positions reached by successive applications of the
                 indicated command.
 
-        sexp_flow_to_next_open                forward / in~
+        sexp_flow_to_next_open               forward / in ~
                                    | (x1 (x2) (x3 (x4) (x5))) (x6)
                                      ^   ^    ^   ^    ^      ^
                                      1   2    3   4    5      6
                                    --------------------------->
 
-        sexp_flow_to_prev_open               backward / out~
+        sexp_flow_to_prev_open               backward / out ~
                                      (x1 (x2) (x3 (x4) (x5))) (x6) |
                                      ^   ^    ^   ^    ^      ^
                                      6   5    4   3    2      1
                                      <------------------------------
 
-        sexp_flow_to_prev_close              backward / in~
+        sexp_flow_to_prev_close              backward / in ~
                                      (x1) (((x2) (x3) x4) (x5) x6) |
                                         ^      ^    ^   ^    ^   ^
                                         6      5    4   3    2   1
                                      <------------------------------
 
-        sexp_flow_to_next_close               forward / out~
+        sexp_flow_to_next_close              forward / out ~
                                    | (x1) (((x2) (x3) x4) (x5) x6)
                                         ^      ^    ^   ^    ^   ^
                                         1      2    3   4    5   6
                                    ------------------------------>
 
 
-Leaf flow commands~
+Leaf flow commands ~
 
 <M-S-b>                                  *<Plug>(sexp_flow_to_prev_leaf_head)*
 <M-S-w>                                  *<Plug>(sexp_flow_to_next_leaf_head)*
@@ -388,7 +388,7 @@ Leaf flow commands~
         Analogous to |ge| and |e| motions.
 
 
-CLONE COMMANDS (normal, visual)~
+CLONE COMMANDS (normal, visual) ~
 
 <LocalLeader>c                                       *<Plug>(sexp_clone_list)*
 <LocalLeader>C                                    *<Plug>(sexp_clone_element)*
@@ -413,16 +413,16 @@ CLONE COMMANDS (normal, visual)~
 
         It is generally possible to override the default logic, forcing either
         single or multi-line operation, as follows:
-                Single-line~
+                Single-line ~
                         Use sl command variants ("_sl" suffix).
-                Multi-line~
+                Multi-line ~
                         Supply an explicit [count] (possibly 1) to one of the
                         non-sl command variants.
                         Note: Vim-sexp can tell the difference between
                         explicit and default [count]==1.
 
 
-                                                          *indent-after-clone*
+                                                           *clone-does-indent*
         If |g:sexp_clone_does_indent| is set (the default), indent the
         compound form (or range of lines at toplevel) containing the cloned
         elements.
@@ -433,7 +433,7 @@ CLONE COMMANDS (normal, visual)~
         extra whitespace is removed. (See |clean-indent| for details.)
 
 
-INDENT COMMANDS (normal, visual)~
+INDENT COMMANDS (normal, visual) ~
 
 ==                                                       *<Plug>(sexp_indent)*
 =-                                                   *<Plug>(sexp_indent_top)*
@@ -477,14 +477,13 @@ INDENT COMMANDS (normal, visual)~
         behavior.
 
 
-INDENT COMMANDS (normal, visual)~
+ALIGN COMMENTS COMMANDS (normal, visual) ~
 
 <M-a>                                            *<Plug>(sexp_align_comments)*
 <M-\>                                        *<Plug>(sexp_align_comments_top)*
         In normal mode, align trailing comments within [count] surrounding
         lists (compound FORMs) or visual selection (<M-a>) or current
-        top-level list (<M-\>) without moving the cursor. If the cursor is not
-        in a compound FORM, targets the current element instead.
+        top-level list (<M-\>) without moving the cursor.
         *Note:* Trailing comment alignment makes the most sense on ranges
         spanning more than a few lines; thus, the `sexp_align_comments_top`
         (<M-\>) command is probably the most useful.
@@ -492,14 +491,13 @@ INDENT COMMANDS (normal, visual)~
         In visual mode, the selection is first expanded to cover all partially
         selected lists and elements.
         Note: Visual mappings are not created for the "top" variants of align
-        commands; such commands would be pointless because "top" implies
-        ignoring the visual selection.
+        commands, since "top" implies ignoring the visual selection.
 
                                                  *comment-alignment-algorithm*
         The default alignment mode uses a weighted "Dynamic Programming"
-        algorithm to partition the eol comments into aligned groups, with the
-        goal of keeping the comments in the grouping sufficiently close to the
-        code they describe to prevent disorientation, but not so close as to
+        algorithm to partition the end-of-line comments into aligned groups,
+        with the goal of keeping the comments sufficiently close to the code
+        they describe to prevent disorientation, but not so close as to
         necessitate many small groups, which would defeat the purpose of
         alignment. Obviously, there are tradeoffs involved here, and the
         optimal balance is a matter of user preference. Accordingly, a set of
@@ -509,26 +507,25 @@ INDENT COMMANDS (normal, visual)~
         code it describes. Others set the relative importance (weighting) of
         various criteria used to compare the "cost" of each candidate grouping
         against competing candidates. These options are described in detail in
-        the option section; however, an overview of the costing criteria
+        the options section; however, an overview of the costing criteria
         considered by the algorithm is provided below...
 
-                                              *comment-alignment-cost-criteria*
+                                             *comment-alignment-cost-criteria*
         In no particular order, these are the comment grouping criteria that
         the dynamic programming optimization attempts to balance.
                 shift      the number of screen columns comments must be
                            shifted rightward to align all comments in a group.
-                           Obviously, the amount may not be the same for all
-                           comments in a group, so the algorithm uses the
-                           average shift per comment line as the figure of
-                           merit.
+                           Since the shift may not be the same for all
+                           comments in a group, the algorithm considers the
+                           average shift per line.
                 groupcnt   total number of comment groups required by the
                            alignment. As a general rule, fewer groups is
                            better, but of course, fewer groups tend to result
                            in larger average shift.
                 grouplen   For groups whose span meets or exceeds a minimum
-                           threshold (g:sexp_align_eolc_grouplen_thresh), this
-                           figure of merit has no impact on alignment; it
-                           simply deprioritizes smaller groups with a cost
+                           threshold (|g:sexp_aligncom_grouplen_thresh|),
+                           this figure of merit has no impact on alignment,
+                           but it deprioritizes smaller groups with a cost
                            penalty that grows non-linearly as the length of
                            the span decreases. The purpose of this figure of
                            merit is to discourage very small ("runt") groups.
@@ -536,79 +533,65 @@ INDENT COMMANDS (normal, visual)~
                            to minimize groups with "bookend" comments: i.e., a
                            single comment at each end of the group.
                 textwidth  how well the aligned comments stay within the
-                           configured textwidth. Groups that force trailing
-                           comments to exceed this limit are assessed a cost
-                           penalty commensurate with the overrun.
-                           (See |g:sexp_align_eolc_textwidth|.)
+                           configured textwidth
+                           (|g:sexp_aligncom_textwidth|). Groups that force
+                           trailing comments to exceed this limit are assessed
+                           a cost penalty proportional to the overrun.
 
-                                            *comment-alignment-criteria-weights*
+                                          *comment-alignment-criteria-weights*
         By default, all criteria have the same relative importance, but each
         has a dedicated option variable with a name given by
-        `g:sexp_align_eolc_{<criteria>}_weight`, which can be set to any value
+        `g:sexp_aligncom_{<criteria>}_weight`, which can be set to any value
         in the range 0..10 to adjust its relative weight. For instance, a user
         with a strong preference for long blocks of comments, who doesn't mind
         comments being shifted a significant distance from the code they
-        describe, might bump the 'shift' weight from 5 up to 7 or 8, and may
-        also set the g:sexp_align_eolc_maxshift value higher than the default
+        describe, might bump the 'shift' weight from 5 up to 7 or 8, and might
+        also set the |g:sexp_aligncom_maxshift| value higher than the default
         of 40 screen columns. Similarly, a user who doesn't care about keeping
-        the total number of comment blocks low, as long as none of the blocks
-        are "too small", could reduce the groupcnt weight to 3 or 4, and
-        possibly increase the 'size' weight to reduce the probability of
-        "runt" groups. Feel free to experiment with the weights on a sample
-        block of code until you find a combination that produces results you
-        like.
+        the total number of comment blocks low (as long as none of the blocks
+        are "too small") could reduce the 'groupcnt' weight to 3 or 4, and
+        increase the 'size' weight to reduce the probability of "runt" groups.
+        Feel free to experiment with the weights on a sample block of code
+        until you find a combination that produces results you like.
 
-                                                    *layout-optimization-levels*
+                                                  *layout-optimization-levels*
         The aforementioned dynamic programming algorithm is reasonably fast,
-        and is unlikely to cause performance issues in common usage scenarios.
+        and unlikely to cause performance issues in common usage scenarios.
         However, because it's difficult to predict the size blocks users will
         attempt to format, vim-sexp provides several simpler (and faster)
-        algorithms, which can be selected either unconditionally, or as a
-        fallback when the number of end-of-line comments being aligned exceeds
-        a configurable threshold. The optimization levels currently supported
-        are as follows (fastest to slowest):
+        algorithms. The optimization levels currently supported are as follows
+        (fastest to slowest):
         0    Greedy
                  Make each group as large as possible without violating one of
-                 the user-specified limits: e.g., g:sexp_align_eolc_maxshift.
+                 the user-specified limits: e.g., g:sexp_aligncom_maxshift.
                  *Disadvantage:* May produce layouts with long groups followed
                  by very short ones.
         1    Greedy with lookback
                  Similar to "Greedy", but when a short group
-                 (< g:sexp_align_eolc_greedy_lookback) follows a long group,
-                 a localized full optimization is performed on the boundary
+                 (< |g:sexp_aligncom_greedy_lookback|) follows a long group, a
+                 localized full optimization is performed on the boundary
                  region in an attempt to "rebalance" the groups.
         2    Full dynamic programming optimization (the default)
 
         *Recommendation:* If you're happy with the performance, always use level
         2 (full optimization). If you sometimes align very large comment
-        ranges and notice performance issues, set either
-        g:sexp_align_eolc_optlvl0_thresh or g:sexp_align_eolc_optlvl1_thresh
-        to indicate the number of comments at which you'd like to fallback to
-        the corresponding optimization level: e.g.,
+        ranges and notice performance issues, you can reduce
+        |g:sexp_aligncom_optlevel| to 0 or 1. Note, however, that indent and
+        whitespace cleanup are far more likely culprits where performance
+        issues are concerned. Thus, you should definitely do some benchmarking
+        before reducing the default optimization level.
 
-        IMPORTANT NOTE: In the current release, whitespace cleanup tends to be
-        much slower than trailing comment alignment; thus, you should run the
-        standalone comment alignment commands before concluding that comment
-        alignment is causing performance issues.
->
-        " Fallack to "Greedy with lookback" optimation for ranges containing
-        " 5000 or more end-of-line comments.
-        let g:sexp_align_eolc_optlvl0_thresh = 5000
-<
-        *Note:* You can set separate thresholds for optimization levels 1 and
-        2, but if you do so, be sure to set a higher threshold for the lower
-        optimization level.
-
+                                                             *align-on-indent*
         Just as it's possible to configure the indent commands to trigger an
         automatic whitespace cleanup, it's also possible to configure the
-        indent commands to perform end-of-line comment alignment
-        automatically. Unlike "whitespace cleanup", this behavior is enabled
-        by default, but you can disable it with...
+        indent commands to perform trailing comment alignment automatically.
+        Unlike "whitespace cleanup", this behavior is enabled by default, but
+        you can disable it with...
 >
-        let g:sexp_indent_aligns_eol_comments = 0
+        let g:sexp_indent_aligns_comments = 0
 <
 
-WRAP COMMANDS (normal, visual)~
+WRAP COMMANDS (normal, visual) ~
 
 <LocalLeader>i                             *<Plug>(sexp_round_head_wrap_list)*
 <LocalLeader>I                             *<Plug>(sexp_round_tail_wrap_list)*
@@ -640,7 +623,7 @@ WRAP COMMANDS (normal, visual)~
         list, a space is conditionally appended after the opening bracket so
         that any typed characters will be separated from the next element.
 
-CURSOR INSERTION (normal)~
+CURSOR INSERTION (normal) ~
 
 <LocalLeader>h                              *<Plug>(sexp_insert_at_list_head)*
 <LocalLeader>l                              *<Plug>(sexp_insert_at_list_tail)*
@@ -651,7 +634,7 @@ CURSOR INSERTION (normal)~
         opening bracket so that any typed characters will be separated from
         the next element.
 
-LIST MANIPULATION (normal, visual)~
+LIST MANIPULATION (normal, visual) ~
 
 <LocalLeader>@                                      *<Plug>(sexp_splice_list)*
         Splice the current list (compound FORM) into its parent scope [count]
@@ -668,7 +651,7 @@ LIST MANIPULATION (normal, visual)~
         moving the head of the current list to the head of a new list
         containing the [count]th parent of the current list.
 
-        Definitions~
+        Definitions ~
         current list:  list containing cursor
         list head:     elements in current list lying completely before cursor
         list tail:     elements in current list lying on or after cursor
@@ -678,7 +661,7 @@ LIST MANIPULATION (normal, visual)~
         introduce significant ambiguity without providing any appreciable
         benefit: hence, convolute is supported only in normal mode.)
 
-        Comparison with Emacs Paredit~
+        Comparison with Emacs Paredit ~
         This convolute is very similar to the Emacs Paredit version, but in
         some cases a bit smarter. For instance, Paredit always divides the
         current list _at_ the cursor, even if this means doing something silly
@@ -687,24 +670,24 @@ LIST MANIPULATION (normal, visual)~
         location: preferably at the head of the current element (or the
         subsequent one if cursor is in whitespace between elements).
 
-        Intended Use Case~
+        Intended Use Case ~
         Widen the scope of a let binding to include [count] ancestor forms.
         The following examples illustrate the intended usage.
         Note: cursor position denoted by `|'
 
-        Original Form:~
+        Original Form: ~
         (defun foo (a b)
           (if (bar x y)
               (baz (let ((x 1) (y 2))
                      |(+ x y)))))
 
-        Example 1: convolute with [count]=1 (default):~
+        Example 1: convolute with [count]=1 (default): ~
         (defun foo (a b)
           (if (bar x y)
               (let ((x 1) (y 2))
                 (baz |(+ x y)))))
 
-        Example 2: convolute with [count]=2:~
+        Example 2: convolute with [count]=2: ~
         (defun foo (a b)
           (let ((x 1) (y 2))
             (if (bar x y)
@@ -736,7 +719,7 @@ LIST MANIPULATION (normal, visual)~
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 
-INSERT MODE MAPPINGS (insert, optional)~
+INSERT MODE MAPPINGS (insert, optional) ~
 
 (                                          *<Plug>(sexp_insert_opening_round)*
 [                                         *<Plug>(sexp_insert_opening_square)*
@@ -812,42 +795,43 @@ at head) after using a wrap command like |<Plug>(sexp_round_head_wrap_list)|.
                                                     *g:sexp_indent_does_clean*
 Remove "extra" whitespace before performing an indent. Affects behavior of
 indent and clone commands. For details, see sections |clean-indent| and
-|indent-after-clone|.
+|clone-does-indent|.
 >
         " Default
         let g:sexp_indent_does_clean = 0
 <
                                                     *g:sexp_clone_does_indent*
 Indent the elements involved in a multi-line clone operation. For details, see
-section |indent-after-clone|.
+section |clone-does-indent|.
 >
         " Default
         let g:sexp_clone_does_indent = 1
 <
-                                                  *g:sexp_prefer_legacy_syntax*
+                                                 *g:sexp_prefer_legacy_syntax*
 Prefer using Vim's legacy syntax engine to determine element boundaries, even
 when the Treesitter library is available. (Applies only to Neovim users.)
+*Caveat*: Using Treesitter should be significantly faster than legacy syntax;
+thus, please report any issues you believe are fixed by setting this option.
 >
         " Default
         let g:sexp_prefer_legacy_syntax = 0
 <
-                                              *g:sexp_cleanup_keep_empty_lines*
+                                             *g:sexp_cleanup_keep_empty_lines*
 When there are multiple consecutive empty lines, preserve up to this many.
 >
         " Default
         let g:sexp_cleanup_keep_empty_lines = 1
 <
 
-                                  *g:sexp_cleanup_collapse_whitespace*
+                                          *g:sexp_cleanup_collapse_whitespace*
 Collapse all adjacent whitespace between elements to a single space, provided
 it's not within a comment or string or immediately preceding a comment.
-*COMING SOON*: End-of-line comment alignment
 >
         " Default
         let g:sexp_cleanup_collapse_whitespace = 0
 
 <
-                                                 *g:sexp_cleanup_join_affinity*
+                                                *g:sexp_cleanup_join_affinity*
 Determines scenarios in which outer selection attempts to ensure that a
 subsequent delete would pull element following selection onto end of line
 containing element preceding selection.
@@ -864,37 +848,40 @@ second element of a list: e.g., with the default setting...
 <
 ...dae on "foo" would pull "bar baz" onto the start
 line, but dae on "baz" would *not* pull "blammo" onto the same line as "bar".
-Related options: g:sexp_cleanup_join_textwidth, g:sexp_cleanup_join_multiline
+Related options: ~
+        |g:sexp_cleanup_join_textwidth|, |g:sexp_cleanup_join_multiline|
 >
         " Default
         let g:sexp_cleanup_join_affinity = 1
 <
-                                                *g:sexp_cleanup_join_textwidth*
+                                               *g:sexp_cleanup_join_textwidth*
 Line length constraint applied to outer selection cleanup logic, which avoids
 making selections whose deletion would result in a line longer than the
 specified length.
   -1  use &tw
    0  ignore line length
   >0  max line width to create with join
-Related options: g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline
+Related options ~
+        |g:sexp_cleanup_join_affinity|, |g:sexp_cleanup_join_multiline|
 >
         " Default
         let g:sexp_cleanup_join_textwidth = -1
 <
-                                                *g:sexp_cleanup_join_multiline*
+                                               *g:sexp_cleanup_join_multiline*
 Whether to make outer element selections whose deletion would join a
 multi-line element to the line containing the element preceding the selection.
   0  Consider only single-line elements as join candidates.
   1  Join logic makes no distinction between single and multi-line elements.
-Related options: g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_textwidth
+Related options: ~
+        |g:sexp_cleanup_join_affinity|, |g:sexp_cleanup_join_textwidth|
 >
         " Default
         let g:sexp_cleanup_join_multiline = 0
 <
-                                               *g:sexp_cleanup_lineshift_limit*
+                                              *g:sexp_cleanup_lineshift_limit*
 Threshold at which outer element cleanup logic switches from preserving
 leading indent to prioritizing the removal of leading empty lines. (Takes
-g:sexp_cleanup_keep_empty_lines into account.)
+|g:sexp_cleanup_keep_empty_lines| into account.)
    0  Allow any number of leading empty lines to be left behind by cleanup, if
       required to preserve leading indent: i.e., whether to preserve leading
       indent or remove leading blanks is determined solely by the colshift
@@ -913,13 +900,13 @@ Example: >
 With cursor on bar, the value of this option determines whether 'dae' cleans
 up the leading blank lines or preserves the leading indent on the final line.
 
-        0 ==> >
+        g:sexp_cleanup_lineshift_limit == 0: ~
         (foo
 
 
           baz)
 <
-        1 ==> >
+        g:sexp_cleanup_lineshift_limit == 1: ~
         (foo
  baz)
 <
@@ -927,7 +914,7 @@ up the leading blank lines or preserves the leading indent on the final line.
         " Default
         let g:sexp_cleanup_lineshift_limit = 2
 <
-                                                      *g:sexp_cleanup_colshift*
+                                                     *g:sexp_cleanup_colshift*
 The number of columns of leading indent that can be sacrificed to clean up
 leading blank lines is calculated by the following expression...
 >
@@ -935,7 +922,7 @@ leading blank lines is calculated by the following expression...
 <
 ...where leading_blanks is the number of blank lines the normal cleanup logic
 would remove if unconstrained by the need to preserve leading indent.
-Rationale: For the type of outer element selection to which this option
+*Rationale*: For the type of outer element selection to which this option
 applies, it is impossible both to preserve leading indent *and* to remove
 leading blank lines: a choice must be made, and the relevant "opportunity
 cost" is highly subjective. This and the subsequent option permit the user to
@@ -951,56 +938,56 @@ customize the behavior to his preference.
         " Default
         let g:sexp_cleanup_colshift = 4
 <
-                                                *g:sexp_cleanup_colshift_slope*
-The rate at which the leading indent threshold (see g:sexp_cleanup_colshift)
+                                               *g:sexp_cleanup_colshift_slope*
+The rate at which the leading indent threshold (see |g:sexp_cleanup_colshift|)
 increases with the number of empty lines susceptible to removal.
   0            Leading indent threshold is constant, given by
                g:sexp_cleanup_colshift.
   1..v:maxcol  Rate at which leading indent threshold grows with number of
                blank lines in leading whitespace.
-               (For details, see g:sexp_cleanup_colshift.)
+               (For details, see |g:sexp_cleanup_colshift|.)
 >
         " Default
         let g:sexp_cleanup_colshift_slope = 8
 <
-                                                *g:sexp_indent_aligns_comments*
+                                               *g:sexp_indent_aligns_comments*
 Align end-of-line comments automatically after performing an indent.
 >
         " Default
         let g:sexp_indent_aligns_comments = 1
 <
 
-                                                   *g:sexp_align_eolc_maxshift*
-Number of screen columns an end-of-line comment is allowed to shift rightward
-to align with other columns in an end-of-line comment block.
+                                                    *g:sexp_aligncom_maxshift*
+Maximum number of screen columns an end-of-line comment is allowed to shift
+rightward to align with other columns in an end-of-line comment block.
 >
         " Default
-        let g:sexp_align_eolc_maxshift = 40
+        let g:sexp_aligncom_maxshift = 40
 <
 
-                                                     *g:sexp_align_eolc_maxgap*
+                                                      *g:sexp_aligncom_maxgap*
 The maximum line gap permitted between successive end-of-line comments in the
 same group: i.e., comments separated by more than this distance will not be
 considered for inclusion in the same comment block.
-Rationale: When successive comments are separated by significant vertical
+*Rationale*: When successive comments are separated by significant vertical
 distance, the benefit of combining them into a single group decreases, and may
-even by outweighed by the performance penalty of long groups.
+even by outweighed by the performance penalty incurred by long groups.
 >
         " Default
-        let g:sexp_align_eolc_maxgap = 3
+        let g:sexp_aligncom_maxgap = 5
 <
-                                           *g:sexp_align_eolc_break_at_comment*
+                                            *g:sexp_aligncom_break_at_comment*
 Full line comments always separate end-of-line comment groups. If this option
 is not set, line comments have no impact on alignment.
 >
         " Default
-        let g:sexp_align_eolc_break_at_comment = 0
+        let g:sexp_aligncom_break_at_comment = 0
 <
-                                        *g:sexp_align_eolc_ignore_non_comments*
+                                         *g:sexp_aligncom_ignore_non_comments*
 Lines without comments have no effect on trailing comment alignment.
-Examples:
+*Examples*:
 >
-        let g:sexp_align_eolc_ignore_non_comments = 1
+        let g:sexp_aligncom_ignore_non_comments = 1
 <
         (foo)     ; comment
         (bar)     ; comment
@@ -1008,7 +995,7 @@ Examples:
         (baz)     ; comment
         (blammo)  ; comment
 >
-        let g:sexp_align_eolc_ignore_non_comments = 0
+        let g:sexp_aligncom_ignore_non_comments = 0
 <
         (foo)             ; comment
         (bar)             ; comment
@@ -1017,36 +1004,35 @@ Examples:
         (blammo)          ; comment
 >
         " Default
-        let g:sexp_align_eolc_ignore_non_comments = 0
+        let g:sexp_aligncom_ignore_non_comments = 0
 <
-                                                  *g:sexp_align_eolc_textwidth*
-End-of-line comment alignment optimization deprioritizes comment groupings
-that produce lines longer than this, with a penalty proportional to the
-overrun.
+                                                   *g:sexp_aligncom_textwidth*
+Trailing comment alignment optimization deprioritizes comment groupings that
+produce lines longer than this, with a penalty proportional to the overrun.
   -1  use &tw
-   0  ignore line length (same as let g:sexp_align_eolc_textwidth_weight = 0)
+   0  ignore line length (same as |g:sexp_aligncom_textwidth_weight| == 0)
   >0  max desired line length
 >
         " Default
-        let g:sexp_align_eolc_textwidth = -1
+        let g:sexp_aligncom_textwidth = -1
 <
-                                            *g:sexp_align_eolc_grouplen_thresh*
-End-of-line comment groups with fewer trailing comments than this are
-considered "runt" groups, and deprioritized with a cost proportional to the
-square of the shortfall.
+                                             *g:sexp_aligncom_grouplen_thresh*
+Trailing comment groups containing fewer comments than this are considered
+"runt" groups, and deprioritized with a cost proportional to the square of the
+shortfall.
 >
         " Default
-        let g:sexp_align_eolc_grouplen_thresh = 5
+        let g:sexp_aligncom_grouplen_thresh = 5
 <
-                                             *g:sexp_align_eolc_min_separation*
+                                              *g:sexp_aligncom_min_separation*
 Minimum number of spaces needed between end of code and start of trailing
 comment. Note that this is only a minimum; maximum depends on specific
-alignment and |g:sexp_align_eolc_maxshift|.
+alignment and |g:sexp_aligncom_maxshift|.
 >
         " Default
-        let g:sexp_align_eolc_min_separation = 2
+        let g:sexp_aligncom_min_separation = 2
 <
-                                                   *g:sexp_align_eolc_colstops*
+                                                    *g:sexp_aligncom_colstops*
 Analogous to a 'tabstop' for trailing comments. If set to a nonzero value,
 trailing comments will be aligned to screen columns which are multiples of
 this value. Setting this option to a small value > 1 will prevent adjacent
@@ -1058,71 +1044,71 @@ shifts to trailing comment placement when a block of code is re-indented after
 a minor code change.
 >
         " Default
-        let g:sexp_align_eolc_colstops = 2
+        let g:sexp_aligncom_colstops = 2
 <
-                                            *g:sexp_align_eolc_greedy_lookback*
+                                             *g:sexp_aligncom_greedy_lookback*
 The number of lines from preceding long group to include in localized
 optimization when performing "greedy with lookback" (level 1) optimization.
 See |layout-optimization-levels| for details.
 >
         " Default
-        let g:sexp_align_eolc_greedy_lookback = 4
+        let g:sexp_aligncom_greedy_lookback = 4
 <
-                                             *g:sexp_align_eolc_optlvl0_thresh*
+                                              *g:sexp_aligncom_optlvl0_thresh*
 Select optimization level 0 ("Greedy") if number of end-of-line comments in
 range to be aligned is greater than or equal to this threshold. Set to 1 to
 enable optimization level 0 unconditionally.
 >
         " Default
-        let g:sexp_align_eolc_optlvl0_thresh = 0
+        let g:sexp_aligncom_optlvl0_thresh = 0
 <
-                                             *g:sexp_align_eolc_optlvl1_thresh*
+                                              *g:sexp_aligncom_optlvl1_thresh*
 Select optimization level 1 ("Greedy with Lookback") if number of end-of-line
 comments in range to be aligned is greater than or equal to this threshold.
 Set to 1 to enable optimization level 1 unconditionally.
 >
         " Default
-        let g:sexp_align_eolc_optlvl1_thresh = 0
+        let g:sexp_aligncom_optlvl1_thresh = 0
 <
-                                            *g:sexp_align_eolc_groupcnt_weight*
+                                             *g:sexp_aligncom_groupcnt_weight*
 The relative importance (0-10) of minimizing the total number of groups when
 partitioning lines into alignment groups. Applies only to full (level 2)
 optimization.
 >
         " Default
-        let g:sexp_align_eolc_groupcnt_weight = 5
+        let g:sexp_aligncom_groupcnt_weight = 5
 <
-                                               *g:sexp_align_eolc_shift_weight*
+                                                *g:sexp_aligncom_shift_weight*
 The relative importance (0-10) of minimizing the distance by which trailing
 comments are separated from the code they describe. Applies only to full
 (level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_shift_weight = 5
+        let g:sexp_aligncom_shift_weight = 5
 <
-                                            *g:sexp_align_eolc_grouplen_weight*
+                                             *g:sexp_aligncom_grouplen_weight*
 The relative importance (0-10) of preventing the formation of "runt" comment
-groups: i.e., groups with fewer than |g:sexp_align_eolc_grouplen_thresh|
+groups: i.e., groups with fewer than |g:sexp_aligncom_grouplen_thresh|
 trailing comments. Applies only to full (level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_grouplen_weight = 5
+        let g:sexp_aligncom_grouplen_weight = 5
 <
-                                           *g:sexp_align_eolc_textwidth_weight*
+                                            *g:sexp_aligncom_textwidth_weight*
 The relative importance (0-10) of reducing the amount of trailing comment
-overrun, as determined by |g:sexp_align_eolc_textwidth|. Applies only to full
+overrun, as determined by |g:sexp_aligncom_textwidth|. Applies only to full
 (level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_textwidth_weight = 5
+        let g:sexp_aligncom_textwidth_weight = 5
 <
-                                             *g:sexp_align_eolc_density_weight*
+                                              *g:sexp_aligncom_density_weight*
 The relative importance (0-10) of avoiding trailing comment groups with
 "bookends": i.e., a comment at each end, but none between. Applies only to
 full (level 2) optimization.
 >
         " Default
-        let g:sexp_align_eolc_density_weight = 5
+        let g:sexp_aligncom_density_weight = 5
 <
 
                                                              *g:sexp_mappings*

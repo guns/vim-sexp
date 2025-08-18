@@ -32,7 +32,7 @@ if !exists('g:sexp_insert_after_wrap')
 endif
 
 if !exists('g:sexp_indent_does_clean')
-    let g:sexp_indent_does_clean = 1
+    let g:sexp_indent_does_clean = 0
 endif
 
 if !exists('g:sexp_clone_does_indent')
@@ -80,77 +80,75 @@ if !exists('g:sexp_indent_aligns_comments')
     let g:sexp_indent_aligns_comments = 1
 endif
 
-if !exists('g:sexp_align_eolc_maxshift')
-    let g:sexp_align_eolc_maxshift = 40
+if !exists('g:sexp_aligncom_maxshift')
+    let g:sexp_aligncom_maxshift = 40
 endif
 
-if !exists('g:sexp_align_eolc_maxgap')
-    let g:sexp_align_eolc_maxgap = 100
+if !exists('g:sexp_aligncom_maxgap')
+    let g:sexp_aligncom_maxgap = 5
 endif
 
-if !exists('g:sexp_align_eolc_break_at_comment')
-    let g:sexp_align_eolc_break_at_comment = 0
+if !exists('g:sexp_aligncom_break_at_comment')
+    let g:sexp_aligncom_break_at_comment = 0
 endif
 
-if !exists('g:sexp_align_eolc_ignore_non_comments')
-    let g:sexp_align_eolc_ignore_non_comments = 0
+if !exists('g:sexp_aligncom_ignore_non_comments')
+    let g:sexp_aligncom_ignore_non_comments = 0
 endif
 
-if !exists('g:sexp_align_eolc_textwidth')
-    let g:sexp_align_eolc_textwidth = -1
+if !exists('g:sexp_aligncom_textwidth')
+    let g:sexp_aligncom_textwidth = -1
 endif
 
-if !exists('g:sexp_align_eolc_colstops')
-    let g:sexp_align_eolc_colstops = 2
+if !exists('g:sexp_aligncom_colstops')
+    let g:sexp_aligncom_colstops = 2
 endif
 
 " Set these weights to values between 0 and 10 to adjust default weights.
 " Value of 5 corresponds to plugin-defined default. Each increment above or below 5
 " adjusts up or down by an plugin-defined, criterion-specific adjustment value.
 " TODO: Probably encapsulate in a dict.
-if !exists('g:sexp_align_eolc_groupcnt_weight')
-    let g:sexp_align_eolc_groupcnt_weight = 5
+if !exists('g:sexp_aligncom_groupcnt_weight')
+    let g:sexp_aligncom_groupcnt_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_shift_weight')
-    let g:sexp_align_eolc_shift_weight = 5
+if !exists('g:sexp_aligncom_shift_weight')
+    let g:sexp_aligncom_shift_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_density_weight')
-    let g:sexp_align_eolc_density_weight = 5
+if !exists('g:sexp_aligncom_density_weight')
+    let g:sexp_aligncom_density_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_size_weight')
-    let g:sexp_align_eolc_size_weight = 5
+if !exists('g:sexp_aligncom_grouplen_weight')
+    let g:sexp_aligncom_grouplen_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_textwidth_weight')
-    let g:sexp_align_eolc_textwidth_weight = 5
+if !exists('g:sexp_aligncom_textwidth_weight')
+    let g:sexp_aligncom_textwidth_weight = 5
 endif
 
-if !exists('g:sexp_align_eolc_grouplen_thresh')
-    let g:sexp_align_eolc_grouplen_thresh = 5
+if !exists('g:sexp_aligncom_grouplen_thresh')
+    let g:sexp_aligncom_grouplen_thresh = 5
 endif
 
 " TODO: Consider renaming this 'spacing' to avoid overloading 'margin'.
-if !exists('g:sexp_align_eolc_min_separation')
-    let g:sexp_align_eolc_min_separation = 2
+if !exists('g:sexp_aligncom_min_separation')
+    let g:sexp_aligncom_min_separation = 2
 endif
 
-if !exists('g:sexp_align_eolc_split_group_maxgap')
-    let g:sexp_align_eolc_split_group_maxgap = 3
+if !exists('g:sexp_aligncom_split_group_maxgap')
+    let g:sexp_aligncom_split_group_maxgap = 3
 endif
 
-if !exists('g:sexp_align_eolc_greedy_lookback')
-    let g:sexp_align_eolc_greedy_lookback = 4
+if !exists('g:sexp_aligncom_greedy_lookback')
+    let g:sexp_aligncom_greedy_lookback = 4
 endif
 
-if !exists('g:sexp_align_eolc_optlvl0_thresh')
-    let g:sexp_align_eolc_optlvl0_thresh = 0
-endif
-
-if !exists('g:sexp_align_eolc_optlvl1_thresh')
-    let g:sexp_align_eolc_optlvl1_thresh = 0
+if !exists('g:sexp_aligncom_optlevel')
+            \ || type(g:sexp_aligncom_optlevel) != type(0)
+            \ || g:sexp_aligncom_optlevel > 2 || g:sexp_aligncom_optlevel < 0
+    let g:sexp_aligncom_optlevel = 2
 endif
 
 if !exists('g:sexp_mappings')

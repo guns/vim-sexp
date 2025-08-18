@@ -242,7 +242,7 @@ function M.current_atom_terminal(dir)
   local pos = vim.api.nvim_win_get_cursor(0)
   ProfEnd('get_cursor')
   local line, col = pos[1], pos[2] + 1
-  dbg:logf("current_atom_terminal(%d) curpos=%d,%d", dir, line, col)
+  --dbg:logf("current_atom_terminal(%d) curpos=%d,%d", dir, line, col)
   local fwd = dir == 1
   -- Note: If termcol is still 0 at return, return null pos.
   local termcol = 0
@@ -282,7 +282,7 @@ function M.current_atom_terminal(dir)
     if node and not is_node_rgn_type(node, 'str_com') then
       -- Still within atom. If node is leaf, skip to its end (limit permitting).
       if node:child_count() == 0 then
-        dbg:logf("Skipping in %s direction from %d,%d", (fwd and "fwd" or "bck"), line, col)
+        --dbg:logf("Skipping in %s direction from %d,%d", (fwd and "fwd" or "bck"), line, col)
         -- Get [1,1] indexed pos.
         -- FIXME: Remove this in favor of ApiRange methods.
         ProfStart('convert_node_range')
@@ -299,7 +299,7 @@ function M.current_atom_terminal(dir)
           -- Use node terminal as limit, provided it's within whitespace limit.
           termcol = fwd and math.min(limcol and limcol-1 or eol-1, ec) --[[@as integer]]
             or not fwd and math.max(limcol and limcol+1 or 1, sc)
-          dbg:logf("fwd=%s Set termcol=%d line=%d col=%d", fwd, termcol, line, col)
+          --dbg:logf("fwd=%s Set termcol=%d line=%d col=%d", fwd, termcol, line, col)
         end
       else
         -- Need to keep checking col-by-col, since a non-leaf node can contain a child
@@ -308,14 +308,13 @@ function M.current_atom_terminal(dir)
       end
       -- Note: Don't worry about redundant iterations in multi-byte chars.
       col = termcol + (fwd and 1 or -1)
-      dbg:logf("Updated col to %d", col)
+      --dbg:logf("Updated col to %d", col)
     else
       --dbg:logf("Breaking because no node termcol=%d col=%d", termcol, col)
       break
     end
   end
   ProfEnd('Loop')
-  dbg:logf("Leaving current_atom_terminal()...")
   return {0, termcol ~= 0 and line or 0, termcol, 0}
 end
 
@@ -454,7 +453,7 @@ function M.nearest_bracket(closing, open_re, close_re)
           c = macro_end[3]
           ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
         end
-        dbg:logf("Testing %s against %s", ch, bracket_re)
+        --dbg:logf("Testing %s against %s", ch, bracket_re)
         if vim.fn.match(ch, bracket_re) >= 0 then
           -- Found desired bracket! Return inclusive ApiPos as VimPos4.
           return {true, {0, r + 1, c + 1, 0}}

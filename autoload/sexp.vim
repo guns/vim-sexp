@@ -3504,7 +3504,7 @@ endfunction
 " < 0: cost1 <  cost2
 " > 0: cost1 >  cost2
 " = 0: cost1 == cost2
-function! s:aligncom__compare_costs(dp, grp1, grp2)
+function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
     let [g1, g2] = [a:grp1, a:grp2]
     let [c1, c2] = [g1.cost, g2.cost]
     " Each enabled criterion adjusts this variable by signed amount.
@@ -3541,12 +3541,18 @@ function! s:aligncom__compare_costs(dp, grp1, grp2)
     endif
     " -- Textwidth overrun --
     if weights.textwidth > 0
-        " Convert margin to fractional default tabwidths (8) and add bias of 2 tabwidths.
+        " Convert margin to fractional default tabwidths (8) and add bias of 4 tabwidths
+        " per trailing comment line.
         " Rationale: Without the bias, use of zero in percent difference calculation would
         " result in excessive preference for groups with 0 overrun.
-        let overrun1 = c1.cumul.overrun / 8.0 + 2
-        let overrun2 = c2.cumul.overrun / 8.0 + 2
-        let ret += weights.textwidth * s:percent_diff(overrun1, overrun2)
+        " CAVEAT: It is vital that the bias for both groups be scaled identically;
+        " otherwise, larger groups will be deprioritized due to a spuriously larger
+        " overrun, even when neither group has any actual overrun! Hence, we scale by
+        " *avg* ncoms.
+        let [overrun1, overrun2] = [c1.cumul.overrun + a:tw, c2.cumul.overrun + a:tw]
+        let [max_overrun1, max_overrun2] = [c1.cumul.max_overrun + a:tw, c2.cumul.max_overrun + a:tw]
+        let ret += weights.textwidth * (overrun1 - overrun2) / max([overrun1, overrun2])
+        let ret += weights.textwidth * (max_overrun1 - max_overrun2) / max([max_overrun1, max_overrun2])
     endif
     " Return the signed comparison value.
     return ret
@@ -3581,17 +3587,18 @@ function! s:aligncom__create_group_candidate(
             \ ? (g:sexp_aligncom_grouplen_thresh - nlines) * (g:sexp_aligncom_grouplen_thresh - nlines)
             \ : 0
     " Convert negative margin to positive overrun, with no penalty for nonnegative margin.
-    let overrun = a:margin < 0 ? -a:margin : 0
-    " In addition to worst-case margin, calculate avg overrun and combine with worst-case
-    " to create the effective overrun to used in cost calculations.
+    let max_overrun = a:margin < 0 ? -a:margin : 0
+    " Augment the worst-case figure of merit by adding a value that reflects the *total*
+    " amount of overrun.
     " Rationale: Considering only worst-case overrun tends to allow large groups with lots
-    " of overrun, since once the penalty is incurred for worst-case, it might as well be
-    " amortized... To avoid this, we need a penalty for additional overrunning lines, but
-    " calculating it for all lines individually is problematic for performance reasons, so
-    " we use the average, scaled by number of trailing comments in group.
-    let overrun += max([0, a:align + a:comlen_sum / ncoms - a:tw - 1]) * ncoms
+    " of overrun, since once the penalty is incurred for worst-case (as it must be for a
+    " long line), it might as well be amortized... To avoid this, we need a penalty for
+    " additional overrunning lines, but calculating it for all lines individually is
+    " problematic for performance reasons. A simpler, yet still effective strategy, is to
+    " use the product of the *average* trailing comment length and the number trailing
+    " comments in group.
+    let overrun = max([0, a:align + a:comlen_sum / ncoms - a:tw - 1]) * ncoms
     " Save the current group's (non-cumulative) values
-    " TODO: Needed for anything other than debug?
     let self = {'area': a:area, 'overrun': overrun, 'nlines': nlines, 'ncoms': ncoms, 'runt': runt}
     " Note: dp_sidx may be nonzero for opt_lvl 1 ("greedy with lookback").
     if a:sidx > a:dp_sidx
@@ -3604,6 +3611,7 @@ function! s:aligncom__create_group_candidate(
                     \ 'nlines': pgrp.cost.cumul.nlines + nlines,
                     \ 'ncoms': pgrp.cost.cumul.ncoms + ncoms,
                     \ 'area': pgrp.cost.cumul.area + a:area,
+                    \ 'max_overrun': max([pgrp.cost.cumul.max_overrun, max_overrun]),
                     \ 'overrun': pgrp.cost.cumul.overrun + overrun,
                     \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
@@ -3614,7 +3622,8 @@ function! s:aligncom__create_group_candidate(
         " once it becomes an sidx-1 group, but this could be handled specially.
         " Rationale: An only element is always best.
         let cumul = {
-            \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': a:area, 'overrun': overrun, 'runt': 0
+            \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': a:area,
+            \ 'max_overrun': max_overrun, 'overrun': overrun, 'runt': 0
         \ }
     endif
     " TODO: If self ends up not being required, pull cumul up.
@@ -3723,6 +3732,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         if g:sexp_aligncom_textwidth_weight > 0 && tw > 0
             let min_margin = s:aligncom__update_min_margin(min_margin, tw, el_s, shift_inc)
             let comlen_sum += el_s.comlen
+            call s:Dbg("min_margin=%d comlen_sum=%d", min_margin, comlen_sum)
         endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
@@ -3733,7 +3743,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         call s:Dbg("\tcandidat: %s", string(grp))
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
-        if el.sog || empty(el.grp) || s:aligncom__compare_costs(a:dp, el.grp, grp) > 0
+        if el.sog || empty(el.grp) || s:aligncom__compare_costs(a:dp, el.grp, grp, tw) > 0
             " Make this the new best candidate.
             let el.grp = grp
             call s:Dbg("New best (%d-%d)", el_s.line, el.line)

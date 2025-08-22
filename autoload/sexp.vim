@@ -3511,10 +3511,15 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
     " Sign Logic: Add cost if larger signed value represents higher cost, else subtract.
     let ret = 0
     let weights = s:aligncom__get_weights()
+    let [ngrps, shift, density, runtiness, overrun] = [0, 0, 0, 0, 0]
     " -- Groupcnt --
     " Note: groupcnt can't be totally disabled, since if it were, there would be no point to
     " alignment.
-    let ret += weights.groupcnt * s:percent_diff(c1.cumul.ngrps, c2.cumul.ngrps)
+    " Normalize to min number of groups corresponding if no runt groups created.
+    let ngrps1 = 1.0 * c1.cumul.ngrps / (c1.cumul.ncoms / g:sexp_aligncom_grouplen_thresh)
+    let ngrps2 = 1.0 * c2.cumul.ngrps / (c2.cumul.ncoms / g:sexp_aligncom_grouplen_thresh)
+    let ngrps = weights.groupcnt * (ngrps1 - ngrps2)
+    let ret += ngrps
     " -- Shift (area under curve) --
     if weights.shift > 0
         " Area/shift requires normalization, but also, we need an approach that prevents
@@ -3526,18 +3531,21 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
         " s:percent_diff() uses avg in denom).
         let spl1 = 1.0 * c1.cumul.area / c1.cumul.ncoms + g:sexp_aligncom_maxshift
         let spl2 = 1.0 * c2.cumul.area / c2.cumul.ncoms + g:sexp_aligncom_maxshift
-        let ret += weights.shift * s:percent_diff(spl1, spl2)
+        let shift = weights.shift * s:percent_diff(spl1, spl2)
+        let ret += shift
     endif
     " -- Density --
     if weights.density > 0
         let density1 = 1.0 * c1.cumul.ncoms / c1.cumul.nlines
         let density2 = 1.0 * c2.cumul.ncoms / c2.cumul.nlines
-        let ret -= weights.density * s:percent_diff(density1, density2)
+        let density = -weights.density * s:percent_diff(density1, density2)
+        let ret += density
     endif
     " -- Grouplen (runtness factor) --
     " Note: We're working with the "runt" factor here, which we want to be small.
     if weights.grouplen > 0
-        let ret += weights.grouplen * s:percent_diff(c1.cumul.runt, c2.cumul.runt)
+        let runtiness = weights.grouplen * s:percent_diff(c1.cumul.runt, c2.cumul.runt)
+        let ret += runtiness
     endif
     " -- Textwidth overrun --
     if weights.textwidth > 0
@@ -3551,8 +3559,16 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
         " *avg* ncoms.
         let [overrun1, overrun2] = [c1.cumul.overrun + a:tw, c2.cumul.overrun + a:tw]
         let [max_overrun1, max_overrun2] = [c1.cumul.max_overrun + a:tw, c2.cumul.max_overrun + a:tw]
-        let ret += weights.textwidth * (overrun1 - overrun2) / max([overrun1, overrun2])
-        let ret += weights.textwidth * (max_overrun1 - max_overrun2) / max([max_overrun1, max_overrun2])
+        let overrun = weights.textwidth * (overrun1 - overrun2) / max([overrun1, overrun2])
+        let ret += overrun
+        let max_overrun = weights.textwidth * (max_overrun1 - max_overrun2) / max([max_overrun1, max_overrun2])
+        let ret += max_overrun
+        call s:Dbg("       ngrps: %d %d", ngrps1, ngrps2)
+        call s:Dbg(" comlen_sums: %d %d", c1.self.comlen_sum, c2.self.comlen_sum)
+        call s:Dbg("    overruns: %d %d", overrun1, overrun2)
+        call s:Dbg("max_overruns: %d %d", max_overrun1, max_overrun2)
+        call s:Dbg("Criteria Impacts:\n\tngrps:\t\t%f\n\tshift:\t\t%f\n\tdensity:\t%f\n\truntness:\t%f\n\toverrun:\t%f",
+                    \ ngrps, shift, density, runtiness, overrun)
     endif
     " Return the signed comparison value.
     return ret
@@ -3599,19 +3615,22 @@ function! s:aligncom__create_group_candidate(
     " comments in group.
     let overrun = max([0, a:align + a:comlen_sum / ncoms - a:tw - 1]) * ncoms
     " Save the current group's (non-cumulative) values
-    let self = {'area': a:area, 'overrun': overrun, 'nlines': nlines, 'ncoms': ncoms, 'runt': runt}
+    let self = {'area': a:area, 'overrun': overrun, 'nlines': nlines,
+                \ 'ncoms': ncoms, 'runt': runt, 'comlen_sum': a:comlen_sum}
     " Note: dp_sidx may be nonzero for opt_lvl 1 ("greedy with lookback").
     if a:sidx > a:dp_sidx
         " Get previous grp in chain to support accumulation.
         let pgrp = a:dp[a:sidx - 1].grp
         " Aggregate cost-related data that applies to the current candidate and its chain
         " of predecessors.
+        call s:Dbg("Creating cumul reflecting pgrp ending at idx=%d line %d, runt=%f",
+                    \ a:sidx - 1, a:dp[a:sidx - 1].line, pgrp.cost.cumul.runt)
         let cumul = {
                     \ 'ngrps': pgrp.cost.cumul.ngrps + 1,
                     \ 'nlines': pgrp.cost.cumul.nlines + nlines,
                     \ 'ncoms': pgrp.cost.cumul.ncoms + ncoms,
                     \ 'area': pgrp.cost.cumul.area + a:area,
-                    \ 'max_overrun': max([pgrp.cost.cumul.max_overrun, max_overrun]),
+                    \ 'max_overrun': pgrp.cost.cumul.max_overrun + max_overrun,
                     \ 'overrun': pgrp.cost.cumul.overrun + overrun,
                     \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
@@ -3623,7 +3642,7 @@ function! s:aligncom__create_group_candidate(
         " Rationale: An only element is always best.
         let cumul = {
             \ 'ngrps': 1, 'nlines': nlines, 'ncoms': ncoms, 'area': a:area,
-            \ 'max_overrun': max_overrun, 'overrun': overrun, 'runt': 0
+            \ 'max_overrun': max_overrun, 'overrun': overrun, 'runt': runt
         \ }
     endif
     " TODO: If self ends up not being required, pull cumul up.
@@ -3739,8 +3758,10 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         let grp = s:aligncom__create_group_candidate(
                 \ a:dp, i, a:idx, area, min_margin, comlen_sum, tw, ecol_max, a:dp_sidx)
         call s:Dbg("Created candidate grp for comparison:")
-        call s:Dbg("\texisting: %s", string(el.grp))
-        call s:Dbg("\tcandidat: %s", string(grp))
+        call s:Dbg("\texisting (%02d-%02d): %s",
+                    \ el.sog || empty(el.grp)
+                    \ ? el.line : a:dp[el.grp.sidx].line, el.line, string(el.grp))
+        call s:Dbg("\tcandidat (%02d-%02d): %s", el_s.line, el.line, string(grp))
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
         if el.sog || empty(el.grp) || s:aligncom__compare_costs(a:dp, el.grp, grp, tw) > 0
@@ -3853,7 +3874,8 @@ function! s:aligncom__optimize_range(prep)
             let greedy_eidx = el.seg.eidx
         else
             " Use DP to find best of candidate groups ending at this element.
-            call s:aligncom__update_dps(a:prep, i, greedy_eidx + 1)
+            call s:aligncom__update_dps(
+                    \ a:prep, i, g:sexp_aligncom_optlevel < 2 ? greedy_eidx + 1 : 0)
         endif
         let i += 1
     endwhile

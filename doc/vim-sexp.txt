@@ -517,13 +517,13 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
                            shifted rightward to align all comments in a group.
                            Since the shift may not be the same for all
                            comments in a group, the algorithm considers the
-                           average shift per line.
-                groupcnt   total number of comment groups required by the
+                           integral of the shifts.
+                numgroups  total number of comment groups required by the
                            alignment. As a general rule, fewer groups is
                            better, but of course, fewer groups tend to result
                            in larger average shift.
-                grouplen   For groups whose span meets or exceeds a minimum
-                           threshold (|g:sexp_aligncom_grouplen_thresh|),
+                runtness   For groups whose span meets or exceeds a minimum
+                           threshold (|g:sexp_aligncom_runtness_thresh|),
                            this figure of merit has no impact on alignment,
                            but it deprioritizes smaller groups with a cost
                            penalty that grows non-linearly as the length of
@@ -549,7 +549,7 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
         also set the |g:sexp_aligncom_maxshift| value higher than the default
         of 60 screen columns. Similarly, a user who doesn't care about keeping
         the total number of comment blocks low (as long as none of the blocks
-        are "too small") could reduce the 'groupcnt' weight to 3 or 4, and
+        are "too small") could reduce the 'numgroups' weight to 3 or 4, and
         increase the 'size' weight to reduce the probability of "runt" groups.
         Feel free to experiment with the weights on a sample block of code
         until you find a combination that produces results you like.
@@ -962,7 +962,7 @@ Maximum number of screen columns an end-of-line comment is allowed to shift
 rightward to align with other columns in an end-of-line comment block.
 >
         " Default
-        let g:sexp_aligncom_maxshift = 60
+        let g:sexp_aligncom_maxshift = 80
 <
 
                                                       *g:sexp_aligncom_maxgap*
@@ -1016,13 +1016,13 @@ produce lines longer than this, with a penalty proportional to the overrun.
         " Default
         let g:sexp_aligncom_textwidth = -1
 <
-                                             *g:sexp_aligncom_grouplen_thresh*
+                                             *g:sexp_aligncom_runtness_thresh*
 Trailing comment groups containing fewer comments than this are considered
 "runt" groups, and deprioritized with a cost proportional to the square of the
 shortfall.
 >
         " Default
-        let g:sexp_aligncom_grouplen_thresh = 5
+        let g:sexp_aligncom_runtness_thresh = 5
 <
                                               *g:sexp_aligncom_min_separation*
 Minimum number of spaces needed between end of code and start of trailing
@@ -1054,13 +1054,15 @@ See |layout-optimization-levels| for details.
         " Default
         let g:sexp_aligncom_greedy_lookback = 4
 <
-                                              *g:sexp_aligncom_optlvl0_thresh*
-Select optimization level 0 ("Greedy") if number of end-of-line comments in
-range to be aligned is greater than or equal to this threshold. Set to 1 to
-enable optimization level 0 unconditionally.
+                                                    *g:sexp_aligncom_optlevel*
+Select desired trailing comment optimization level:
+  0  Greedy
+  1  Greedy with lookback
+  2  Full dynamic-programming optimization
+For details, see |layout-optimization-levels|.
 >
         " Default
-        let g:sexp_aligncom_optlvl0_thresh = 0
+        let g:sexp_aligncom_optlevel = 2
 <
                                               *g:sexp_aligncom_optlvl1_thresh*
 Select optimization level 1 ("Greedy with Lookback") if number of end-of-line
@@ -1070,13 +1072,13 @@ Set to 1 to enable optimization level 1 unconditionally.
         " Default
         let g:sexp_aligncom_optlvl1_thresh = 0
 <
-                                             *g:sexp_aligncom_groupcnt_weight*
+                                            *g:sexp_aligncom_numgroups_weight*
 The relative importance (0-10) of minimizing the total number of groups when
 partitioning lines into alignment groups. Applies only to full (level 2)
 optimization.
 >
         " Default
-        let g:sexp_aligncom_groupcnt_weight = 5
+        let g:sexp_aligncom_numgroups_weight = 5
 <
                                                 *g:sexp_aligncom_shift_weight*
 The relative importance (0-10) of minimizing the distance by which trailing
@@ -1086,13 +1088,13 @@ comments are separated from the code they describe. Applies only to full
         " Default
         let g:sexp_aligncom_shift_weight = 5
 <
-                                             *g:sexp_aligncom_grouplen_weight*
+                                             *g:sexp_aligncom_runtness_weight*
 The relative importance (0-10) of preventing the formation of "runt" comment
-groups: i.e., groups with fewer than |g:sexp_aligncom_grouplen_thresh|
+groups: i.e., groups with fewer than |g:sexp_aligncom_runtness_thresh|
 trailing comments. Applies only to full (level 2) optimization.
 >
         " Default
-        let g:sexp_aligncom_grouplen_weight = 5
+        let g:sexp_aligncom_runtness_weight = 5
 <
                                             *g:sexp_aligncom_textwidth_weight*
 The relative importance (0-10) of reducing the amount of trailing comment

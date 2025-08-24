@@ -18,7 +18,7 @@ endif
 let g:sexp_autoloaded = 1
 
 fu! s:Dbg(...)
-    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
 
 "let s:prof_ts = 0
@@ -86,11 +86,11 @@ let s:rgn_patts = {
 " the weight from dropping all the way to zero.
 " TODO: Is a more complex approach warranted? E.g., an offset in addition to the slope?
 let s:aligncom_weights = {
-    \ 'groupcnt':  {'default': 50, 'adjust': 0.10},
-    \ 'grouplen':  {'default': 50, 'adjust': 0.20},
+    \ 'numgroups': {'default': 25, 'adjust': 0.10},
+    \ 'runtness':  {'default': 50, 'adjust': 0.20},
     \ 'shift':     {'default': 50, 'adjust': 0.20},
     \ 'textwidth': {'default': 50, 'adjust': 0.20},
-    \ 'density':   {'default': 50, 'adjust': 0.20},
+    \ 'density':   {'default': 25, 'adjust': 0.20},
 \ }
 
 let s:nullpos = [0,0,0,0]
@@ -3447,6 +3447,8 @@ function! s:aligncom__characterize(line)
             " TODO: Do we need to consider possibility that comment could contain tabs,
             " whose screen width could change if comment is shifted? Possibly not, since
             " eff_linelen is used for cost calculation, not alignment.
+            " TODO: Currently, eff_linelen is used only in the calculation of comlen, so
+            " perhaps remove it from the return dict.
             let eff_linelen = eol_ecol - 1 - (virtcol([com_s[1], com_s[2]]) - ecol)
             " Also calculate length of trailing comment, which is needed by overrun logic.
             let comlen = eff_linelen - prev_e[2]
@@ -3508,68 +3510,98 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
     let [g1, g2] = [a:grp1, a:grp2]
     let [c1, c2] = [g1.cost, g2.cost]
     " Each enabled criterion adjusts this variable by signed amount.
-    " Sign Logic: Add cost if larger signed value represents higher cost, else subtract.
+    " Sign Logic: For negative (cost) criteria (e.g., overrun or runtness), subtracting g2
+    " from g1 yields a negative result when group 1 is the better option.
     let ret = 0
     let weights = s:aligncom__get_weights()
-    let [ngrps, shift, density, runtiness, overrun] = [0, 0, 0, 0, 0]
-    " -- Groupcnt --
-    " Note: groupcnt can't be totally disabled, since if it were, there would be no point to
-    " alignment.
-    " Normalize to min number of groups corresponding if no runt groups created.
-    let ngrps1 = 1.0 * c1.cumul.ngrps / (c1.cumul.ncoms / g:sexp_aligncom_grouplen_thresh)
-    let ngrps2 = 1.0 * c2.cumul.ngrps / (c2.cumul.ncoms / g:sexp_aligncom_grouplen_thresh)
-    let ngrps = weights.groupcnt * (ngrps1 - ngrps2)
+    " Note: These variables are maintained for algorithm evaluation/debugging.
+    " TODO: Consider removal after development...
+    let [ngrps, shift, density, runt, overrun, max_overrun] = [0, 0, 0, 0, 0, 0]
+    let [ngrps1, ngrps2, spl1, spl2, density1, density2,
+                \ runt1, runt2, overrun1, overrun2, max_overrun1, max_overrun2] =
+                \ [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    " -- Numgroups --
+    " Note: numgroups can't be totally disabled, else alignment would be a NOP.
+    " Normalize to a *multiple* of the number of groups corresponding to all groups having
+    " the minimum non-runt length.
+    " Note: The 'default' weight for ngrps is reduced relative to the other criteria to
+    " prevent disporportionate weighting. Testing has shown this to be unnecessary when we
+    " use a constant normalization (e.g., straight pct diff) for area/shift, but when we
+    " use maxshift to normalize the shift, the reduced weight is required to prevent shift
+    " from being effectively ignored.
+    let ngrps1 = 1.0 * c1.cumul.ngrps / (c1.cumul.nlines / g:sexp_aligncom_runtness_thresh)
+    let ngrps2 = 1.0 * c2.cumul.ngrps / (c2.cumul.nlines / g:sexp_aligncom_runtness_thresh)
+    let ngrps = weights.numgroups * (ngrps1 - ngrps2)
     let ret += ngrps
     " -- Shift (area under curve) --
     if weights.shift > 0
-        " Area/shift requires normalization, but also, we need an approach that prevents
-        " spurious boosting of single-element (inherently zero-shift) groups, which is a
-        " natural consequence of using zero in the pct diff calculation.
-        " Approach: Use shift per line in lieu of raw area, and bias this quantity by a
-        " nonzero threshold.
-        " Note: Using maxshift as bias yields max pct diff of 1.5 (assuming
-        " s:percent_diff() uses avg in denom).
-        let spl1 = 1.0 * c1.cumul.area / c1.cumul.ncoms + g:sexp_aligncom_maxshift
-        let spl2 = 1.0 * c2.cumul.area / c2.cumul.ncoms + g:sexp_aligncom_maxshift
-        let shift = weights.shift * s:percent_diff(spl1, spl2)
+        " Note: The pct diff approach gives decent results, but doesn't take the maxshift
+        " into account; intuitively, although less shift is generally better, how much
+        " better should depend on the max allowed shift. Thus, I'm using the normalization
+        " to maxshift approach until I find a reason not to.
+        let use_pct_diff = 0
+        if use_pct_diff
+            " Use pct diff between the cumulative areas.
+            let [shift1, shift2] = [c1.cumul.area, c2.cumul.area]
+            let norm = 0.5 * (shift1 + shift2)
+            let [shift1, shift2] = [shift1 / norm, shift2 / norm]
+        else
+            " Normalize to max possible shift.
+            let shift1 = 1.0 * c1.cumul.area / (c1.cumul.ncoms * g:sexp_aligncom_maxshift)
+            let shift2 = 1.0 * c2.cumul.area / (c2.cumul.ncoms * g:sexp_aligncom_maxshift)
+        endif
+        let shift = weights.shift * (shift1 - shift2)
         let ret += shift
     endif
     " -- Density --
+    " Note: The 'default' weight for density is reduced relative to the other criteria to
+    " prevent its overpowering more important criteria.
     if weights.density > 0
+        " Normalize to number of lines.
         let density1 = 1.0 * c1.cumul.ncoms / c1.cumul.nlines
         let density2 = 1.0 * c2.cumul.ncoms / c2.cumul.nlines
-        let density = -weights.density * s:percent_diff(density1, density2)
+        let density = weights.density * (density2 - density1)
         let ret += density
     endif
-    " -- Grouplen (runtness factor) --
-    " Note: We're working with the "runt" factor here, which we want to be small.
-    if weights.grouplen > 0
-        let runtiness = weights.grouplen * s:percent_diff(c1.cumul.runt, c2.cumul.runt)
-        let ret += runtiness
+    " -- Runtness --
+    if weights.runtness > 0 && (c1.cumul.runt > 0 || c2.cumul.runt > 0)
+        " Use pct diff normalization.
+        let norm = 0.5 * (c1.cumul.runt + c2.cumul.runt)
+        let [runt1, runt2] = [c1.cumul.runt / norm, c2.cumul.runt / norm]
+        let runt = weights.runtness * (runt1 - runt2)
+        let ret += runt
     endif
     " -- Textwidth overrun --
     if weights.textwidth > 0
-        " Convert margin to fractional default tabwidths (8) and add bias of 4 tabwidths
-        " per trailing comment line.
-        " Rationale: Without the bias, use of zero in percent difference calculation would
-        " result in excessive preference for groups with 0 overrun.
-        " CAVEAT: It is vital that the bias for both groups be scaled identically;
-        " otherwise, larger groups will be deprioritized due to a spuriously larger
-        " overrun, even when neither group has any actual overrun! Hence, we scale by
-        " *avg* ncoms.
-        let [overrun1, overrun2] = [c1.cumul.overrun + a:tw, c2.cumul.overrun + a:tw]
-        let [max_overrun1, max_overrun2] = [c1.cumul.max_overrun + a:tw, c2.cumul.max_overrun + a:tw]
-        let overrun = weights.textwidth * (overrun1 - overrun2) / max([overrun1, overrun2])
-        let ret += overrun
-        let max_overrun = weights.textwidth * (max_overrun1 - max_overrun2) / max([max_overrun1, max_overrun2])
-        let ret += max_overrun
-        call s:Dbg("       ngrps: %d %d", ngrps1, ngrps2)
-        call s:Dbg(" comlen_sums: %d %d", c1.self.comlen_sum, c2.self.comlen_sum)
-        call s:Dbg("    overruns: %d %d", overrun1, overrun2)
-        call s:Dbg("max_overruns: %d %d", max_overrun1, max_overrun2)
-        call s:Dbg("Criteria Impacts:\n\tngrps:\t\t%f\n\tshift:\t\t%f\n\tdensity:\t%f\n\truntness:\t%f\n\toverrun:\t%f",
-                    \ ngrps, shift, density, runtiness, overrun)
+        " Note: The bias (currently zero), was introduced as a way of softening the impact
+        " of a zero in the numerator of a pct diff calculation.
+        " TODO: Consider removal if it it's not needed.
+        let bias = 0
+        let cumul_bias = bias * max([c1.cumul.ncoms, c2.cumul.ncoms])
+        if c1.cumul.overrun > 0 || c2.cumul.overrun > 0
+            let [overrun1, overrun2] = [c1.cumul.overrun + cumul_bias, c2.cumul.overrun + cumul_bias]
+            let norm = 0.5 * (overrun1 + overrun2)
+            let overrun = weights.textwidth * 1.0 * (overrun1 - overrun2) / norm
+            let ret += overrun
+        endif
+        if c1.cumul.max_overrun > 0 || c2.cumul.max_overrun > 0
+            let [max_overrun1, max_overrun2] = [c1.cumul.max_overrun + bias, c2.cumul.max_overrun + bias]
+            " Design Decision: Consider max overrun, but give it only a fraction of the weight
+            " of average overrun (hence, the 0.25).
+            let norm = 0.5 * (max_overrun1 + max_overrun2)
+            let max_overrun = weights.textwidth * 0.25 * (max_overrun1 - max_overrun2) / norm
+            let ret += max_overrun
+        endif
     endif
+    call s:Dbg("weights: overrun=%f", weights.textwidth)
+    call s:Dbg("       ngrps: %f %f", ngrps1, ngrps2)
+    call s:Dbg("       shift: %f %f", shift1, shift2)
+    call s:Dbg("        runt: %f %f", runt1, runt2)
+    call s:Dbg("    overruns: %f %f", overrun1, overrun2)
+    call s:Dbg("max_overruns: %f %f", max_overrun1, max_overrun2)
+    call s:Dbg("Criteria Impacts:\n\tngrps:\t\t%f\n\tshift:\t\t%f\n\tdensity:\t%f"
+                \ . "\n\truntness:\t%f\n\toverrun:\t%f\n\tmaxover:\t%f",
+                \ ngrps, shift, density, runt, overrun, max_overrun)
     " Return the signed comparison value.
     return ret
 endfunction
@@ -3599,8 +3631,8 @@ function! s:aligncom__create_group_candidate(
     " TODO: Should this take "effective" group len into account?
     " Note: Runtness is a step function equal to square of the delta between actual group
     " size and runt threshold when size is under the threshold, else 0.
-    let runt = nlines < g:sexp_aligncom_grouplen_thresh
-            \ ? (g:sexp_aligncom_grouplen_thresh - nlines) * (g:sexp_aligncom_grouplen_thresh - nlines)
+    let runt = nlines < g:sexp_aligncom_runtness_thresh
+            \ ? (g:sexp_aligncom_runtness_thresh - nlines) * (g:sexp_aligncom_runtness_thresh - nlines)
             \ : 0
     " Convert negative margin to positive overrun, with no penalty for nonnegative margin.
     let max_overrun = a:margin < 0 ? -a:margin : 0
@@ -3613,7 +3645,8 @@ function! s:aligncom__create_group_candidate(
     " problematic for performance reasons. A simpler, yet still effective strategy, is to
     " use the product of the *average* trailing comment length and the number trailing
     " comments in group.
-    let overrun = max([0, a:align + a:comlen_sum / ncoms - a:tw - 1]) * ncoms
+    " Note: The float2nr() is needed to avoid mixing float and numbers error E805.
+    let overrun = max([0, float2nr(a:align + 1.0 * a:comlen_sum / ncoms - a:tw - 1)]) * ncoms
     " Save the current group's (non-cumulative) values
     let self = {'area': a:area, 'overrun': overrun, 'nlines': nlines,
                 \ 'ncoms': ncoms, 'runt': runt, 'comlen_sum': a:comlen_sum}
@@ -3630,7 +3663,7 @@ function! s:aligncom__create_group_candidate(
                     \ 'nlines': pgrp.cost.cumul.nlines + nlines,
                     \ 'ncoms': pgrp.cost.cumul.ncoms + ncoms,
                     \ 'area': pgrp.cost.cumul.area + a:area,
-                    \ 'max_overrun': pgrp.cost.cumul.max_overrun + max_overrun,
+                    \ 'max_overrun': max([pgrp.cost.cumul.max_overrun, max_overrun]),
                     \ 'overrun': pgrp.cost.cumul.overrun + overrun,
                     \ 'runt': pgrp.cost.cumul.runt + runt,
         \ }
@@ -3667,15 +3700,16 @@ endfunction
 "   tw:          effective 'textwidth' for determining overrun
 "                TODO: Probably record this in a script var up front.
 "   el:          element of eol comment being added to group
+"   align:       current align col
 "   shift_inc:   amount that new element has shifted the align col (0 if no shift)
-function! s:aligncom__update_min_margin(min_margin, tw, el, shift_inc)
+function! s:aligncom__update_min_margin(min_margin, tw, el, align, shift_inc)
     let min_margin = a:min_margin
     if a:shift_inc > 0
         " Current worst-case margin just got worse.
         let min_margin -= a:shift_inc
     endif
     " See whether new element's margin is worse than current worst.
-    let el_margin = a:tw - a:el.eff_linelen
+    let el_margin = a:tw - (a:align + a:el.comlen - 1)
     if el_margin < min_margin
         let min_margin = el_margin
     endif
@@ -3749,7 +3783,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         endif
         " As we work backwards, keep up with the worst-case margin.
         if g:sexp_aligncom_textwidth_weight > 0 && tw > 0
-            let min_margin = s:aligncom__update_min_margin(min_margin, tw, el_s, shift_inc)
+            let min_margin = s:aligncom__update_min_margin(min_margin, tw, el_s, ecol_max, shift_inc)
             let comlen_sum += el_s.comlen
             call s:Dbg("min_margin=%d comlen_sum=%d", min_margin, comlen_sum)
         endif

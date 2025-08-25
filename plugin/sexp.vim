@@ -81,7 +81,7 @@ if !exists('g:sexp_indent_aligns_comments')
 endif
 
 if !exists('g:sexp_aligncom_maxshift')
-    let g:sexp_aligncom_maxshift = 60
+    let g:sexp_aligncom_maxshift = 80
 endif
 
 if !exists('g:sexp_aligncom_maxgap')
@@ -128,8 +128,8 @@ if !exists('g:sexp_aligncom_textwidth_weight')
     let g:sexp_aligncom_textwidth_weight = 5
 endif
 
-if !exists('g:sexp_aligncom_runtness_thresh')
-    let g:sexp_aligncom_runtness_thresh = 5
+if !exists('g:sexp_aligncom_runt_thresh')
+    let g:sexp_aligncom_runt_thresh = 5
 endif
 
 " TODO: Consider renaming this 'spacing' to avoid overloading 'margin'.

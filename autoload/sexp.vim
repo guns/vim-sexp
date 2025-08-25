@@ -3529,8 +3529,8 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
     " use a constant normalization (e.g., straight pct diff) for area/shift, but when we
     " use maxshift to normalize the shift, the reduced weight is required to prevent shift
     " from being effectively ignored.
-    let ngrps1 = 1.0 * c1.cumul.ngrps / (c1.cumul.nlines / g:sexp_aligncom_runtness_thresh)
-    let ngrps2 = 1.0 * c2.cumul.ngrps / (c2.cumul.nlines / g:sexp_aligncom_runtness_thresh)
+    let ngrps1 = c1.cumul.ngrps / (1.0 * c1.cumul.nlines / g:sexp_aligncom_runt_thresh)
+    let ngrps2 = c2.cumul.ngrps / (1.0 * c2.cumul.nlines / g:sexp_aligncom_runt_thresh)
     let ngrps = weights.numgroups * (ngrps1 - ngrps2)
     let ret += ngrps
     " -- Shift (area under curve) --
@@ -3631,8 +3631,8 @@ function! s:aligncom__create_group_candidate(
     " TODO: Should this take "effective" group len into account?
     " Note: Runtness is a step function equal to square of the delta between actual group
     " size and runt threshold when size is under the threshold, else 0.
-    let runt = nlines < g:sexp_aligncom_runtness_thresh
-            \ ? (g:sexp_aligncom_runtness_thresh - nlines) * (g:sexp_aligncom_runtness_thresh - nlines)
+    let runt = nlines < g:sexp_aligncom_runt_thresh
+            \ ? (g:sexp_aligncom_runt_thresh - nlines) * (g:sexp_aligncom_runt_thresh - nlines)
             \ : 0
     " Convert negative margin to positive overrun, with no penalty for nonnegative margin.
     let max_overrun = a:margin < 0 ? -a:margin : 0

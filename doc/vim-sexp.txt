@@ -485,7 +485,7 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
         lists (compound FORMs) or visual selection (<M-a>) or current
         top-level list (<M-\>) without moving the cursor.
         *Note:* Trailing comment alignment makes the most sense on ranges
-        spanning more than a few lines; thus, the `sexp_align_comments_top`
+        spanning more than a few lines; thus, the |sexp_align_comments_top|
         (<M-\>) command is probably the most useful.
         
         In visual mode, the selection is first expanded to cover all partially
@@ -493,26 +493,28 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
         Note: Visual mappings are not created for the "top" variants of align
         commands, since "top" implies ignoring the visual selection.
 
-                                                 *comment-alignment-algorithm*
-        The default alignment mode uses a weighted "Dynamic Programming"
-        algorithm to partition the end-of-line comments into aligned groups,
+                                            *sexp-comment-alignment-algorithm*
+        Comment Alignment Algorithm ~
+        The default alignment mode uses a weighted-cost "Dynamic Programming"
+        algorithm to partition the trailing comments into alignment groups,
         with the goal of keeping the comments sufficiently close to the code
         they describe to prevent disorientation, but not so close as to
-        necessitate many small groups, which would defeat the purpose of
+        necessitate many small groups, thereby defeating the purpose of
         alignment. Obviously, there are tradeoffs involved here, and the
         optimal balance is a matter of user preference. Accordingly, a set of
-        options are provided to allow the user to tweak the algorithm to
+        options are provided to allow the user to tailor the algorithm to
         taste. Some of these options establish limits and thresholds: e.g.,
         the maximum number of screen columns a comment can be shifted from the
         code it describes. Others set the relative importance (weighting) of
         various criteria used to compare the "cost" of each candidate grouping
         against competing candidates. These options are described in detail in
-        the options section; however, an overview of the costing criteria
+        the options section; however, an overview of the cost criteria
         considered by the algorithm is provided below...
 
-                                             *comment-alignment-cost-criteria*
+                                        *sexp-comment-alignment-cost-criteria*
+        Comment Alignment Cost Criteria ~
         In no particular order, these are the comment grouping criteria that
-        the dynamic programming optimization attempts to balance.
+        the dynamic programming algorithm attempts to balance.
                 shift      the number of screen columns comments must be
                            shifted rightward to align all comments in a group.
                            Since the shift may not be the same for all
@@ -523,47 +525,59 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
                            better, but of course, fewer groups tend to result
                            in larger average shift.
                 runtness   For groups whose span meets or exceeds a minimum
-                           threshold (|g:sexp_aligncom_runtness_thresh|),
-                           this figure of merit has no impact on alignment,
-                           but it deprioritizes smaller groups with a cost
-                           penalty that grows non-linearly as the length of
-                           the span decreases. The purpose of this figure of
-                           merit is to discourage very small ("runt") groups.
-                density    comments per line within the group. Used primarily
-                           to minimize groups with "bookend" comments: i.e., a
-                           single comment at each end of the group.
+                           threshold (|g:sexp_aligncom_runt_thresh|), this
+                           figure of merit has no impact on alignment, but it
+                           deprioritizes smaller groups with a cost penalty
+                           that grows non-linearly as the length of the span
+                           decreases. The purpose of this figure of merit is
+                           to discourage very small ("runt") groups.
+                density    comments per line (ignoring lines between groups).
+                           Used primarily to minimize groups with "bookend"
+                           comments and/or long sequences of lines without
+                           trailing comments within a group.
                 textwidth  how well the aligned comments stay within the
-                           configured textwidth
-                           (|g:sexp_aligncom_textwidth|). Groups that force
-                           trailing comments to exceed this limit are assessed
-                           a cost penalty proportional to the overrun.
+                           configured textwidth (|g:sexp_aligncom_textwidth|).
+                           Candidate groups that force trailing comments to
+                           exceed this limit are assessed a cost penalty
+                           proportional to the overrun.
 
-                                          *comment-alignment-criteria-weights*
+        Note: The criteria costs are generally cumulative costs. To understand
+        why this is so, consider that each candidate group implies a
+        particular layout, and it is the layouts, not the individual comment
+        groupings, which are being compared.
+
+                                     *sexp-comment-alignment-criteria-weights*
+        Comment Alignment Criteria Weights ~
         By default, all criteria have the same relative importance, but each
         has a dedicated option variable with a name given by
         `g:sexp_aligncom_{<criteria>}_weight`, which can be set to any value
         in the range 0..10 to adjust its relative weight. For instance, a user
         with a strong preference for long blocks of comments, who doesn't mind
         comments being shifted a significant distance from the code they
-        describe, might bump the 'shift' weight from 5 up to 7 or 8, and might
-        also set the |g:sexp_aligncom_maxshift| value higher than the default
-        of 60 screen columns. Similarly, a user who doesn't care about keeping
-        the total number of comment blocks low (as long as none of the blocks
-        are "too small") could reduce the 'numgroups' weight to 3 or 4, and
-        increase the 'size' weight to reduce the probability of "runt" groups.
-        Feel free to experiment with the weights on a sample block of code
-        until you find a combination that produces results you like.
+        describe, might reduce the 'shift' weight and increase
+        |g:sexp_aligncom_maxshift| to permit the shift needed for greater
+        group consolidation.
+        Note: If you're concerned that increasing 'maxshift' might allow
+        comments to shift too far, keep in mind that the 'textwidth' criterion
+        can reduce this risk, as long as |g:sexp_aligncom_textwidth| is set to
+        an appropriate value. Similarly, a user who doesn't care about keeping
+        the total number of comment blocks low, as long as none of the blocks
+        are too small, could reduce the 'numgroups' weight, and possibly
+        increase |g:sexp_aligncom_runt_thresh. Feel free to experiment with
+        the weights on a sample block of code until you find a combination
+        that produces results you like.
 
-                                                  *layout-optimization-levels*
+                                  *sexp-comment-alignment-optimization-levels*
+        Comment Alignment Optimization Levels ~
         The aforementioned dynamic programming algorithm is reasonably fast,
         and unlikely to cause performance issues in common usage scenarios.
         However, because it's difficult to predict the size blocks users will
-        attempt to format, vim-sexp provides several simpler (and faster)
-        algorithms. The optimization levels currently supported are as follows
-        (fastest to slowest):
+        attempt to format, vim-sexp provides several simpler (and consequently
+        faster) algorithms. The optimization levels currently supported are as
+        follows (fastest to slowest):
         0    Greedy
                  Make each group as large as possible without violating one of
-                 the user-specified limits: e.g., g:sexp_aligncom_maxshift.
+                 the user-specified limits: e.g., |g:sexp_aligncom_maxshift|.
                  *Disadvantage:* May produce layouts with long groups followed
                  by very short ones.
         1    Greedy with lookback
@@ -571,7 +585,7 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
                  (< |g:sexp_aligncom_greedy_lookback|) follows a long group, a
                  localized full optimization is performed on the boundary
                  region in an attempt to "rebalance" the groups.
-        2    Full dynamic programming optimization (the default)
+        2    Full dynamic programming optimization (the default and best)
 
         *Recommendation:* If you're happy with the performance, always use level
         2 (full optimization). If you sometimes align very large comment
@@ -581,12 +595,12 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
         issues are concerned. Thus, you should definitely do some benchmarking
         before reducing the default optimization level.
 
-                                                             *align-on-indent*
+                                                         *sexp-align-on-indent*
         Just as it's possible to configure the indent commands to trigger an
-        automatic whitespace cleanup, it's also possible to configure the
-        indent commands to perform trailing comment alignment automatically.
-        Unlike "whitespace cleanup", this behavior is enabled by default, but
-        you can disable it with...
+        automatic whitespace cleanup, it's also possible to configure them
+        to perform an automatic trailing comment alignment. Unlike "whitespace
+        cleanup", this behavior is enabled by default, but you can disable it
+        with...
 >
         let g:sexp_indent_aligns_comments = 0
 <
@@ -1016,13 +1030,13 @@ produce lines longer than this, with a penalty proportional to the overrun.
         " Default
         let g:sexp_aligncom_textwidth = -1
 <
-                                             *g:sexp_aligncom_runtness_thresh*
+                                                 *g:sexp_aligncom_runt_thresh*
 Trailing comment groups containing fewer comments than this are considered
 "runt" groups, and deprioritized with a cost proportional to the square of the
 shortfall.
 >
         " Default
-        let g:sexp_aligncom_runtness_thresh = 5
+        let g:sexp_aligncom_runt_thresh = 5
 <
                                               *g:sexp_aligncom_min_separation*
 Minimum number of spaces needed between end of code and start of trailing
@@ -1090,8 +1104,8 @@ comments are separated from the code they describe. Applies only to full
 <
                                              *g:sexp_aligncom_runtness_weight*
 The relative importance (0-10) of preventing the formation of "runt" comment
-groups: i.e., groups with fewer than |g:sexp_aligncom_runtness_thresh|
-trailing comments. Applies only to full (level 2) optimization.
+groups: i.e., groups with fewer than |g:sexp_aligncom_runt_thresh| trailing
+comments. Applies only to full (level 2) optimization.
 >
         " Default
         let g:sexp_aligncom_runtness_weight = 5

@@ -598,11 +598,9 @@ ALIGN COMMENTS COMMANDS (normal, visual) ~
                                                          *sexp-align-on-indent*
         Just as it's possible to configure the indent commands to trigger an
         automatic whitespace cleanup, it's also possible to configure them
-        to perform an automatic trailing comment alignment. Unlike "whitespace
-        cleanup", this behavior is enabled by default, but you can disable it
-        with...
+        to perform an automatic trailing comment alignment:
 >
-        let g:sexp_indent_aligns_comments = 0
+        let g:sexp_indent_aligns_comments = 1
 <
 
 WRAP COMMANDS (normal, visual) ~
@@ -968,7 +966,7 @@ increases with the number of empty lines susceptible to removal.
 Align end-of-line comments automatically after performing an indent.
 >
         " Default
-        let g:sexp_indent_aligns_comments = 1
+        let g:sexp_indent_aligns_comments = 0
 <
 
                                                     *g:sexp_aligncom_maxshift*

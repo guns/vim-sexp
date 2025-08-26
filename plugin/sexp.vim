@@ -77,7 +77,7 @@ endif
 
 " TODO: Consider encapsulating related options in a dict.
 if !exists('g:sexp_indent_aligns_comments')
-    let g:sexp_indent_aligns_comments = 1
+    let g:sexp_indent_aligns_comments = 0
 endif
 
 if !exists('g:sexp_aligncom_maxshift')

@@ -477,7 +477,7 @@ INDENT COMMANDS (normal, visual) ~
         behavior.
 
 
-ALIGN COMMENTS COMMANDS (normal, visual) ~
+COMMENT ALIGNMENT COMMANDS (normal, visual) ~
 
 <M-a>                                            *<Plug>(sexp_align_comments)*
 <M-\>                                        *<Plug>(sexp_align_comments_top)*

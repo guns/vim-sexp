@@ -4236,6 +4236,15 @@ endfunction
 " Indent S-Expression, maintaining cursor position. This is similar to mapping
 " to =<Plug>(sexp_outer_list)`` except that it will fall back to top-level
 " elements not contained in a compound form (e.g. top-level comments).
+" -- Args --
+" mode:  command mode
+" top:   1 to indent top-level form
+" count: number of containing forms to indent
+" clean: 1 to perform cleanup before indent
+" Optional Args:
+" 0=force syntax flag: 1 to force syntax update. Should always be set when buffer is
+"                      being modified
+" 1=positions list:    list of positions to be adjusted in-place to account for indent
 function! sexp#indent(mode, top, count, clean, ...)
     try
         " CursorMoved autocmd callbacks for CursorMoved/TextChanged events (e.g.,
@@ -4245,7 +4254,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         set ei=CursorMoved,TextChanged
         " If caller hasn't specified clean, defer to option.
         let clean = a:clean < 0 ? g:sexp_indent_does_clean : !!a:clean
-        let state = s:pre_align_or_indent(a:mode, a:top, a:count, clean, a:0 ? a:1 : [])
+        let state = s:pre_align_or_indent(a:mode, a:top, a:count, clean, a:0 > 1 ? a:2 : [])
         let force_syntax = a:0 && !!a:1
         if clean
             " Always force syntax update when we're modifying the buffer.
@@ -4825,8 +4834,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
             let isl = s:is_list(line('.'), col('.'))
             " Caveat: Failure to set optional force_syntax flag in call to
             " indent may result in incorrect indentation.
-            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1,
-                    \ [start, end, cursor, vs, ve])
+            call sexp#indent('n', 0, isl > 1 ? 2 : 1, -1, 1, [start, end, cursor, vs, ve])
         endif
     endif
 

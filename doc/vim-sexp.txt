@@ -407,9 +407,19 @@ CLONE COMMANDS (normal, visual) ~
         separated from the target (and from each other) by a newline. The
         default logic selects multi-line operation whenever any of the
         following conditions are met:
-                * target is on a line by itself
+
+                * target spans multiple lines
+                * target is on a line by itself, possibly followed by a
+                  trailing comment
+                * target is the first or last element of a list whose open and
+                  close brackets are not colinear, and none of the target's
+                  sibling elements (ignoring any trailing comment) are
+                  colinear with target
                 * target is at toplevel
-                * target ends in a comment
+                * final (or only) element of target is an end-of-line comment
+        Note: If the target in a multi-line clone is followed immediately by
+        an end-of-line comment, the comment will be cloned along with the
+        target (whether explicitly selected or not).
 
         It is generally possible to override the default logic, forcing either
         single or multi-line operation, as follows:

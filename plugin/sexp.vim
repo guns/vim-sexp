@@ -596,16 +596,16 @@ Defplug  xnoremap sexp_raise_element sexp#docount(v:prevcount, 'sexp#raise', 'v'
 DefplugN! nnoremap sexp_convolute sexp#convolute(v:count, 'n')
 
 " Clone list
-DefplugN  nnoremap sexp_clone_list    sexp#clone('n', v:count, 1, 0, 0)
-DefplugN  xnoremap sexp_clone_list    sexp#clone('v', v:prevcount, 1, 0, 0)
-DefplugN  nnoremap sexp_clone_list_sl sexp#clone('n', v:count, 1, 0, 1)
-DefplugN  xnoremap sexp_clone_list_sl sexp#clone('v', v:prevcount, 1, 0, 1)
+DefplugN  nnoremap sexp_clone_list    sexp#clone('n', v:count, 1, 0, '')
+DefplugN  xnoremap sexp_clone_list    sexp#clone('v', v:prevcount, 1, 0, '')
+DefplugN  nnoremap sexp_clone_list_sl sexp#clone('n', v:count, 1, 0, 's')
+DefplugN  xnoremap sexp_clone_list_sl sexp#clone('v', v:prevcount, 1, 0, 's')
 
 " Clone element
-DefplugN  nnoremap sexp_clone_element    sexp#clone('n', v:count, 0, 0, 0)
-DefplugN  xnoremap sexp_clone_element    sexp#clone('v', v:prevcount, 0, 0, 0)
-DefplugN  nnoremap sexp_clone_element_sl sexp#clone('n', v:count, 0, 0, 1)
-DefplugN  xnoremap sexp_clone_element_sl sexp#clone('v', v:prevcount, 0, 0, 1)
+DefplugN  nnoremap sexp_clone_element    sexp#clone('n', v:count, 0, 0, '')
+DefplugN  xnoremap sexp_clone_element    sexp#clone('v', v:prevcount, 0, 0, '')
+DefplugN  nnoremap sexp_clone_element_sl sexp#clone('n', v:count, 0, 0, 's')
+DefplugN  xnoremap sexp_clone_element_sl sexp#clone('v', v:prevcount, 0, 0, 's')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)

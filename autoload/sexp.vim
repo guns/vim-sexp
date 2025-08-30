@@ -125,7 +125,7 @@ endfunction
 function! s:warnmsg(s)
     try
         echohl WarningMsg
-        echo a:s
+        echomsg a:s
     finally
         echohl None
     endtry
@@ -952,8 +952,7 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
-" Return integer indicating the 0-based offset in list of the element at the specified
-" position, else -1 if position not inside a list.
+" Return 1 iff element at specified position is head of list.
 function! s:is_list_head(pos)
     let save_cursor = getpos('.')
     try
@@ -1244,7 +1243,7 @@ endfunction
 " used to be arbitrary, but now is limited to single char).
 function! s:offset_char(pos, dir, ...)
     let cursor = getpos('.')
-    let inc_nl = a:0 && a:1
+    let inc_nl = a:0 && !!a:1
     " Ensure normalized col position (1st byte in char).
     keepjumps call cursor(a:pos[1], a:pos[2])
     let [l0, c0] = [line('.'), col('.')]
@@ -1545,6 +1544,33 @@ function! s:is_comment(line, col)
     endif
 endfunction
 
+" Return 1 iff input position is within an end-of-line comment.
+" Note: An inline comment (where such things exist) is considered eol if and only if there
+" is no trailing whitespace; in fact, the only reason an inline comment is ever considered
+" eol is that, in the legacy syntax case, we have no fully general way to differentiate
+" between end of line comments and inline comments that extend to the end of the line. If
+" this changes, it might make sense to return false unconditionally for inline comments.
+function! s:is_eol_comment(line, col)
+        let ret = 0
+        if s:is_rgn_type('comment', a:line, a:col)
+            let save_cursor = getcurpos()
+            try
+                call s:setcursor([0, a:line, a:col, 0])
+                " Make sure comment extends to end of line.
+                let p = sexp#current_element_terminal(1)
+                " Is this the final char on the line? If not, we don't consider this an
+                " eol comment, even if there's nothing past it but whitespace (which would
+                " imply this is an inline comment).
+                if s:at_eol(p[1], p[2], 1)
+                    let ret = 1
+                endif
+            finally
+                call s:setcursor(save_cursor)
+            endtry
+        endif
+    return ret
+endfunction
+
 " Returns nonzero if input position is at toplevel.
 function! s:at_top(line, col)
     let cursor = getpos('.')
@@ -1560,10 +1586,12 @@ function! s:at_bol(line, col)
     return getline(a:line)[:a:col - 2] !~ '\S'
 endfunction
 
-" Returns nonzero if input position last non-ws on line
+" Returns nonzero if input position is last non-ws on line (or if optional 'ignore_ws' arg
+" is provided, last char of *any* type on line).
 " Note: Accepts virtual cursor pos at EOL.
-function! s:at_eol(line, col)
-    return getline(a:line)[a:col - 1:] =~ '^.\?\s*$'
+function! s:at_eol(line, col, ...)
+    let ignore_ws = a:0 && !!a:1
+    return getline(a:line)[a:col - 1:] =~ '^.\?' . (!ignore_ws ? '\s*' : '') . '$'
 endfunction
 
 " Returns nonzero if on list opening/closing chars:
@@ -4740,21 +4768,88 @@ function! s:get_clone_target_range(mode, after, list)
     endif
 endfunction
 
+" Return a dict representing the clone context (single or multi) and position of eol
+" comment iff it should be considered part of target by clone operation.
+" Logic: By default, clone will be multi-line if any of the following conditions holds:
+" * target spans multiple lines
+" * target is on a line by itself, possibly followed by a trailing comment
+" * target is the first or last element of a list whose open and close brackets are not
+"   both colinear with target, and none of the target's sibling elements (ignoring any
+"   trailing comment) are colinear with target
+" * target is at toplevel
+" * final (or only) element of target is an end-of-line comment
+" The default logic can be overridden by sl_ / ml_ command variants, but if target ends
+" with comment, we must always perform multi-line, and should probably warn if sl command
+" variant was used.
+" Return Dict:
+"   multi:   1 iff multi-line context
+"   eolc:    {} if no eol comment to clone, else a dict with start/end keys containing
+"            VimPos4's delineating the eol comment
+" Cursor Preservation: None (caller expected to handle)
+function! s:get_clone_context(top, start, end, force_sl_or_ml)
+    let [multi, eolc] = [0, {}]
+    " Cache some information required by subsequent logic.
+    let bol = s:at_bol(a:start[1], a:start[2])
+    let eol = s:at_eol(a:end[1], a:end[2])
+    call s:setcursor(a:end)
+    let next = s:nearest_element_terminal(1, 0)
+    " Is there a next sibling?
+    let last = a:end == next
+    if !last && next[1] == a:end[1]
+        " There's a next sibling and it's colinear. Is it an eol comment?
+        if s:is_eol_comment(next[1], next[2])
+            " Note: Deferring decision on whether to clone the comment
+            let eolc.start = next[:]
+            let eolc.end = [0, next[1], col([next[1], '$']) - 1, 0]
+        endif
+    endif
+    " Note: It's *always* possible to force a multi-line clone.
+    if a:force_sl_or_ml == 'm'
+        let multi = 1
+    elseif s:is_eol_comment(a:end[1], a:end[2])
+        " Final (or only) element of target is an eol comment.
+        " This is the only case in which default logic forces multi-line context.
+        let multi = 1
+    " If here, single-line context won't be overridden by default logic.
+    elseif a:force_sl_or_ml != 's'
+        " Use default selection logic.
+        if a:top || a:start[1] != a:end[1] || bol && (eol || !empty(eolc))
+            " One of the following conditions is met.
+            "   * target spans multiple lines
+            "   * target is toplevel
+            "   * target is on line by itself (possibly followed by eol comment)
+            let multi = 1
+        else
+            " Check the condition involving targets that are first/last element of list.
+            call s:setcursor(a:start)
+            let prev = s:nearest_element_terminal(0, 1)
+            " Is there a prev sibling?
+            let first = a:start == prev
+            " Check multi-line conditions.
+            let multi = first && (eol || !empty(eolc)) || last && bol
+        endif
+    endif
+    if multi && a:force_sl_or_ml == 's'
+        " Warn user we're overriding _sl command
+        call s:warnmsg("Overriding single-line clone command in multi-line context.")
+    endif
+    return {'multi': multi, 'eolc': multi ? eolc : {}}
+endfunction
+
 " Clone list/element at cursor (normal mode) or range of elements partially or
 " fully included in visual selection.
-" Design Decision: In normal mode, change to visual selection should be a
-" completely transparent and temporary side-effect of the implementation:
-" thus, we restore the (adjusted) original selection (if any). In
-" visual/operator modes, otoh, we restore the adjusted inner selection
-" corresponding to the copied range.
-function! sexp#clone(mode, count, list, after, force_sl)
+" Design Decision: In normal mode, change to visual selection should be a completely
+" transparent and temporary side-effect of the implementation: thus, we restore the
+" (adjusted) original selection (if any). In visual/operator modes, otoh, we restore the
+" adjusted inner selection corresponding to the copied range.
+" TODO: Probably get rid of 'after' arg, which isn't really used.
+function! sexp#clone(mode, count, list, after, force_sl_or_ml)
     let cursor = getpos('.')
     let keep_vs = a:mode ==? 'n'
     if keep_vs
         " Save original selection for adjustment and subsequent restoration.
         let [vs, ve] = s:get_visual_marks()
     endif
-
     " Get region to be cloned.
     let [start, end] = s:get_clone_target_range(a:mode, a:after, a:list)
     if !start[1]
@@ -4769,36 +4864,26 @@ function! sexp#clone(mode, count, list, after, force_sl)
     endif
     " Assumption: Prior logic guarantees start and end at same level.
     let top = s:at_top(start[1], start[2])
-    " Logic: By default, clone will be multi-line if any of the following
-    " conditions holds:
-    "  1. target is alone on its line
-    "  2. target is at toplevel
-    "  3. target ends in comment
-    " The default logic can be overridden in 2 ways:
-    "  1. explicit [count] supplied => forces multi-line
-    "  2. single-line map variant used => forces single-line *unless* target
-    "     ends in comment, in which case, clone is always multi-line
-    let force_l = a:force_sl ? 's' : a:count ? 'm' : ''
-    let multi = force_l == 'm'
-        \ || s:is_comment(end[1], end[2])
-        \ || force_l != 's'
-        \ && (top || start[1] != end[1]
-            \ || s:at_bol(start[1], start[2]) && s:at_eol(end[1], end[2]))
+    " Determine whether to perform single or multi-line clone, and whether eol comment
+    " should be cloned along with the target.
+    let ctx = s:get_clone_context(top, start, end, a:force_sl_or_ml)
+    if ctx.multi && !empty(ctx.eolc)
+        " Update end to include the eol comment.
+        let end = ctx.eolc.end
+    endif
     " Get the text to be copied.
     let copy = s:yankdel_range(start, end, 0, 1)
     call s:setcursor(a:after ? end : start)
-    let repl = multi
+    let repl = ctx.multi
         \ ? a:after ? ["\n", copy] : [copy, "\n"]
         \ : a:after ? [" ", copy] : [copy, " "]
     let copy = join(repeat(repl, a:count ? a:count : 1), "")
 
     if !keep_vs
-        " Save the target range, which will become the new selection after
-        " adjustment.
+        " Save the target range, which will become the new selection after adjustment.
         let [vs, ve] = [copy(start), copy(end)]
     endif
-    " Implement put with yankdel_range to take advantage of position
-    " adjustment.
+    " Implement put with yankdel_range to take advantage of position adjustment.
     let p = a:after ? end : start
     let inc = a:after ? [0, 1] : [1, 0]
     " TODO: Consider creating a put_at wrapper for this.
@@ -4807,7 +4892,7 @@ function! sexp#clone(mode, count, list, after, force_sl)
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong, as we haven't done
     " anything that should have any impact on indentation.
-    let need_indent = multi && !!g:sexp_clone_does_indent
+    let need_indent = ctx.multi && !!g:sexp_clone_does_indent
     if need_indent
         if top
             " At toplevel, there's no parent to constrain the indent, and we

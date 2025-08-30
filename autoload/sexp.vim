@@ -4476,7 +4476,7 @@ function! s:cleanup_ws(start, at_top, ps, ...)
 
         " Do we want to remove *all* whitespace between eff_prev and eff_next?
         let full_join =
-                \ !next[1] && !prev[1] " empty form
+                \ !next[1] && !prev[1]
                 \ || !next[1] && (!close[1] || !s:is_comment(prev[1], prev[2]))
                 \ || !prev[1] && (!open[1] || !s:is_comment(next[1], next[2]))
 
@@ -4892,6 +4892,8 @@ function! sexp#clone(mode, count, list, after, force_sl_or_ml)
     " Design Decision: Single line clone can't change indent.
     " Rationale: If it's wrong now, it was already wrong, as we haven't done
     " anything that should have any impact on indentation.
+    " TODO: Decide whether it would make sense to do indent anyways, possibly only if the
+    " 'indent_does_clean' option is set.
     let need_indent = ctx.multi && !!g:sexp_clone_does_indent
     if need_indent
         if top

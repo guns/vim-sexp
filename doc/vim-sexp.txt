@@ -986,9 +986,12 @@ Align end-of-line comments automatically after performing an indent.
                                                     *g:sexp_aligncom_maxshift*
 Maximum number of screen columns an end-of-line comment is allowed to shift
 rightward to align with other columns in an end-of-line comment block.
+  -1           Have plugin calculate default dynamically (currently, 75% of
+               effective 'textwidth'. (See |g:sexp_aligncom_textwidth|.)
+  >0           Desired maximum shift in screen columns
 >
-        " Default
-        let g:sexp_aligncom_maxshift = 80
+        " Default: 75% of effective 'textwidth'
+        let g:sexp_aligncom_maxshift = -1
 <
 
                                                       *g:sexp_aligncom_maxgap*

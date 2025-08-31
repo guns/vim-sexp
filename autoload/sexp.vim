@@ -3457,6 +3457,17 @@ function! s:aligncom__characterize(line)
     \ }
 endfunction
 
+" Calculate values for aligncom options whose value determination is deferred till the
+" point of execution and return them in a dict.
+" Motivation: Avoid repeated recalculation within inner loops.
+function! s:aligncom__get_deferred_opts()
+    return {
+            \ 'weights': s:aligncom__get_weights(),
+            \ 'textwidth': s:aligncom__textwidth(),
+            \ 'maxshift': s:aligncom__maxshift(),
+    \ }
+endfunction
+
 " Calculate and return the criteria weights, taking user options into account.
 function! s:aligncom__get_weights()
     " Design Question: Should we enforce use of integers in user weights? Probably no need
@@ -3503,14 +3514,14 @@ endfunction
 " < 0: cost1 <  cost2
 " > 0: cost1 >  cost2
 " = 0: cost1 == cost2
-function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
+function! s:aligncom__compare_costs(dp, grp1, grp2, opts)
     let [g1, g2] = [a:grp1, a:grp2]
     let [c1, c2] = [g1.cost, g2.cost]
     " Each enabled criterion adjusts this variable by signed amount.
     " Sign Logic: For negative (cost) criteria (e.g., overrun or runtness), subtracting g2
     " from g1 yields a negative result when group 1 is the better option.
     let ret = 0
-    let weights = s:aligncom__get_weights()
+    let weights = a:opts.weights
     " Note: These variables are maintained for algorithm evaluation/debugging.
     " TODO: Consider removal after development...
     let [ngrps, shift, density, runt, overrun, max_overrun] = [0, 0, 0, 0, 0, 0]
@@ -3544,8 +3555,8 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
             let [shift1, shift2] = [shift1 / norm, shift2 / norm]
         else
             " Normalize to max possible shift.
-            let shift1 = 1.0 * c1.cumul.area / (c1.cumul.ncoms * g:sexp_aligncom_maxshift)
-            let shift2 = 1.0 * c2.cumul.area / (c2.cumul.ncoms * g:sexp_aligncom_maxshift)
+            let shift1 = 1.0 * c1.cumul.area / (c1.cumul.ncoms * a:opts.maxshift)
+            let shift2 = 1.0 * c2.cumul.area / (c2.cumul.ncoms * a:opts.maxshift)
         endif
         let shift = weights.shift * (shift1 - shift2)
         let ret += shift
@@ -3615,12 +3626,12 @@ endfunction
 "               between end of code and start of eol comment
 "   margin:     cumulative (min) margin, negative indicating textwidth overrun
 "   comlen_sum: sum of trailing comment lengths, needed to calculate average
-"   tw:         effective 'textwidth' for overrun calculations
 "   align:      alignment column for all eol comments in this group
 "   dp_sidx:    start of region on which dp[] is being performed (always 0 for opt_lvl 2)
 "               Note: Prevents looking back too far in opt_lvl 1 ("Greedy with Lookback").
+"   opts:       dict of options whose value calculation is deferred
 function! s:aligncom__create_group_candidate(
-        \ dp, sidx, eidx, area, margin, comlen_sum, tw, align, dp_sidx)
+        \ dp, sidx, eidx, area, margin, comlen_sum, align, dp_sidx, opts)
     " Calculate figures of merit for the *current* group.
     let nlines = a:dp[a:eidx].line - a:dp[a:sidx].line + 1
     let ncoms = a:eidx - a:sidx + 1
@@ -3643,7 +3654,8 @@ function! s:aligncom__create_group_candidate(
     " use the product of the *average* trailing comment length and the number trailing
     " comments in group.
     " Note: The float2nr() is needed to avoid mixing float and numbers error E805.
-    let overrun = max([0, float2nr(a:align + 1.0 * a:comlen_sum / ncoms - a:tw - 1)]) * ncoms
+    let overrun = max(
+        \ [0, float2nr(a:align + 1.0 * a:comlen_sum / ncoms - a:opts.textwidth - 1)]) * ncoms
     " Save the current group's (non-cumulative) values
     let self = {'area': a:area, 'overrun': overrun, 'nlines': nlines,
                 \ 'ncoms': ncoms, 'runt': runt, 'comlen_sum': a:comlen_sum}
@@ -3683,9 +3695,24 @@ function! s:aligncom__create_group_candidate(
     return ret
 endfunction
 
+" Return the effective maxshift, which may depend on effective 'textwidth'.
+" Use 75% of nonzero effective 'textwidth' if global option is -1 (default); otherwise,
+" use the value specified by user.
+" Design Decision: Although 'maxshift' of zero would effectively disable alignment,
+" respect user's wishes.
+" Design Decision: Use default of 80 cols if effective 'textwidth' is zero (equivalent to
+" texwidth_weight == 0).
+" Rationale: It would make no sense to default 'maxshift' to zero.
+function! s:aligncom__maxshift()
+    let tw = s:aligncom__textwidth()
+    return g:sexp_aligncom_maxshift < 0
+            \ ? 75 * (tw > 0 ? tw : 80) / 100
+            \ : g:sexp_aligncom_maxshift
+endfunction
+
 " Return the preferred max line length (in screen cols) for lines with trailing comments.
-" TODO: Consider having functions place their values in a script-scoped dict once per
-" alignment.
+" Note: Returning zero effectively causes textwidth to be ignored as alignment criteria:
+" i.e., same as setting weight to 0.
 function! s:aligncom__textwidth()
     return g:sexp_aligncom_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_aligncom_textwidth
 endfunction
@@ -3694,19 +3721,18 @@ endfunction
 " element of candidate group into account.
 " Inputs:
 "   min_margin:  the candidate group's current worst-case margin
-"   tw:          effective 'textwidth' for determining overrun
-"                TODO: Probably record this in a script var up front.
 "   el:          element of eol comment being added to group
 "   align:       current align col
 "   shift_inc:   amount that new element has shifted the align col (0 if no shift)
-function! s:aligncom__update_min_margin(min_margin, tw, el, align, shift_inc)
+"   opts:        dict of options whose value calculation is deferred
+function! s:aligncom__update_min_margin(min_margin, el, align, shift_inc, opts)
     let min_margin = a:min_margin
     if a:shift_inc > 0
         " Current worst-case margin just got worse.
         let min_margin -= a:shift_inc
     endif
     " See whether new element's margin is worse than current worst.
-    let el_margin = a:tw - (a:align + a:el.comlen - 1)
+    let el_margin = a:opts.textwidth - (a:align + a:el.comlen - 1)
     if el_margin < min_margin
         let min_margin = el_margin
     endif
@@ -3724,7 +3750,8 @@ endfunction
 "   dp:          dynamic programming state list with one element for each eol comment
 "   idx:         current index
 "   dp_sidx:     start of the region on which to perform DP (always 0 for opt_lvl 3)
-function! s:aligncom__update_dps(dp, idx, dp_sidx)
+"   opts:        dict of options whose value calculation is deferred
+function! s:aligncom__update_dps(dp, idx, dp_sidx, opts)
     let el = a:dp[a:idx]
     " Initialize DP state for current comment and add it to list.
     " Note: The 'grp' field will be updated within loop to reflect current best group
@@ -3737,7 +3764,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
     " Keep up with sum of trailing comment lengths to support overrun logic.
     let comlen_sum = 0
     " Keep up with worst-case textwidth overrun per candidate group.
-    let tw = s:aligncom__textwidth()
+    let tw = a:opts.textwidth
     let min_margin = tw > 0 ? s:MAXCOL : 0
     " Keep up with longest line in group for the purpose of overrun calculation.
     let maxcol = 0
@@ -3764,7 +3791,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         endif
         "call s:Dbg("Trying new head: i=%d line=%d min=%d max=%d", i, el_s.line, ecol_min, ecol_max)
         " Is this a valid start candidate? I.e., is bounding box still within limits?
-        if ecol_max - ecol_min > g:sexp_aligncom_maxshift
+        if ecol_max - ecol_min > a:opts.maxshift
             " We've gone too far: no more candidate groups ending at current line.
             break
         endif
@@ -3780,14 +3807,14 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         endif
         " As we work backwards, keep up with the worst-case margin.
         if g:sexp_aligncom_textwidth_weight > 0 && tw > 0
-            let min_margin = s:aligncom__update_min_margin(min_margin, tw, el_s, ecol_max, shift_inc)
+            let min_margin = s:aligncom__update_min_margin(min_margin, el_s, ecol_max, shift_inc, a:opts)
             let comlen_sum += el_s.comlen
             "call s:Dbg("min_margin=%d comlen_sum=%d", min_margin, comlen_sum)
         endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:aligncom__create_group_candidate(
-                \ a:dp, i, a:idx, area, min_margin, comlen_sum, tw, ecol_max, a:dp_sidx)
+                \ a:dp, i, a:idx, area, min_margin, comlen_sum, ecol_max, a:dp_sidx, a:opts)
         "call s:Dbg("Created candidate grp for comparison:")
         "call s:Dbg("\texisting (%02d-%02d): %s",
         "            \ el.sog || empty(el.grp)
@@ -3795,7 +3822,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         "call s:Dbg("\tcandidat (%02d-%02d): %s", el_s.line, el.line, string(grp))
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
-        if el.sog || empty(el.grp) || s:aligncom__compare_costs(a:dp, el.grp, grp, tw) > 0
+        if el.sog || empty(el.grp) || s:aligncom__compare_costs(a:dp, el.grp, grp, a:opts) > 0
             " Make this the new best candidate.
             let el.grp = grp
             "call s:Dbg("New best (%d-%d)", el_s.line, el.line)
@@ -3830,7 +3857,7 @@ endfunction
 "       'com_s': <pos>}, ...]}, ... ]
 " -- Args --
 " dp:      the list produced by optimization/layout
-function! s:aligncom__finalize_groups(dp)
+function! s:aligncom__finalize_groups(dp, opts)
     " Loop over elements in reverse, skipping nodes that are not the end of a group.
     " Assumption: Final element always ends a group.
     let eidx = len(a:dp) - 1
@@ -3888,7 +3915,7 @@ endfunction
 "                            be determined by next element with 'seg' key.)
 " 2 (Full DP)                All elements processed by s:aligncom__update_dps().
 "
-function! s:aligncom__optimize_range(prep)
+function! s:aligncom__optimize_range(prep, opts)
     let [i, N] = [0, len(a:prep)]
     "call s:Dbg("\n\nPre-Prep: %s\n\n", json_encode(a:prep))
     let greedy_eidx = -1
@@ -3907,7 +3934,7 @@ function! s:aligncom__optimize_range(prep)
         else
             " Use DP to find best of candidate groups ending at this element.
             call s:aligncom__update_dps(
-                    \ a:prep, i, g:sexp_aligncom_optlevel < 2 ? greedy_eidx + 1 : 0)
+                    \ a:prep, i, g:sexp_aligncom_optlevel < 2 ? greedy_eidx + 1 : 0, a:opts)
         endif
         let i += 1
     endwhile
@@ -3924,10 +3951,11 @@ endfunction
 "   prep[]:       list of dicts characterizing eol comment lines
 "   ecol_max:     alignment for group just ended (TODO: rename 'align' or 'aligncol')
 "   ecol_maxes[]: alignment at each index in group *prior to* one that just ended
+"   opts:         dict of options whose value calculation is deferred
 " Note: ecol_maxes[] is used to determine new alignment value if we need to resize a long
 " greedy group.
 function! s:aligncom__preproc_finalize_seg(
-    \ i, sidx, prev_sidx, prep, ecol_max, ecol_maxes)
+    \ i, sidx, prev_sidx, prep, ecol_max, ecol_maxes, opts)
     " If short group follows long, create a DP optimized region that includes all of the
     " short group and a configurable number of elements at the end of the long group.
     " Factor of 2 used to ensure the first group will be at least as long as the second.
@@ -3967,7 +3995,7 @@ endfunction
 "   pre_max:  the screen column of the longest non-eol comment line in the interval
 "             between and element and its predecessor.
 " Note that no attempt is made at this stage to break eol comments into groups.
-function! s:aligncom__preproc_pass1(start, end)
+function! s:aligncom__preproc_pass1(start, end, opts)
     " List will contain one element for each eol comment in range.
     let ret = []
     let pre_max = 0  " longest line *between* eol comment lines
@@ -4009,7 +4037,7 @@ endfunction
 " used to limit the lookback performed by the DP optimization algorithm (e.g., due to line
 " comments or too long a run of lines with no eol comments). The 'sog' (start of group)
 " key is used to set lookback limits.
-function! s:aligncom__preproc_pass2(prep)
+function! s:aligncom__preproc_pass2(prep, opts)
     " Distinction: el.sog is needed only by DP optimization loop; unlike local sog, it
     " will not reflect bounding box processing, since the optimization loop does its own.
     let sog = 1                       " start of group flag
@@ -4047,7 +4075,7 @@ function! s:aligncom__preproc_pass2(prep)
                 " TODO: Consider using option to determine whether pre_max is considered.
                 let test_max = max([el.ecol, el.pre_max, ecol_max])
                 " Is bounding box still within limits?
-                if test_max - test_min > g:sexp_aligncom_maxshift
+                if test_max - test_min > a:opts.maxshift
                     " Break group.
                     let sog = 1
                 else
@@ -4064,7 +4092,7 @@ function! s:aligncom__preproc_pass2(prep)
                 if i > 0
                     " Perform any requisite decoration of previous segment(s).
                     call s:aligncom__preproc_finalize_seg(
-                        \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev)
+                        \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev, a:opts)
                 endif
                 " Make next group current (or current group prev).
                 let sog = 0
@@ -4080,7 +4108,7 @@ function! s:aligncom__preproc_pass2(prep)
     if g:sexp_aligncom_optlevel < 2 && i > 0
         " Process final group.
         call s:aligncom__preproc_finalize_seg(
-            \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev)
+            \ i, sidx, prev_sidx, a:prep, ecol_max, ecol_maxes_prev, a:opts)
     endif
 endfunction
 
@@ -4096,9 +4124,9 @@ endfunction
 "   If element is head of a 'dp' segment, it will contain the following:
 "     seg: {is_greedy: 0}
 " Return: [<prep_list>, <opt_level>]
-function! s:aligncom__preproc(start, end)
-    let prep = s:aligncom__preproc_pass1(a:start, a:end)
-    call s:aligncom__preproc_pass2(prep)
+function! s:aligncom__preproc(start, end, opts)
+    let prep = s:aligncom__preproc_pass1(a:start, a:end, a:opts)
+    call s:aligncom__preproc_pass2(prep, a:opts)
     return prep
 endfunction
 
@@ -4202,13 +4230,14 @@ endfunction
 "   end:    end of range
 "   ps:     list of positions requiring adjustment
 function! s:align_comments(start, end, ps)
-    let ts = reltime()
+    "let ts = reltime()
+    let opts = s:aligncom__get_deferred_opts()
     " Preprocess the range, building a list of dicts that will facilitate layout.
-    let prep = s:aligncom__preproc(a:start, a:end)
+    let prep = s:aligncom__preproc(a:start, a:end, opts)
     " Perform the optimization/layout.
-    call s:aligncom__optimize_range(prep)
+    call s:aligncom__optimize_range(prep, opts)
     " Iterate the reverse chain of groups in prep to produce a forward list of groups.
-    let grps = s:aligncom__finalize_groups(prep)
+    let grps = s:aligncom__finalize_groups(prep, opts)
     "call s:dbg_show_eolcs(grps)
     " Iterate groups, performing alignment of each eol comment.
     for grp in grps
@@ -4228,7 +4257,7 @@ function! s:align_comments(start, end, ps)
                     \ a:ps)
         endfor
     endfor
-    echomsg printf("Alignment took: %f", reltimefloat(reltime(ts)))
+    "echomsg printf("Alignment took: %f", reltimefloat(reltime(ts)))
 endfunction
 
 " Indent S-Expression, maintaining cursor position. This is similar to mapping

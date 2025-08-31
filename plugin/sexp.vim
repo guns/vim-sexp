@@ -81,7 +81,7 @@ if !exists('g:sexp_indent_aligns_comments')
 endif
 
 if !exists('g:sexp_aligncom_maxshift')
-    let g:sexp_aligncom_maxshift = 80
+    let g:sexp_aligncom_maxshift = -1
 endif
 
 if !exists('g:sexp_aligncom_maxgap')

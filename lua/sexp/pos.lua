@@ -1,5 +1,3 @@
---local prof = require'sexp.prof'
-
 ---@alias VimPos2 [integer, integer]
 ---@alias VimPos4 [integer, integer, integer, integer]
 ---@alias VimPos VimPos4
@@ -99,7 +97,6 @@ function ApiPos:__tostring()
   -- FIXME
   local ts = vim.fn.reltime()
   local ret = "[" .. self.r .. ", " .. self.c .. "]"
-  --prof:add("__tostring", vim.fn.reltimestr(vim.fn.reltime(ts)))
   return ret
 end
 

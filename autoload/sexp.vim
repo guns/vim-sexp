@@ -17,20 +17,12 @@ if exists('g:sexp_autoloaded')
 endif
 let g:sexp_autoloaded = 1
 
+" Note: Do not uncomment the luaeval in this function, as it requires a logging module
+" that's not currently part of the plugin.
+" TODO: Eventually, remove it and all commented calls to it.
 fu! s:Dbg(...)
     "call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
 endfu
-
-"let s:prof_ts = 0
-"fu! s:prof_start()
-"    let s:prof_ts = reltime()
-"endfu
-"
-"fu! s:prof_end(key)
-"    if has('nvim')
-"        call luaeval("require'sexp.prof':add(_A[1], _A[2])", [a:key, reltimefloat(reltime(s:prof_ts))])
-"    endif
-"endfu
 
 " TODO:
 "
@@ -233,14 +225,14 @@ function! s:nearest_bracket(closing, ...)
         let cp = getpos('.')
         let [ok, pos] = s:nearest_bracket_ts(a:closing,
                 \ a:0 >= 2 ? a:1 : v:null, a:0 >= 2 ? a:2 : v:null)
-        call s:Dbg("nearest_bracket_ts returned %s: %s for curpos %s",
-                    \ string(ok), string(pos), string(cp))
-        " Fall through to slower legacy logic if Treesitter version can't be definitive.
+        "call s:Dbg("nearest_bracket_ts returned %s: %s for curpos %s",
+        "            \ string(ok), string(pos), string(cp))
+        " Fall through to slower legacy logic if Treesitter results weren't definitive.
         if ok
             return pos
         endif
     endif
-    call s:Dbg("closing=%d - Fell through to legacy nearest_bracket logic!", a:closing)
+    "call s:Dbg("closing=%d - Fell through to legacy nearest_bracket logic!", a:closing)
     let flags = a:closing ? 'nW' : 'bnW'
     let stopline = g:sexp_maxlines > 0
                    \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
@@ -248,14 +240,6 @@ function! s:nearest_bracket(closing, ...)
     let open = a:0 ? a:1 : s:opening_bracket
     let close = a:0 ? a:2 : s:closing_bracket
     let [line, col] = searchpairpos(open, '', close, flags, s:match_ignored_region_fn, stopline)
-    if line != pos[1] || col != pos[2]
-        if type(pos) == type("")
-            call s:Dbg("ts returned string in lieu of pos: %s", pos)
-        else
-            call s:Dbg("TS and Legacy mismatch!: legacy=(%d,%d) ts=(%d,%d) closing=%d", line, col, pos[1], pos[2], a:closing)
-            echoerr("Mismatch!!!!!")
-        endif
-    endif
     return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
@@ -520,7 +504,7 @@ function! sexp#current_element_terminal(end)
         else
             let pos = s:nearest_bracket(a:end)
         end
-    elseif s:is_macro_char(char)
+    elseif sexp#is_macro_char(char)
         if !a:end
             " Let the rest of the function find the macro head
             let include_macro_characters = 1
@@ -1501,16 +1485,9 @@ endfunction
 """ PREDICATES AND COMPARATORS {{{1
 
 " Returns 1 if char matches the current FileType's macro pattern
-function! s:is_macro_char(char)
+function! sexp#is_macro_char(char)
     " Caveat: stridx returns 0 for empty needle.
     return !empty(a:char) && stridx(s:macro_chars(), a:char) >= 0
-endfunction
-
-" FIXME: Don't leave these like this!!!!!!!!!!!!!!!! But they need to be accessible from
-" lua...
-function! sexp#is_macro_char(char)
-    call s:Dbg("sexp#is_macro_char: char=%s type=%s", string(a:char), type(a:char))
-    return s:is_macro_char(a:char)
 endfunction
 
 function! sexp#current_macro_character_terminal(end)
@@ -1756,7 +1733,6 @@ fu! s:is_rgn_type(rgn, line, col)
         echoerr "vim-sexp: Warning: No syntax available" 
         return
     endif
-    call s:Dbg("!!!!!!!!!!!!!!!Not expecting to get here!!!!!!!!")
     return s:is_rgn_type_legacy(a:rgn, a:line, a:col)
 endfu
 
@@ -1984,7 +1960,6 @@ endfunction
 " brackets in atoms - e.g., foo\(bar - revisit the ignore pattern used with
 " searchpair.
 function! sexp#list_flow(mode, count, next, close)
-    "call s:prof_start()
     let cnt = a:count ? a:count : 1
     " Loop until we've landed on [count]th non-ignored bracket of desired type
     " or exhausted buffer trying.
@@ -2019,7 +1994,6 @@ function! sexp#list_flow(mode, count, next, close)
             call s:select_current_marks('v')
         endif
     endif
-    "call s:prof_end("list_flow")
 endfunction
 
 " Move to [count]th next/prev non-list (leaf) element in the buffer, flowing
@@ -2053,7 +2027,6 @@ endfunction
 "    TODO: Revisit if move_to_adjacent_element is ever updated to handle the
 "    edge case.
 function! sexp#leaf_flow(mode, count, next, tail)
-    "call s:prof_start()
     " Is optimal destination near or far side of element?
     let near = !!a:next != !!a:tail
     let cnt = a:count ? a:count : 1
@@ -2125,7 +2098,6 @@ function! sexp#leaf_flow(mode, count, next, tail)
             call s:select_current_marks('v')
         endif
     endif
-    "call s:prof_end("leaf_flow")
 endfunction
 
 " Move cursor to current list start or end and enter insert mode. Inserts
@@ -2682,7 +2654,6 @@ endfunction
 " Set visual marks at current list's brackets, then enter visual mode with
 " that selection. Selects current element if cursor is not in a list.
 function! sexp#select_current_list(mode, offset, allow_expansion)
-    "call s:prof_start()
     if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
         " TODO: I'd really rather hard-code 1 for inner here, but need to
         " consider backwards-compatability...
@@ -2692,7 +2663,6 @@ function! sexp#select_current_list(mode, offset, allow_expansion)
         " inner, regardless of a:offset.
         call s:set_marks_around_current_element(a:mode, 1, 0, 0) "a:offset)
     endif
-    "call s:prof_end("select_current_list")
     return s:select_current_marks(a:mode)
 endfunction
 
@@ -2716,10 +2686,8 @@ endfunction
 
 " Set visual marks around current element and enter visual mode.
 function! sexp#select_current_element(mode, inner, ...)
-    "call s:prof_start()
     let cnt = a:0 && a:1 ? a:1 : 1
     call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
-    "call s:prof_end("select_current_element")
     return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
 endfunction
 
@@ -3622,15 +3590,15 @@ function! s:aligncom__compare_costs(dp, grp1, grp2, tw)
             let ret += max_overrun
         endif
     endif
-    call s:Dbg("weights: overrun=%f", weights.textwidth)
-    call s:Dbg("       ngrps: %f %f", ngrps1, ngrps2)
-    call s:Dbg("       shift: %f %f", shift1, shift2)
-    call s:Dbg("        runt: %f %f", runt1, runt2)
-    call s:Dbg("    overruns: %f %f", overrun1, overrun2)
-    call s:Dbg("max_overruns: %f %f", max_overrun1, max_overrun2)
-    call s:Dbg("Criteria Impacts:\n\tngrps:\t\t%f\n\tshift:\t\t%f\n\tdensity:\t%f"
-                \ . "\n\truntness:\t%f\n\toverrun:\t%f\n\tmaxover:\t%f",
-                \ ngrps, shift, density, runt, overrun, max_overrun)
+    "call s:Dbg("weights: overrun=%f", weights.textwidth)
+    "call s:Dbg("       ngrps: %f %f", ngrps1, ngrps2)
+    "call s:Dbg("       shift: %f %f", shift1, shift2)
+    "call s:Dbg("        runt: %f %f", runt1, runt2)
+    "call s:Dbg("    overruns: %f %f", overrun1, overrun2)
+    "call s:Dbg("max_overruns: %f %f", max_overrun1, max_overrun2)
+    "call s:Dbg("Criteria Impacts:\n\tngrps:\t\t%f\n\tshift:\t\t%f\n\tdensity:\t%f"
+    "            \ . "\n\truntness:\t%f\n\toverrun:\t%f\n\tmaxover:\t%f",
+    "            \ ngrps, shift, density, runt, overrun, max_overrun)
     " Return the signed comparison value.
     return ret
 endfunction
@@ -3685,8 +3653,8 @@ function! s:aligncom__create_group_candidate(
         let pgrp = a:dp[a:sidx - 1].grp
         " Aggregate cost-related data that applies to the current candidate and its chain
         " of predecessors.
-        call s:Dbg("Creating cumul reflecting pgrp ending at idx=%d line %d, runt=%f",
-                    \ a:sidx - 1, a:dp[a:sidx - 1].line, pgrp.cost.cumul.runt)
+        "call s:Dbg("Creating cumul reflecting pgrp ending at idx=%d line %d, runt=%f",
+        "            \ a:sidx - 1, a:dp[a:sidx - 1].line, pgrp.cost.cumul.runt)
         let cumul = {
                     \ 'ngrps': pgrp.cost.cumul.ngrps + 1,
                     \ 'nlines': pgrp.cost.cumul.nlines + nlines,
@@ -3794,7 +3762,7 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         if el_s.ecol < ecol_min | let ecol_min = el_s.ecol
         elseif el_s.ecol > ecol_max | let ecol_max = el_s.ecol
         endif
-        call s:Dbg("Trying new head: i=%d line=%d min=%d max=%d", i, el_s.line, ecol_min, ecol_max)
+        "call s:Dbg("Trying new head: i=%d line=%d min=%d max=%d", i, el_s.line, ecol_min, ecol_max)
         " Is this a valid start candidate? I.e., is bounding box still within limits?
         if ecol_max - ecol_min > g:sexp_aligncom_maxshift
             " We've gone too far: no more candidate groups ending at current line.
@@ -3814,25 +3782,25 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         if g:sexp_aligncom_textwidth_weight > 0 && tw > 0
             let min_margin = s:aligncom__update_min_margin(min_margin, tw, el_s, ecol_max, shift_inc)
             let comlen_sum += el_s.comlen
-            call s:Dbg("min_margin=%d comlen_sum=%d", min_margin, comlen_sum)
+            "call s:Dbg("min_margin=%d comlen_sum=%d", min_margin, comlen_sum)
         endif
         let ecol_max_prev = ecol_max
         " Create group candidate and calculate its cost.
         let grp = s:aligncom__create_group_candidate(
                 \ a:dp, i, a:idx, area, min_margin, comlen_sum, tw, ecol_max, a:dp_sidx)
-        call s:Dbg("Created candidate grp for comparison:")
-        call s:Dbg("\texisting (%02d-%02d): %s",
-                    \ el.sog || empty(el.grp)
-                    \ ? el.line : a:dp[el.grp.sidx].line, el.line, string(el.grp))
-        call s:Dbg("\tcandidat (%02d-%02d): %s", el_s.line, el.line, string(grp))
+        "call s:Dbg("Created candidate grp for comparison:")
+        "call s:Dbg("\texisting (%02d-%02d): %s",
+        "            \ el.sog || empty(el.grp)
+        "            \ ? el.line : a:dp[el.grp.sidx].line, el.line, string(el.grp))
+        "call s:Dbg("\tcandidat (%02d-%02d): %s", el_s.line, el.line, string(grp))
         " Note: Comparison value < 0 indicates cost of lhs arg (current best) is still the
         " lowest. In case of tie, we keep existing best, since it's later-starting.
         if el.sog || empty(el.grp) || s:aligncom__compare_costs(a:dp, el.grp, grp, tw) > 0
             " Make this the new best candidate.
             let el.grp = grp
-            call s:Dbg("New best (%d-%d)", el_s.line, el.line)
+            "call s:Dbg("New best (%d-%d)", el_s.line, el.line)
         else
-            call s:Dbg("Kept existing grp (%d-%d)", a:dp[el.grp.sidx].line, el.line)
+            "call s:Dbg("Kept existing grp (%d-%d)", a:dp[el.grp.sidx].line, el.line)
         endif
         if el_s.sog
             " Don't look back any further if preprocessing has determined this to be an
@@ -3849,8 +3817,8 @@ function! s:aligncom__update_dps(dp, idx, dp_sidx)
         endif
         let i -= 1
     endwhile
-    call s:Dbg("Finished optimizing idx=%d (line=%d)", a:idx, a:dp[a:idx].line)
-    call s:Dbg("Best grp: %s", string(a:dp[a:idx]))
+    "call s:Dbg("Finished optimizing idx=%d (line=%d)", a:idx, a:dp[a:idx].line)
+    "call s:Dbg("Best grp: %s", string(a:dp[a:idx]))
 endfunction
 
 " Convert the dp state list, which maintains groups in a reverse chain) to a list of
@@ -3882,14 +3850,14 @@ function! s:aligncom__finalize_groups(dp)
         endwhile
         " Accumulate group, then move to last element of previous group.
         call add(grps, grp)
-        call s:Dbg("Finalized grp: sidx=%d eidx=%d align=%d", el.grp.sidx, eidx, el.grp.align)
+        "call s:Dbg("Finalized grp: sidx=%d eidx=%d align=%d", el.grp.sidx, eidx, el.grp.align)
         let eidx = el.grp.sidx - 1
     endwhile
     " Since the list was built in reverse order...
     return reverse(grps)
 endfunction
 
-" TEMP DEBUG ONLY!!! Remove...
+" TODO: This function is used only for debug. Eventually remove...
 function! s:dbg_show_eolcs(grps)
     let idx = 0
     for grp in a:grps
@@ -3898,6 +3866,7 @@ function! s:dbg_show_eolcs(grps)
         for eolc in grp.eolcs
             call s:Dbg("com_s: %s prev_e: %s", string(eolc.com_s), string(eolc.prev_e))
         endfor
+        let idx += 1
     endfor
 endfunction
 
@@ -3921,7 +3890,7 @@ endfunction
 "
 function! s:aligncom__optimize_range(prep)
     let [i, N] = [0, len(a:prep)]
-    call s:Dbg("\n\nPre-Prep: %s\n\n", json_encode(a:prep))
+    "call s:Dbg("\n\nPre-Prep: %s\n\n", json_encode(a:prep))
     let greedy_eidx = -1
     while i < N
         let el = a:prep[i]
@@ -3943,7 +3912,7 @@ function! s:aligncom__optimize_range(prep)
         let i += 1
     endwhile
     " Reformat the list for easy group traversal.
-    call s:Dbg("\n\nPost-Prep: %s\n\n", json_encode(a:prep))
+    "call s:Dbg("\n\nPost-Prep: %s\n\n", json_encode(a:prep))
 endfunction
 
 " Update the 'seg' dict for a group that has just ended (and if necessary, its
@@ -3963,7 +3932,7 @@ function! s:aligncom__preproc_finalize_seg(
     " short group and a configurable number of elements at the end of the long group.
     " Factor of 2 used to ensure the first group will be at least as long as the second.
     " TODO: Decide whether lookback and threshold should be distinct.
-    call s:Dbg("finalize_seg: i=%d sidx=%d prev_sidx=%d", a:i, a:sidx, a:prev_sidx)
+    "call s:Dbg("finalize_seg: i=%d sidx=%d prev_sidx=%d", a:i, a:sidx, a:prev_sidx)
     if g:sexp_aligncom_optlevel == 0
         " With opt lvl 0, all segments are greedy.
         let a:prep[a:sidx].seg = {'is_greedy': 1, 'eidx': a:i - 1, 'ecol_max': a:ecol_max}
@@ -4240,7 +4209,7 @@ function! s:align_comments(start, end, ps)
     call s:aligncom__optimize_range(prep)
     " Iterate the reverse chain of groups in prep to produce a forward list of groups.
     let grps = s:aligncom__finalize_groups(prep)
-    call s:dbg_show_eolcs(grps)
+    "call s:dbg_show_eolcs(grps)
     " Iterate groups, performing alignment of each eol comment.
     for grp in grps
         let [align, eolcs] = [grp.align, grp.eolcs]
@@ -4250,7 +4219,7 @@ function! s:align_comments(start, end, ps)
             "echomsg eolc
             " Align the comment by splicing required number of spaces between start of eol
             " comment (exclusive) and end of element preceding it (exclusive).
-            call s:Dbg("yankdel_range: prev_e=%s com_s=%s", string(eolc.prev_e), string(eolc.com_s))
+            "call s:Dbg("yankdel_range: prev_e=%s com_s=%s", string(eolc.prev_e), string(eolc.com_s))
             call s:yankdel_range(
                     \ eolc.prev_e,
                     \ eolc.com_s,
@@ -5125,7 +5094,7 @@ function! sexp#opening_insertion(bra)
 
     if prev =~# '\v\S'
         \ && prev !~# s:opening_bracket
-        \ && !s:is_macro_char(prev)
+        \ && !sexp#is_macro_char(prev)
         let buf .= ' '
     endif
 
@@ -5225,7 +5194,7 @@ function! sexp#quote_insertion(quote)
 
         if prev =~# '\v\S'
             \ && prev !~# s:opening_bracket
-            \ && !s:is_macro_char(prev)
+            \ && !sexp#is_macro_char(prev)
             let buf .= ' '
         endif
 

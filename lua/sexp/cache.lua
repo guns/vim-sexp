@@ -3,7 +3,6 @@ local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
 -- DEBUG/PROFILING
---local prof = require'sexp.prof'
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
 local reltimestr = vim.fn.reltimestr
@@ -99,7 +98,6 @@ function BufCache:lookup(pos)
   end
   -- No match and no node to return.
   return nil
-  --prof:add("Hit check", reltimestr(reltime(ts)))
 end
 
 -- TODO: Consider putting this in separate file.

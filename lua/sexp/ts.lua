@@ -3,7 +3,6 @@ local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
 --local dbg = require'dp':get('sexp', {enabled=false})
---local prof = require'sexp.prof'
 
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
@@ -238,56 +237,56 @@ end
 ---@param dir 0|1
 ---@return [integer, integer, integer, integer]
 function M.current_atom_terminal(dir)
-  ProfStart('get_cursor')
+  --ProfStart('get_cursor')
   local pos = vim.api.nvim_win_get_cursor(0)
-  ProfEnd('get_cursor')
+  --ProfEnd('get_cursor')
   local line, col = pos[1], pos[2] + 1
   --dbg:logf("current_atom_terminal(%d) curpos=%d,%d", dir, line, col)
   local fwd = dir == 1
   -- Note: If termcol is still 0 at return, return null pos.
   local termcol = 0
-  ProfStart('getline')
+  --ProfStart('getline')
   local linetext = vim.fn.getline(line)
-  ProfEnd('getline')
+  --ProfEnd('getline')
   -- Blank line can't contain atom.
   if #linetext == 0 then return {0, 0, 0, 0} end
   -- Use nearest whitespace on current line in desired direction as boundary.
   -- If no such whitespace, leave limcol nil to use BOL and EOL.
-  ProfStart('searchpos')
+  --ProfStart('searchpos')
   local limit = vim.fn.searchpos([[\v\s]], fwd and 'nW' or 'nbW', line)
-  ProfEnd('searchpos')
+  --ProfEnd('searchpos')
   ---@type integer?
   local limcol = limit[2] > 0 and limit[2] or nil
   -- Loop over bytes starting at cursor, adjusting termcol as atom chars are verified.
   ---@type integer
-  ProfStart('col')
+  --ProfStart('col')
   local eol = vim.fn.col({line, '$'})
-  ProfEnd('col')
-  ProfStart('Loop')
+  --ProfEnd('col')
+  --ProfStart('Loop')
   while fwd and col < (limcol or eol) or not fwd and col > (limcol or 0) do
     -- Check col position.
     --dbg:logf("Checking %s at %d, %d", linetext:sub(col, col), line, col)
-    ProfStart('re_delimiter:match_str')
+    --ProfStart('re_delimiter:match_str')
     if re_delimiter:match_str(linetext:sub(col, col)) and not M.is_rgn_type('str_com_chr', line, col) then
       -- Unignored bracket is not part of atom.
-      ProfEnd('re_delimiter:match_str')
+      --ProfEnd('re_delimiter:match_str')
       break
     end
-    ProfEnd('re_delimiter:match_str')
+    --ProfEnd('re_delimiter:match_str')
     -- Get ts node at current position.
     --dbg:logf("limcol: %s", limcol)
-    ProfStart('get_node')
+    --ProfStart('get_node')
     local node = vim.treesitter.get_node({pos = {line-1, col-1}})
-    ProfEnd('get_node')
+    --ProfEnd('get_node')
     if node and not is_node_rgn_type(node, 'str_com') then
       -- Still within atom. If node is leaf, skip to its end (limit permitting).
       if node:child_count() == 0 then
         --dbg:logf("Skipping in %s direction from %d,%d", (fwd and "fwd" or "bck"), line, col)
         -- Get [1,1] indexed pos.
         -- FIXME: Remove this in favor of ApiRange methods.
-        ProfStart('convert_node_range')
+        --ProfStart('convert_node_range')
         local sr, sc, er, ec = convert_node_range(node)
-        ProfEnd('convert_node_range')
+        --ProfEnd('convert_node_range')
         --dbg:logf("Leaf! %d, %d, %d, %d", sr, sc, er, ec)
         if fwd and er ~= line or not fwd and sr ~= line then
           -- This really shouldn't happen; use whitespace as limit.
@@ -314,7 +313,7 @@ function M.current_atom_terminal(dir)
       break
     end
   end
-  ProfEnd('Loop')
+  --ProfEnd('Loop')
   return {0, termcol ~= 0 and line or 0, termcol, 0}
 end
 

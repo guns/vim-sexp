@@ -803,7 +803,7 @@ A string representing an |autocmd-pattern| for the |FileType|s in which you
 wish to activate vim-sexp mappings.
 >
         " Default
-        let g:sexp_filetypes = 'clojure,scheme,lisp,timl'
+        let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel'
 <
                                           *g:sexp_enable_insert_mode_mappings*
 Toggle insert mode mappings in |g:sexp_filetypes|.
@@ -1419,7 +1419,7 @@ in the filetypes of your choosing.
 >
         augroup VIM_SEXP_MAPPING
             autocmd!
-            autocmd FileType clojure,scheme,lisp,timl call s:vim_sexp_mappings()
+            autocmd FileType clojure,scheme,lisp,timl,fennel call s:vim_sexp_mappings()
         augroup END
 <
 ==============================================================================

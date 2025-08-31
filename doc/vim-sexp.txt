@@ -392,8 +392,10 @@ CLONE COMMANDS (normal, visual) ~
 
 <LocalLeader>c                                       *<Plug>(sexp_clone_list)*
 <LocalLeader>C                                    *<Plug>(sexp_clone_element)*
-<LocalLeader><LocalLeader>c                       *<Plug>(sexp_clone_list_sl)*
-<LocalLeader><LocalLeader>C                    *<Plug>(sexp_clone_element_sl)*
+                                                  *<Plug>(sexp_clone_list_sl)*
+                                               *<Plug>(sexp_clone_element_sl)*
+                                                  *<Plug>(sexp_clone_list_ml)*
+                                               *<Plug>(sexp_clone_element_ml)*
         Insert [count] copies of the current list (compound FORM), element or
         visual selection (hereafter referred to as "target"), preserving
         cursor position relative to original.
@@ -421,16 +423,18 @@ CLONE COMMANDS (normal, visual) ~
         an end-of-line comment, the comment will be cloned along with the
         target (whether explicitly selected or not).
 
-        It is generally possible to override the default logic, forcing either
-        single or multi-line operation, as follows:
-                Single-line ~
-                        Use sl command variants ("_sl" suffix).
-                Multi-line ~
-                        Supply an explicit [count] (possibly 1) to one of the
-                        non-sl command variants.
-                        Note: Vim-sexp can tell the difference between
-                        explicit and default [count]==1.
-
+        Overriding the default logic ~
+        Command variants forcing single-line (`_sl`) or multi-line (`_ml`)
+        clones are provided, but not mapped by default. If you find yourself
+        frequently wishing to override the default behavior, simply add the
+        following to your `g:sexp_mappings` list (with `...` replaced by the
+        desired lhs):
+>
+        sexp_clone_list_sl = '...',
+        sexp_clone_element_sl = '...',
+        sexp_clone_list_ml = '...',
+        sexp_clone_element_ml = '...',
+<
 
                                                            *clone-does-indent*
         If |g:sexp_clone_does_indent| is set (the default), indent the

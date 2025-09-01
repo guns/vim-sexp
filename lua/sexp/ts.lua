@@ -416,7 +416,11 @@ function M.nearest_bracket(closing, open_re, close_re)
     or (open_re and open_re ~= vim.NIL and open_re or opening_bracket)
   -- Traverse nodes upwards looking for containing (or matching) bracket of desired type
   -- in indicated direction.
-  while node do
+  -- Assumption: There will always be a top-level node representing the source file
+  -- itself: i.e., root node cannot represent the sort of list we seek.
+  -- Caveat: Failure to check for root here would result in our spuriously treating an open bracket at
+  -- (0,0) as a *containing* bracket, even when we're at top level!
+  while node and node ~= root do
     -- Check current node, skipping ignored regions, as we're interested only in
     -- "list-like" nodes.
     if not is_node_rgn_type(node, "str_com_chr") then

@@ -94,6 +94,9 @@ let s:MAXCOL = 2147483647
 
 " Patch 7.3.590 introduced the ability to set visual marks with setpos()
 let s:can_set_visual_marks = v:version > 703 || (v:version == 703 && has('patch590'))
+" See note in header of the version of set_visual_marks() that uses setpos() with visual
+" marks for an explanation of why we might want to clear this flag.
+let s:use_setpos_for_visual_marks = 1
 
 " Return macro characters for current filetype. Defaults to Scheme's macro
 " characters if 'lisp' is set, invalid characters otherwise.
@@ -2161,11 +2164,38 @@ function! s:get_visual_marks()
     return [s:get_visual_beg_mark(), s:get_visual_end_mark()]
 endfunction
 
-if s:can_set_visual_marks
+if s:can_set_visual_marks && s:use_setpos_for_visual_marks
     " Set visual marks to [start, end]
+    " Important Caveat: I'm beginning to think the original, pre-7.3.590 approach may have
+    " been better. The problem with using '< and '> with setpos() is that it doesn't seem
+    " to have *enough* side-effects: specifically, if you're already in visual mode, it
+    " doesn't update the visual selection immediately. Through trial-and-error, I've
+    " discovered a workaround: make sure there's a transition *into* visual mode following
+    " the set of the visual marks. However, there appear to be many dark corners in Vim's
+    " visual selection logic, which it's probably best not to hang out in any more than
+    " necessary...
+    " Design Decision: Remain in whatever mode we were called in and if we're not
+    " remaining in visual mode, restore cursor position. Note that this behavior differs
+    " from the legacy version of set_visual_marks(), which always ends up in normal mode.
     function! s:set_visual_marks(marks)
-        call setpos("'<", a:marks[0])
-        call setpos("'>", a:marks[1])
+        " See note in header for explanation.
+        let in_visual = mode() =~ "^[vV\<c-v>]"
+        if in_visual
+            " Exit visual mode before setting marks.
+            exe "normal! \<Esc>"
+        else
+            " We'll want to restore cursor position if we're not in visual mode.
+            let save_cursor = getpos('.')
+        endif
+        let x = setpos("'<", a:marks[0])
+        let x = setpos("'>", a:marks[1])
+        " Transition to visual mode to cause marks to take effect. (See note in header.)
+        normal! gv
+        if !in_visual
+            " Restore mode and cursor to what they were upon entry.
+            exe "normal! \<Esc>"
+            call s:setcursor(save_cursor)
+        endif
     endfunction
 else
     " Before 7.3.590, the only way to set visual marks was to actually enter
@@ -4732,11 +4762,17 @@ function! s:get_clone_target_range(mode, after, list)
             " Are we within/on a list?
             let found = sexp#select_current_list('n', 0, 0)
             " Caveat! Don't stay in visual mode.
+            " TODO: Consider adding an optional inhibit_select flag to
+            " sexp#select_current_element and sexp#select_current_list, which would
+            " obviate need for this. The problem with remaining in visual mode is that
+            " *any* subsequent cursor movement would alter the marks we've just set.
             exe "normal! \<Esc>"
             if found
                 " Design Decision: Perform inner element selection to
                 " incorporate any adjacent macro chars.
                 call sexp#select_current_element('n', 1)
+                " Caveat! Don't stay in visual mode.
+                exe "normal! \<Esc>"
                 let [vs, ve] = s:get_visual_marks()
                 " Make sure we're on or in the found list.
                 " Rationale: select_current_list can find list after cursor,
@@ -4924,10 +4960,10 @@ function! sexp#clone(mode, count, list, after, force_sl_or_ml)
         endif
     endif
 
-    call s:setcursor(cursor)
-
     " Adjust visual marks. See note in header on what vs/ve represent.
     call s:set_visual_marks([vs, ve])
+    " Restore adjusted cursor position.
+    call s:setcursor(cursor)
 endfunction
 
 " Remove brackets from current list, placing cursor at position of deleted

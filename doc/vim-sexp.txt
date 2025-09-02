@@ -132,6 +132,7 @@ ie                                                *<Plug>(sexp_inner_element)*
 
         An element always includes leading macro characters.
 
+Outer Element whitespace selection logic ~
                                                *surrounding-whitespace-rules*
         Inner motion does not include surrounding whitespace, but the outer
         motion attempts to include all the whitespace you would wish to delete if
@@ -149,8 +150,9 @@ ie                                                *<Plug>(sexp_inner_element)*
               comment
               Rationale: Comments are often line/element-specific.
             * remove all whitespace separating adjacent siblings
-            * remove all blank lines between elements initially separated by
-              at least 1 blank line (g:sexp_cleanup_keep_one_blank == 1).
+            * remove all blank lines between elements when
+              |g:sexp_cleanup_keep_empty_lines| is set to a value >= 1,
+              representing the maximum number of blanks you'd like to keep.
         Note: The rules may sound complex, but they mostly follow Ruby's
         "Principle of Least Surprise" and Perl's "Do What I Mean"...
 
@@ -430,10 +432,10 @@ CLONE COMMANDS (normal, visual) ~
         following to your `g:sexp_mappings` list (with `...` replaced by the
         desired lhs):
 >
-        sexp_clone_list_sl = '...',
-        sexp_clone_element_sl = '...',
-        sexp_clone_list_ml = '...',
-        sexp_clone_element_ml = '...',
+        \ 'sexp_clone_list_sl': '...',
+        \ 'sexp_clone_element_sl': '...',
+        \ 'sexp_clone_list_ml': '...',
+        \ 'sexp_clone_element_ml': '...',
 <
 
                                                            *clone-does-indent*

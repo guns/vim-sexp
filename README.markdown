@@ -68,7 +68,8 @@ Text object selections refer to text _around_ the cursor.
 * The `aF` and `iF` objects select top-level COMPOUND FORMS.
 * The `as` and `is` objects select STRINGS.
 * The `ae` and `ie` objects select ELEMENTS.
-* The `ac` and `ic` objects select Nth child ELEMENT from start/end of current COMPOUND FORM.
+* The `ac` and `ic` objects select Nth CHILD ELEMENT from **start** of current COMPOUND FORM.
+* The `aC` and `iC` objects select Nth CHILD ELEMENT from **end** of current COMPOUND FORM.
 
 ### Text Object Motions (normal, visual, operator-pending)
 

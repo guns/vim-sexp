@@ -26,6 +26,23 @@ like Clojure.
 A handful of features found in the popular S-Expression plugin for emacs,
 paredit.el, are also provided.
 
+Treesitter Support ~
+
+Conditional support for the Treesitter library was added in September 2025.
+This change should have no impact on Vim users, but Neovim users should
+notice increased performance, and should no longer need to set the
+`additional_vim_regex_highlighting` Treesitter configuration option to make
+vim-sexp work correctly. Setting this option was once necessary because the
+original implementation used Vim's legacy syntax regions to determine sexp
+boundaries. Although the workaround was effective, it caused performance
+issues for some users, and in any case, running Vim's syntax engine when
+Treesitter is active is redundant. Thus, conditionally-enabled Lua modules
+have been added to the implementation to obviate the need for Vim's legacy
+syntax engine when Treesitter is available.
+Note: Treesitter support has been tested by a handful of users, but if you
+notice any issues, please open an issue on Github.
+
+
 ==============================================================================
 II. MAPPINGS                                                   *sexp-mappings*
 
@@ -464,28 +481,28 @@ INDENT COMMANDS (normal, visual) ~
         commands; such commands would be pointless because "top" implies
         ignoring the visual selection.
 
-        == shadows the builtin |==| mapping. If you wish to remap this
+        `==` shadows the builtin |==| mapping. If you wish to remap this
         command, see |g:sexp_mappings| for more information.
         Note: The presence of builtin = would result in an undesirable delay
         if == were used for sexp_indent in visual mode; accordingly, if you
         have not overridden the default mapping for sexp_indent, = is used
         instead of == for visual mode sexp_indent.
 
+Indent with whitespace cleanup ~
                                                                 *clean-indent*
-        If |g:sexp_indent_does_clean| is set (unset by default), the indent
-        commands also perform "cleanup" on the indented region by removing
-        extra whitespace. The rules for determining whether whitespace is
-        "extra" obey the "principle of least surprise" mentioned under
-        |surrounding-whitespace-rules| (in the section on sexp_outer_element).
-        Note: Blank lines are generally removed, but may be kept in certain
-        scenarios, depending on the setting of various g:sexp_cleanup_<...>
-        options.
 
 <M-=>                                          *<Plug>(sexp_indent_and_clean)*
 <M-->                                      *<Plug>(sexp_indent_and_clean_top)*
-        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but ALWAYS removes
-        extra whitespace, ignoring option |g:sexp_indent_does_clean|.
+        Like == (|sexp_indent)| and =- (|sexp_indent_top|), but also removes
+        extra whitespace.
 
+        The rules for determining whether whitespace is "extra" obey the
+        "principle of least surprise" mentioned under
+        |surrounding-whitespace-rules|.
+
+        If |g:sexp_indent_does_clean| is set (unset by default), the regular
+        (non-cleaning) indent commands (`==` and `=-`) also perform whitespace
+        "cleanup".
 
         *Tip:* Users who expect to use only one of the two forms of indent
         (cleaning or non-cleaning) can unbind <M-=> and <M--> and use
@@ -495,14 +512,14 @@ INDENT COMMANDS (normal, visual) ~
 
 COMMENT ALIGNMENT COMMANDS (normal, visual) ~
 
-<M-a>                                            *<Plug>(sexp_align_comments)*
-<M-\>                                        *<Plug>(sexp_align_comments_top)*
+<LocalLeader>a                                   *<Plug>(sexp_align_comments)*
+<LocalLeader>A                               *<Plug>(sexp_align_comments_top)*
         In normal mode, align trailing comments within [count] surrounding
-        lists (compound FORMs) or visual selection (<M-a>) or current
-        top-level list (<M-\>) without moving the cursor.
+        lists (compound FORMs) or visual selection (`<LocalLeader>a`) or
+        current top-level list (`<LocalLeader>A`) without moving the cursor.
         *Note:* Trailing comment alignment makes the most sense on ranges
         spanning more than a few lines; thus, the |sexp_align_comments_top|
-        (<M-\>) command is probably the most useful.
+        (`<LocalLeader>A`) command is probably the most useful.
         
         In visual mode, the selection is first expanded to cover all partially
         selected lists and elements.
@@ -1144,17 +1161,18 @@ full (level 2) optimization.
         let g:sexp_aligncom_density_weight = 5
 <
 
+Customizing keymaps ~
                                                              *g:sexp_mappings*
-Dictionary of user vim-sexp mappings. Keys are the <Plug> names without
-"<Plug>" or the surrounding parentheses, and the values are the key sequences
-you wish to bind to.
+Vim-sexp provides default mappings for most commands, but you can override
+these defaults by adding entries to global Dictionary `g:sexp_mappings`, whose
+keys are the command names with the surrounding `<Plug>(...)` removed,
+and whose values are the key sequences you wish to bind to.
 
-This dictionary is merged over the dictionary of default mappings, so it is
-not necessary to copy all the entries to change a few.
+Any global version of this dictionary you provide will be merged into the
+default dictionary shown below, so the global version needn't contain entries
+for commands you don't wish to override.
+Note: To unbind a command, simply set its <lhs> to an empty string.
 >
-        " Default
-        let g:sexp_mappings = {}
-
         " vim-sexp internal mappings
         let s:sexp_mappings = {
             \ 'sexp_outer_list':                'af',
@@ -1191,8 +1209,8 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_indent_top':                '=-',
             \ 'sexp_indent_and_clean':          '<M-=>',
             \ 'sexp_indent_and_clean_top':      '<M-->',
-            \ 'sexp_align_comments':            '<M-a>',
-            \ 'sexp_align_comments_top':        '<M-\>',
+            \ 'sexp_align_comments':            '<LocalLeader>a',
+            \ 'sexp_align_comments_top':        '<LocalLeader>A',
             \ 'sexp_round_head_wrap_list':      '<LocalLeader>i',
             \ 'sexp_round_tail_wrap_list':      '<LocalLeader>I',
             \ 'sexp_square_head_wrap_list':     '<LocalLeader>[',
@@ -1210,9 +1228,11 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_splice_list':               '<LocalLeader>@',
             \ 'sexp_convolute':                 '<LocalLeader>?',
             \ 'sexp_clone_list':                '<LocalLeader>c',
-            \ 'sexp_clone_list_sl':             '<LocalLeader><LocalLeader>c',
+            \ 'sexp_clone_list_sl':             '',
+            \ 'sexp_clone_list_ml':             '',
             \ 'sexp_clone_element':             '<LocalLeader>C',
-            \ 'sexp_clone_element_sl':          '<LocalLeader><LocalLeader>C',
+            \ 'sexp_clone_element_sl':          '',
+            \ 'sexp_clone_element_ml':          '',
             \ 'sexp_raise_list':                '<LocalLeader>o',
             \ 'sexp_raise_element':             '<LocalLeader>O',
             \ 'sexp_swap_list_backward':        '<M-k>',
@@ -1225,23 +1245,23 @@ not necessary to copy all the entries to change a few.
             \ 'sexp_capture_next_element':      '<M-S-l>',
             \ }
 <
-To unbind a mapping, keep the key in the dictionary with an empty string
-as the value. For example, if you wanted to avoid shadowing vim's sentence
-motions:
+Override Example: ~
+To avoid shadowing Vim's builtin "sentence" mappings, you could define the
+following `g:sexp_mappings`:
 >
         let g:sexp_mappings = {
             \ 'sexp_outer_string':              'aS',
             \ 'sexp_inner_string':              'iS',
-            \ 'sexp_move_to_prev_bracket':      '',
-            \ 'sexp_move_to_next_bracket':      '',
-            \ }
+            \ 'sexp_move_to_prev_bracket':      'g(',
+            \ 'sexp_move_to_next_bracket':      'g)',
+        \ }
 <
-This would remap the string object selection mappings and remove the adjacent
-bracket object motion mappings altogether.
 
                                                              *g:sexp_maxlines*
 Searching for paired brackets is accomplished with the |searchpairpos()|
 function, and it is invoked quite often in this plugin.
+Note: Calls to `searchpairpos()` are more rare in Neovim with Treesitter
+support, and will probably be eliminated altogether in a future version.
 
 If g:sexp_maxlines is 0 or -1, |searchpairpos()| scans the entire buffer for
 its match, which can be slow if the nearest bracket is far from the cursor.
@@ -1357,12 +1377,16 @@ copy, paste, and edit this example to taste.
             xmap <silent><buffer> <LocalLeader>C  <Plug>(sexp_clone_element)
             nmap <silent><buffer> <LocalLeader><LocalLeader>C  <Plug>(sexp_clone_element_sl)
             xmap <silent><buffer> <LocalLeader><LocalLeader>C  <Plug>(sexp_clone_element_sl)
+            " Feel free to add sexp_clone_{list,element}_ml variants as well.
             nmap <silent><buffer> ==              <Plug>(sexp_indent)
             xmap <silent><buffer> =               <Plug>(sexp_indent)
             nmap <silent><buffer> =-              <Plug>(sexp_indent_top)
             nmap <silent><buffer> <M-=>           <Plug>(sexp_indent_and_clean)
             xmap <silent><buffer> <M-=>           <Plug>(sexp_indent_and_clean)
             nmap <silent><buffer> <M-->           <Plug>(sexp_indent_and_clean_top)
+            nmap <silent><buffer> <LocalLeader>a  <Plug>(sexp_align_comments)
+            xmap <silent><buffer> <LocalLeader>a  <Plug>(sexp_align_comments)
+            nmap <silent><buffer> <LocalLeader>A  <Plug>(sexp_align_comments_top)
             nmap <silent><buffer> <LocalLeader>i  <Plug>(sexp_round_head_wrap_list)
             xmap <silent><buffer> <LocalLeader>i  <Plug>(sexp_round_head_wrap_list)
             nmap <silent><buffer> <LocalLeader>I  <Plug>(sexp_round_tail_wrap_list)

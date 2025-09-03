@@ -23,6 +23,12 @@ Vim-sexp brings the Vim philosophy of _precision editing_ to S-expressions.
   Enables use of the `.` command for repeating change operations in vim-sexp,
   as well as repeating builtin operations with vim-sexp's text objects.
 
+## Treesitter Support
+
+Although Treesitter is not a requirement, vim-sexp will use it to achieve significant performance gains if it's available.
+
+:help sexp-treesitter-support
+
 ## Definitions
 
 A COMPOUND FORM is a region of text delimited by a pair of `(` and `)`,
@@ -116,12 +122,25 @@ Hint: Square bracket commands tend to move down and into lists, curly braces up 
 
 If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` commands remove extra whitespace before performing indent. If you set this option, you may wish to unmap `<M-=>` and `<M-->` to avoid creating redundant mappings.
 
+### Comment Alignment Commands (normal, visual)
+
+* `<LocalLeader>a` aligns end-of-line comments in the current COMPOUND FORM or visual selection without moving the cursor
+* `<LocalLeader>A` aligns end-of-line comments in the current top-level COMPOUND FORM without moving the cursor (normal mode only)
+
+**Note:** Vim-sexp uses a weighted-cost dynamic programming algorithm to perform comment alignment, based on weights and thresholds you can easily customize.
+
+:help sexp-comment-alignment-algorithm
+
 ### Clone Commands (normal, visual)
 
 * `<LocalLeader>c` inserts copy(s) of current list or visual selection before cursor without moving cursor
 * `<LocalLeader><LocalLeader>c` like previous, but inhibits insertion of newlines between copies
 * `<LocalLeader>C` inserts copy(s) of current element or visual selection before cursor without moving cursor
 * `<LocalLeader><LocalLeader>C` like previous, but inhibits insertion of newlines between copies
+
+**Note:** The clone commands above use simple heuristics to decide whether to perform a single or multi-line clone: i.e., whether to insert a space or a newline between the cloned elements. If you find that the default logic doesn't always do what you expect, you can add mappings for the single and multi-line command variants to your `g:sexp_mappings` override.
+
+:help single-vs-multi-line-clone
 
 If `g:sexp_clone_does_indent` is set (true by default) and cloned text spans multiple lines, all elements involved in the clone (both original and copies) will be indented.
 

@@ -27,7 +27,7 @@ A handful of features found in the popular S-Expression plugin for emacs,
 paredit.el, are also provided.
 
 Treesitter Support ~
-
+                                                     *sexp-treesitter-support*
 Conditional support for the Treesitter library was added in September 2025.
 This change should have no impact on Vim users, but Neovim users should
 notice increased performance, and should no longer need to set the
@@ -150,7 +150,7 @@ ie                                                *<Plug>(sexp_inner_element)*
         An element always includes leading macro characters.
 
 Outer Element whitespace selection logic ~
-                                               *surrounding-whitespace-rules*
+                                           *sexp-surrounding-whitespace-rules*
         Inner motion does not include surrounding whitespace, but the outer
         motion attempts to include all the whitespace you would wish to delete if
         you were using the text object to delete element(s). The algorithm is
@@ -174,7 +174,7 @@ Outer Element whitespace selection logic ~
         "Principle of Least Surprise" and Perl's "Do What I Mean"...
 
 
-                                                       *cleanup-vs-extension*
+                                                   *sexp-cleanup-vs-extension*
         These text objects can be used to "clean up" the current selection
         and/or pull additional elements into it. Cleaning up might mean
         toggling an "inner" selection to an "outer" one (or vice versa). Or
@@ -212,7 +212,7 @@ ic                                             *<Plug>(sexp_inner_child_head)*
         The meaning of the terms "inner" and "outer" are as defined for the ie
         and ae text objects. 
 
-                                                  *child-objects-vs-[e-and-]e*
+                                             *sexp-child-objects-vs-[e-and-]e*
         There is overlap between the use cases for child objects and the
         select prev/next element commands ([e and ]e). The chief difference is
         that a child object's offset is always specified relative to the start
@@ -455,7 +455,7 @@ CLONE COMMANDS (normal, visual) ~
         \ 'sexp_clone_element_ml': '...',
 <
 
-                                                           *clone-does-indent*
+                                                      *sexp-clone-does-indent*
         If |g:sexp_clone_does_indent| is set (the default), indent the
         compound form (or range of lines at toplevel) containing the cloned
         elements.
@@ -489,7 +489,7 @@ INDENT COMMANDS (normal, visual) ~
         instead of == for visual mode sexp_indent.
 
 Indent with whitespace cleanup ~
-                                                                *clean-indent*
+                                                           *sexp-clean-indent*
 
 <M-=>                                          *<Plug>(sexp_indent_and_clean)*
 <M-->                                      *<Plug>(sexp_indent_and_clean_top)*

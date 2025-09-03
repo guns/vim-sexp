@@ -42,6 +42,15 @@ syntax engine when Treesitter is available.
 Note: Treesitter support has been tested by a handful of users, but if you
 notice any issues, please open an issue on Github.
 
+Installation ~
+
+Vim-sexp requires no installation beyond downloading the plugin into your
+'runtimepath', which can be done manually or with the aid of a plugin manager.
+There are many plugin managers available to users of Vim and Neovim, and no
+attempt will be made to cover them all here; however, for the benefit of
+Neovim users who may not be accustomed to manual installations, a sample
+configuration using the (Neovim-only) Lazy plugin manager is provided in
+|sexp-lazy-install|.
 
 ==============================================================================
 II. MAPPINGS                                                   *sexp-mappings*
@@ -1454,7 +1463,62 @@ in the filetypes of your choosing.
         augroup END
 <
 ==============================================================================
-V. CHANGELOG                                                  *sexp-changelog*
+V.  LAZY INSTALLATION EXAMPLE
+
+                                                           *sexp-lazy-install*
+To install vim-sexp with the popular Lazy plugin manager (Neovim-only), create
+a Lazy plugin spec containing your vim-sexp customized keymap and option
+settings under stdpath('config').
+
+Note: A future version of vim-sexp will likely support a more idiomatic plugin
+spec: i.e., one which uses a nested 'opts' table and does not require explicit
+override of 'init'.
+
+Example ~
+-- File: ~/.config/nvim/lua/plugins/vim-sexp.lua
+
+return {
+  'guns/vim-sexp',
+  lazy = false,
+  init = function()
+    -- General plugin option settings
+    vim.g.sexp_indent_does_clean = 1
+    vim.g.sexp_clone_does_indent = 1
+    vim.g.sexp_indent_aligns_comments = 1
+    -- Custom keymaps
+    vim.g.sexp_mappings = {
+      -- Note: Commands not overridden here will use default keymaps.
+      -- Note: Setting to empty string disables a command.
+      sexp_indent_and_clean = '<M-=>',
+      sexp_indent_and_clean_top = '<M-->',
+      sexp_align_comments = '<M-a>',
+      sexp_align_comments_top = '<M-\\>',
+      sexp_insert_at_list_head = '<M-I>',
+      sexp_insert_at_list_tail = '<M-A>',
+      sexp_splice_list = '<M-@>',
+      sexp_convolute = '<M-?>',
+      sexp_clone_list = '<LocalLeader>C',
+      sexp_clone_list_sl = '<LocalLeader><LocalLeader>C',
+      sexp_clone_list_ml = '<A-C>',
+      sexp_clone_element = '<LocalLeader>c',
+      sexp_clone_element_sl = '<LocalLeader><LocalLeader>c',
+      sexp_clone_element_ml = '<A-c>',
+      sexp_raise_list = '<M-O>',
+      sexp_raise_element = '<M-o>',
+      sexp_swap_list_backward = '<M-H>',
+      sexp_swap_list_forward = '<M-L>',
+      sexp_swap_element_backward = '<M-h>',
+      sexp_swap_element_forward = '<M-l>',
+      sexp_emit_head_element = '<M-P>',
+      sexp_emit_tail_element = '<M-p>',
+      sexp_capture_prev_element = '<M-T>',
+      sexp_capture_next_element = '<M-t>',
+    }
+  end,
+}
+
+==============================================================================
+VI. CHANGELOG                                                 *sexp-changelog*
 
 03 March 2015
         - Add documentation on how to opt-out of g:sexp_mappings and manually

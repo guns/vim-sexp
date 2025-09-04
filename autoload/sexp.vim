@@ -1791,6 +1791,7 @@ endfunction
 "
 " If no such adjacent element exists, moves to beginning or end of element
 " respectively. Analogous to native w, e, and b commands.
+" TODO: Consider an optional flag requesting return of s:nullpos if no adjacent.
 " FIXME: Move this (or the api sexp#move_to_adjacent_element we're trying to deconflict)
 " and get rid of the kludgy suffix.
 function! s:move_to_adjacent_element(next, tail, top)
@@ -2787,18 +2788,35 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Capture element adjacent to current list, given the starting position of the
-" enclosing list's bracket minus leading macro characters (spos) and the
-" position of the bracket itself (bpos).
+" Capture nearest non-comment sibling of current list, given the starting position of the
+" list's bracket minus any leading macro characters (spos) and the position of the bracket
+" itself (bpos).
+" Return 1 iff element is captured.
+" Note: For tail capture, spos == bpos.
+" Cursor Preservation: Caller handles.
 function! s:stackop_capture(last, spos, bpos)
     call s:setcursor(a:spos)
-    let nextpos = s:move_to_adjacent_element(a:last, 0, 0)
-
-    " Ensure we are not trying to capture a parent list
-    if nextpos[1] < 1 || s:compare_pos(a:spos, sexp#current_element_terminal(!a:last)) == (a:last ? 1 : -1)
-        return 0
-    endif
-
+    let nextpos = a:spos
+    " Move outwards, landing on successive elements' outer edges, looking for a
+    " non-comment element, which will become the new terminal.
+    while 1
+        let prevpos = nextpos
+        " Move to outside edge of adjacent element.
+        let nextpos = s:move_to_adjacent_element(a:last, a:last, 0)
+        " Make sure the call above actually moved us to a different element.
+        " Note: s:move_to_adjacent_element() returns terminal position of *current* element
+        " if no next element exists, and we started on the outside edge of an element
+        " (i.e., the terminal position we'll end up on when there's no adjacent element).
+        if !nextpos[1] || s:compare_pos(prevpos, nextpos) == 0
+            " Nothing to capture
+            return 0
+        endif
+        if !s:is_comment(nextpos[1], nextpos[2])
+            " Found a capturable (non-comment) element.
+            break
+        endif
+    endwhile
+    " Get the bracket (and possibly leading macro chars) to be relocated.
     let reg_save = @b
     let @b = getline(a:spos[1])[a:spos[2] - 1 : a:bpos[2] - 1]
     let blen = len(@b)
@@ -2806,7 +2824,6 @@ function! s:stackop_capture(last, spos, bpos)
     " Insertion and deletion must be done from the bottom up to avoid
     " recalculating our marks
     if a:last
-        let nextpos = sexp#current_element_terminal(1)
         call s:setcursor(nextpos)
         execute 'silent! normal! "bp'
         call s:setcursor(a:spos)
@@ -2823,36 +2840,51 @@ function! s:stackop_capture(last, spos, bpos)
     return 1
 endfunction
 
-" Emit terminal element in current list, given the starting position of the
-" enclosing list's bracket minus leading macro characters (spos) and the
-" position of the bracket itself (bpos).
+" Emit outermost non-comment element from current list, given the starting position of the
+" list's bracket minus any leading macro characters (spos) and the position of the bracket
+" itself (bpos).
+" Return 1 iff element is emitted.
+" Constraint: Never emit the final non-comment from the list.
+" Note: For tail capture, spos == bpos.
+" Design Decision: Although we could allow comment as terminal, provided we inserted a
+" newline before bracket, let's stick as closely to original behavior as possible, and
+" also do what was agreed upon in Github issue #13.
+" Cursor Preservation: Caller handles.
 function! s:stackop_emit(last, spos, bpos)
-    " Move inwards onto the terminal element, then find the penultimate
-    " element, which will become the ultimate element after the move
+    " Start on the list bracket.
     call s:setcursor(a:bpos)
 
+    " Move inwards onto the terminal element's outer edge.
+    " Note: If emit occurs, this element will definitely be emitted.
     let [l, c] = s:findpos('\v\S', !a:last)
     if l < 1 | return 0 | endif
+    let nextpos = [0, l, c, 0]
+    call s:setcursor(nextpos)
 
-    call cursor(l, c)
+    " Continue inwards, landing on successive elements' outer edges, looking for a
+    " non-comment element, which can become the new terminal.
+    while 1
+        let prevpos = nextpos
+        " Move to outside edge of adjacent element.
+        let nextpos = s:move_to_adjacent_element(!a:last, a:last, 0)
+        if nextpos[1] < 1 | return 0 | end
 
-    if a:last
-        call s:move_to_current_element_terminal(0)
-    endif
+        " Make sure we actually moved to a new element, and the element is contained.
+        " Note: The sexp#current_element_terminal() call is needed to ensure we moved to a
+        " new element, but I don't believe the containment test is necessary, since
+        " s:move_to_adjacent_element() should guarantee containment. Perhaps it was
+        " intended to deal with unbalanced forms? TODO: Consider removal.
+        if s:compare_pos(sexp#current_element_terminal(a:last), prevpos) == 0
+            \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
+            return 0
+        endif
+        if !s:is_comment(nextpos[1], nextpos[2])
+            " Found non-comment element that can serve as terminal.
+            break
+        endif
+    endwhile
 
-    let nextpos = s:move_to_adjacent_element(!a:last, 0, 0)
-    if nextpos[1] < 1 | return 0 | end
-
-    let nextpos = sexp#current_element_terminal(a:last)
-
-    " Ensure that this new ultimate element is different than the last and
-    " that it is actually contained
-    if s:compare_pos(nextpos, [0, l, c, 0]) == 0
-        \ || s:compare_pos(nextpos, a:spos) != (a:last ? -1 : 1)
-        \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
-        return 0
-    endif
-
+    " Get the bracket (and possibly leading macro chars) to be relocated.
     let reg_save = @b
     let @b = getline(a:spos[1])[a:spos[2] - 1 : a:bpos[2] - 1]
     let blen = len(@b)
@@ -2865,7 +2897,6 @@ function! s:stackop_emit(last, spos, bpos)
         call s:setcursor(nextpos)
         execute 'silent! normal! "bp'
     else
-        call s:setcursor(nextpos)
         execute 'silent! normal! "bP'
         call s:setcursor(a:spos)
         execute 'silent! normal! "_d' . blen . 'l'

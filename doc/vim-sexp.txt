@@ -773,6 +773,11 @@ LIST MANIPULATION (normal, visual) ~
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 
+                                                    *capture-emit-does-indent*
+        By default, captures/emits affecting multiple lines trigger an
+        automatic re-indent. If you don't like this behavior, simply set
+        option |g:sexp_capture_emit_does_indent| to 0.
+
 INSERT MODE MAPPINGS (insert, optional) ~
 
 (                                          *<Plug>(sexp_insert_opening_round)*
@@ -855,11 +860,18 @@ indent and clone commands. For details, see sections |clean-indent| and
         let g:sexp_indent_does_clean = 0
 <
                                                     *g:sexp_clone_does_indent*
-Indent the elements involved in a multi-line clone operation. For details, see
-section |clone-does-indent|.
+Automatically re-indent the elements involved in a multi-line clone operation.
+For details, see section |clone-does-indent|.
 >
         " Default
         let g:sexp_clone_does_indent = 1
+<
+                                             *g:sexp_capture_emit_does_indent*
+Automatically re-indent a multi-line form involved in a capture/emit
+operation. For details, see section |capture-emit-does-indent|.
+>
+        " Default
+        let g:sexp_capture_emit_does_indent = 1
 <
                                                  *g:sexp_prefer_legacy_syntax*
 Prefer using Vim's legacy syntax engine to determine element boundaries, even

@@ -2,7 +2,7 @@ local M = {}
 local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
---local dbg = require'dp':get('sexp', {enabled=false})
+--local dbg = require'dp':get('sexp', {enabled=true})
 
 local reltime = vim.fn.reltime
 local reltimefloat = vim.fn.reltimefloat
@@ -324,9 +324,8 @@ end
 function M.super_range(beg, end_)
   local save_curpos = vim.fn.getcurpos()
   --dbg:logf("super_range(%s, %s)", vim.inspect(beg), vim.inspect(end_))
-  -- In case of upwards traversal, this tuple will hold the found start/end nodes.
   ---@type [TSNode?, TSNode?]
-  local nodes_ = {}
+  local nodes = {}
   -- Short-circuit optimization: skip upwards traversals for common case of single-char region.
   -- Rationale: Think vie.
   if beg[2] ~= end_[2] or beg[3] ~= end_[3] then
@@ -347,26 +346,46 @@ function M.super_range(beg, end_)
     -- Get node that contains *both* start and end.
     -- Note: Important to use e_ (not e) for end of rnage
     local ct_node = root:named_descendant_for_range(s.r, s.c, e_.r, e_.c)
-    -- Loop upward from both start and end nodes until the containing node is reached.
-    -- Note: Default terminals are beg/end_, with an upwards adjustment upon each loop
-    -- iteration; thus, initial positions are unchanged if loop not entered.
-    ---@type [TSNode, TSNode]
-    local nodes = {snode, enode}
-    for i = 1, 2 do
-      ---@type TSNode? # starting point for upwards traversal
-      local n = nodes[i]
-      while n and n ~= ct_node do
-        nodes_[i] = n
-        n = n:parent()
+    if not ct_node then
+      -- Shouldn't happen.
+      -- Rationale: All code files have a toplevel node called "source" or somesuch, which
+      -- contains all user-visible toplevel forms.
+      --dbg:logf("Returning nil: ~ct_node")
+      return nil
+    end
+    --dbg:logf("%d %d %d %d", s.r, s.c, e_.r, e_.c)
+    --dbg:logf("ct_node:type() %s %s %d,%d %d,%d",
+    --  ct_node:type(), vim.inspect(ct_node:id()), ct_node:range())
+    if snode == ct_node or enode == ct_node then
+      -- When one side is the container itself, both sides must be.
+      nodes = {ct_node, ct_node}
+    else
+      nodes = {snode, enode}
+      -- Neither snode nor enode was the container; thus, we traverse upwards to find a
+      -- pair of siblings whose parent is the container.
+      for i = 1, 2 do
+        --dbg:logf("i=%d", i)
+        --dbg:logf("nodes[%d]:type() = %s %s %d,%d %d,%d",
+        --  i, nodes[i]:type(), vim.inspect(nodes[i]:id()), nodes[i]:range())
+        ---@type TSNode? # starting point for upwards traversal
+        local n = nodes[i]
+        while n and n ~= ct_node do
+          --dbg:logf("n:type() = %s %s %d,%d %d,%d", n:type(), vim.inspect(n:id()), n:range())
+          nodes[i] = n
+          n = n:parent()
+        end
       end
     end
   end
+  -- Note: It's possible for nodes[] to be empty at this point. It's also possible that
+  -- the nodes are the same.
   -- Initialize return positions, accounting for any upwards movement in loops above.
-  local svp = nodes_[1] and ApiPos:new(nodes_[1]:start()):to_vim4() or vim.list_slice(beg)
-  local evp = nodes_[2] and ApiPos:new(nodes_[2]:end_()):to_vim4(true) or vim.list_slice(end_)
+  local svp = nodes[1] and ApiPos:new(nodes[1]:start()):to_vim4() or vim.list_slice(beg)
+  local evp = nodes[2] and ApiPos:new(nodes[2]:end_()):to_vim4(true) or vim.list_slice(end_)
   --dbg:logf("---------------------")
   --dbg:logf("svp=%d,%d evp=%d,%d", svp[2], svp[3], evp[2], evp[3])
-  -- Make sure start and end do not contain *partial* elements.
+  -- Use legacy functions to ensure start and end do not contain *partial* elements: e.g.,
+  -- a form without its leading macro chars.
   vim.fn.setpos('.', svp)
   --dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))
   ---@type [VimPos4, VimPos4]
@@ -380,8 +399,6 @@ function M.super_range(beg, end_)
   --dbg:logf("Found current_element_terminal(1) for evp: %s", vim.inspect(evp))
   -- Restore position.
   vim.fn.setpos('.', save_curpos)
-  -- At this point, snode and enode could be the same or different nodes. It's also
-  -- possible one or both are not within an element (i.e., blank or whitespace).
   --dbg:logf("super_range returning %s-%s", vim.inspect(svp), vim.inspect(evp))
   return {svp, evp}
 end

@@ -39,6 +39,10 @@ if !exists('g:sexp_clone_does_indent')
     let g:sexp_clone_does_indent = 1
 endif
 
+if !exists('g:sexp_capture_emit_does_indent')
+    let g:sexp_capture_emit_does_indent = 1
+endif
+
 if !exists('g:sexp_prefer_legacy_syntax')
     let g:sexp_prefer_legacy_syntax = 0
 endif
@@ -241,19 +245,6 @@ let s:have_repeat_set = exists('*repeat#set')
 let s:have_cmd = has('nvim') || v:version >= 900
 """ Functions {{{1
 
-" This function is necessary when <cmd> is used in mappings.
-" Rationale: The old approach (:<c-u>) changed mode from visual to normal as a side
-" effect. Some sexp functions break if called in visual mode, and the <cmd> modifier does
-" not cause exit from visual mode. The simplest solution is to place a call to this
-" function after the <cmd> (and after capture of v:count/v:prevcount, which can be changed
-" by a call to this function).
-function! s:ensure_normal_mode()
-	let mode = mode()
-	if mode =~ "^[vV\<C-V>]"
-		exe "normal \<Esc>"
-	endif
-endfu
-
 command! -nargs=+       DEFPLUG  call <SID>defplug('000', <f-args>)
 command! -nargs=+ -bang Defplug  call <SID>defplug('1' . string(!empty('<bang>')) . '0', <f-args>)
 command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(!empty('<bang>')) . '1', <f-args>)
@@ -311,7 +302,7 @@ function! s:defplug(flags, mapmode, name, ...)
     let use_count = rhs =~ 'v:prevcount' && !s:have_cmd ? 'v:prevcount' : 'v:count'
     let prefix = lhs . ' '
                  \ . (s:have_cmd ? '<cmd>' : ':<c-u>') . ' let b:sexp_count = ' . use_count
-                 \ . (s:have_cmd ? ' \| call <SID>ensure_normal_mode()' : '') . ' \| '
+                 \ . (s:have_cmd ? ' \| call sexp#ensure_normal_mode()' : '') . ' \| '
                  \ . prefix
                  \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
                  \ . 'call ' . substitute(rhs, 'v:\%(prev\)\?count', 'b:sexp_count', 'g')
@@ -630,14 +621,14 @@ Defplug! nnoremap sexp_swap_element_forward  sexp#docount(v:count, 'sexp#swap_el
 DefplugN xnoremap sexp_swap_element_forward  sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 0)
 
 " Emit/capture element
-Defplug! nnoremap sexp_emit_head_element    sexp#docount(v:count, 'sexp#stackop', 'n', 0, 0)
-Defplug  xnoremap sexp_emit_head_element    sexp#docount(v:prevcount, 'sexp#stackop', 'v', 0, 0)
-Defplug! nnoremap sexp_emit_tail_element    sexp#docount(v:count, 'sexp#stackop', 'n', 1, 0)
-Defplug  xnoremap sexp_emit_tail_element    sexp#docount(v:prevcount, 'sexp#stackop', 'v', 1, 0)
-Defplug! nnoremap sexp_capture_prev_element sexp#docount(v:count, 'sexp#stackop', 'n', 0, 1)
-Defplug  xnoremap sexp_capture_prev_element sexp#docount(v:prevcount, 'sexp#stackop', 'v', 0, 1)
-Defplug! nnoremap sexp_capture_next_element sexp#docount(v:count, 'sexp#stackop', 'n', 1, 1)
-Defplug  xnoremap sexp_capture_next_element sexp#docount(v:prevcount, 'sexp#stackop', 'v', 1, 1)
+Defplug! nnoremap sexp_emit_head_element    sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 0, 0)
+Defplug  xnoremap sexp_emit_head_element    sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 0, 0)
+Defplug! nnoremap sexp_emit_tail_element    sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 1, 0)
+Defplug  xnoremap sexp_emit_tail_element    sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 1, 0)
+Defplug! nnoremap sexp_capture_prev_element sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 0, 1)
+Defplug  xnoremap sexp_capture_prev_element sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 0, 1)
+Defplug! nnoremap sexp_capture_next_element sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 1, 1)
+Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 1, 1)
 
 """ Insert mode mappings {{{1
 

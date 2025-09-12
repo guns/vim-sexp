@@ -378,7 +378,9 @@ function M.super_range(beg, end_)
     end
   end
   -- Note: It's possible for nodes[] to be empty at this point. It's also possible that
-  -- the nodes are the same.
+  -- the start/end nodes are the same.
+  -- Assumption: Shouldn't be possible for start/end not to have shared parent.
+  -- Rationale: All code buffers have a root node encompassing the entire file.
   -- Initialize return positions, accounting for any upwards movement in loops above.
   local svp = nodes[1] and ApiPos:new(nodes[1]:start()):to_vim4() or vim.list_slice(beg)
   local evp = nodes[2] and ApiPos:new(nodes[2]:end_()):to_vim4(true) or vim.list_slice(end_)

@@ -220,8 +220,15 @@ function! s:findpos(pattern, next, ...)
     return searchpos(a:pattern, a:next ? 'nW' : 'bnW', a:0 ? a:1 : 0)
 endfunction
 
-function! s:nearest_bracket_ts(closing, open_re, close_re)
-    return v:lua.require'sexp.ts'.nearest_bracket(a:closing, a:open_re, a:close_re)
+function! s:nearest_bracket_legacy(closing, ...)
+    let flags = a:closing ? 'nW' : 'bnW'
+    let stopline = g:sexp_maxlines > 0
+                   \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
+                   \ : 0
+    let open = a:0 ? a:1 : s:opening_bracket
+    let close = a:0 ? a:2 : s:closing_bracket
+    let [line, col] = searchpairpos(open, '', close, flags, s:match_ignored_region_fn, stopline)
+    return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
 endfunction
 
 " Position of nearest paired bracket: 0 for opening, 1 for closing. Returns
@@ -239,29 +246,7 @@ endfunction
 "
 " Accepts alternate beginning and ending patterns as optional parameters.
 function! s:nearest_bracket(closing, ...)
-    " Attempt to use faster Treesitter-based logic if it's available and caller hasn't
-    " specified open/close regexes, thereby necessitating use of searchpairpos().
-    if s:prefer_treesitter()
-        " Note: Either both open and close patterns are provided or none are...
-        let cp = getpos('.')
-        let [ok, pos] = s:nearest_bracket_ts(a:closing,
-                \ a:0 >= 2 ? a:1 : v:null, a:0 >= 2 ? a:2 : v:null)
-        "call s:Dbg("nearest_bracket_ts returned %s: %s for curpos %s",
-        "            \ string(ok), string(pos), string(cp))
-        " Fall through to slower legacy logic if Treesitter results weren't definitive.
-        if ok
-            return pos
-        endif
-    endif
-    "call s:Dbg("closing=%d - Fell through to legacy nearest_bracket logic!", a:closing)
-    let flags = a:closing ? 'nW' : 'bnW'
-    let stopline = g:sexp_maxlines > 0
-                   \ ? max([1, line('.') + ((a:closing ? 1 : -1) * g:sexp_maxlines)])
-                   \ : 0
-    let open = a:0 ? a:1 : s:opening_bracket
-    let close = a:0 ? a:2 : s:closing_bracket
-    let [line, col] = searchpairpos(open, '', close, flags, s:match_ignored_region_fn, stopline)
-    return line > 0 ? [0, line, col, 0] : [0, 0, 0, 0]
+    return call('s:invoke', ['nearest_bracket', a:closing] + a:000)
 endfunction
 
 function! s:list_open()
@@ -364,11 +349,6 @@ function! s:current_top_list_bracket_by_maxlines(closing)
     endif
 endfunction
 
-fu! s:current_atom_terminal_ts(dir)
-    return luaeval(
-                \ "require'sexp.ts'.current_atom_terminal(_A[1])", [a:dir])
-endfu
-
 fu! s:current_atom_terminal_legacy(end)
     let [_, cursorline, cursorcol, _] = getpos('.')
     if !s:is_atom(cursorline, cursorcol)
@@ -400,7 +380,7 @@ endfu
 " [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
 " lines.
 function! s:current_atom_terminal(end)
-    return s:current_atom_terminal_{s:ts_or_legacy()}(a:end)
+    return s:invoke('current_atom_terminal', a:end)
 endfunction
 
 " Returns 1 if character at position is an atom.
@@ -666,19 +646,57 @@ else
     endfunction
 endif
 
+" Return true iff we should attempt to use Treesitter before fallback to legacy.
 fu! s:prefer_treesitter()
     return (!g:sexp_prefer_legacy_syntax || empty(&syn) || &syn ==? "off") && has('nvim')
 endfu
 
-fu! s:ts_or_legacy()
-    return s:prefer_treesitter() ? "ts" : "legacy"
-endfu
+" Dicts of language-specific flags indicating which warnings have already been displayed
+" to user.
+let s:dispatch_warned = {'ts': {}, 'syn': {}}
 
-fu! s:current_region_terminal_ts(rgn, dir)
-    return luaeval(
-                \ "require'sexp.ts'.current_region_terminal(_A[1], _A[2])",
-                \ [a:rgn, a:dir])
-endfu
+" Invoke either the Treesitter-based Lua function or the legacy syntax-based Vimscript
+" function with the provided arguments, with fallback to the latter if the former returns
+" nil (indicating a missing tree or some other serious issue).
+" Warn user once-only about the following two conditions:
+" 1) We prefer to use Treesitter but the ts.lua method return nil (typically because
+"    there's no language parser, though there could be other reasons).
+" 2) We need legacy syntax but it's not available: i.e., *neither* Treesitter *nor* legacy
+"    syntax.
+" Note: Could move the dispatch checks upstream to the point of (user-visible) command
+" invocation (e.g., to sexp#pre_op()) and refuse to do anything if we don't have a
+" Treesitter node or legacy syntax. With this approach, we could set a ts/legacy dispatch
+" flag once per command invocation to obviate the need for (potentially many) downstream
+" checks at the point of individual implementation function invocations. Currently, this
+" approach is complicated by the existence of insert-mode maps, which have nothing
+" analogous to sexp#pre_op() but do invoke methods requiring dispatch.
+fu! s:invoke(fn, ...)
+    if s:prefer_treesitter()
+        let ret = luaeval(
+                    \ "require'sexp.ts'." . a:fn . "(" . 
+                    \ join(map(range(a:0), '"_A[" . (v:val + 1) . "]"'), ", ")
+                    \ . ")", a:000)
+        " Fall through to legacy if Treesitter method returns nil.
+        if ret isnot v:null
+            return ret
+        endif
+        " Warn once only.
+        if !get(s:dispatch_warned.ts, &filetype, 0)
+            let s:dispatch_warned.ts[&filetype] = 1
+            call s:warnmsg(
+                \ "Warning: Falling back to legacy syntax. Have you installed Treesitter parser for " . &filetype . "?")
+        endif
+    endif
+    " Arrival here means we won't or can't use Treesitter. If we don't have legacy syntax,
+    " we're going to have a problem, so warn...
+    if empty(get(b:, 'current_syntax', '')) && !get(s:dispatch_warned.syn, &filetype, 0)
+        let s:dispatch_warned.syn[&filetype] = 1
+        call s:warnmsg("Warning: No syntax available for filetype '" . &filetype . "'")
+        " Fall through to legacy, since we've no better option.
+    endif
+    " Use legacy approach.
+    return call('s:' . a:fn . '_legacy', a:000)
+endfunction
 
 " Return terminal ([1,1] indexing) of rgn at cursor, null pos if rgn not at cursor.
 fu! s:current_region_terminal_legacy(rgn, dir)
@@ -725,7 +743,7 @@ fu! s:current_region_terminal_legacy(rgn, dir)
 endfu
 
 fu! s:current_region_terminal(rgn, end)
-    return s:current_region_terminal_{s:ts_or_legacy()}(a:rgn, a:end)
+    return s:invoke('current_region_terminal', a:rgn, a:end)
 endfu
 
 " Return start of leading (0) or end of trailing (1) whitespace from pos.
@@ -1295,15 +1313,8 @@ function! s:offset_char(pos, dir, ...)
     call s:setcursor(cursor)
     return [0, l, c, 0]
 endfunction
-"let g:Oc = function('s:offset_char')
 
-function! s:super_range_ts(start, end)
-    let ret = luaeval(
-                \ "require'sexp.ts'.super_range(_A[1], _A[2])", [a:start, a:end])
-    " Note: Convert nil returned by lua function to nullpos pair.
-    return !empty(ret) ? ret : [[0, 0, 0, 0], [0, 0, 0, 0]]
-endfunction
-
+" See s:super_range() for function description.
 function! s:super_range_legacy(start, end)
     let cursor = getpos('.')
     let [start, end] = [a:start[:], a:end[:]]
@@ -1434,7 +1445,7 @@ function! s:super_range(start, end)
     endif
     " No short-circuit optimization was performed; call the more expensive function to
     " get a possibly expanded range.
-    let [start, end] = s:super_range_{s:ts_or_legacy()}(start, end)
+    let [start, end] = s:invoke('super_range', start, end)
     if !start[1]
         return s:nullpos_pair
     endif
@@ -1642,8 +1653,8 @@ fu! s:range_has_ws(beg, end, check_ignored)
     let save_cursor = getcurpos()
     call setpos('.', a:beg)
     " Note: Empty 'skip' skips nothing.
-    let pos = searchpos('\s', 'nczW', a:end[1], a:check_ignored ? s:match_ignored_region_fn : '')
-    let ret = pos[0] && pos[1] <= a:end[2]
+    let pos = searchpos('\s', 'nczW', a:end[1], 0, a:check_ignored ? s:match_ignored_region_fn : '')
+    let ret = pos[0] && s:compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
     call setpos('.', save_cursor)
     return ret
 endfu
@@ -1655,12 +1666,12 @@ fu! s:range_has_non_ws(beg, end, check_ignored)
     let save_cursor = getcurpos()
     call setpos('.', a:beg)
     let pos = searchpos('\S', 'nczW', a:end[1])
-    let ret = pos[0] && pos[1] <= a:end[2]
+    let ret = pos[0] && s:compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
     if !ret && a:check_ignored
         " No true non-ws, but check for "ignored" ws, which counts as the same thing...
-        let pos = searchpos('\s', 'nczW', a:end[1], s:nomatch_ignored_region_fn)
+        let pos = searchpos('\s', 'nczW', a:end[1], 0, s:nomatch_ignored_region_fn)
         " Return true iff we found ignored ws within region.
-        let ret = pos[0] && pos[1] <= a:end[2]
+        let ret = pos[0] && s:compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
     endif
     call setpos('.', save_cursor)
     return ret
@@ -1724,13 +1735,6 @@ fu! sexp#char_bytes(p)
     return n
 endfu
 
-" Stub for Lua implementation.
-fu! s:is_rgn_type_ts(rgn, line, col)
-    return luaeval(
-                \ "require'sexp.ts'.is_rgn_type(_A[1], _A[2], _A[3])",
-                \ [a:rgn, a:line, a:col])
-endfu
-
 fu! s:is_rgn_type_legacy(rgn, line, col)
     " Note: Eventually, may need to use different patterns for treesitter vs syntax and
     " for the various lisp dialects. However, until the original, simple, test is proven
@@ -1744,23 +1748,7 @@ fu! s:is_rgn_type_legacy(rgn, line, col)
 endfu
 
 fu! s:is_rgn_type(rgn, line, col)
-    if s:prefer_treesitter()
-        let match = s:is_rgn_type_ts(a:rgn, a:line, a:col)
-        "call s:Dbg("match=%s rgn=%s line=%d col=%d", string(match), a:rgn, a:line, a:col)
-        if match != v:null
-            " Nil return indicates no treesitter tree; fall through to try legacy.
-            return match
-        end
-    end
-    " Arrival here means we won't or can't use treesitter. If we don't have legacy syntax,
-    " we're going to have a problem, so warn...
-    if empty(&syntax) && !get(b:, 'sexp_did_warn_no_syntax', 0)
-        let b:sexp_did_warn_no_syntax = 1
-        " TODO: Spruce this up...
-        echoerr "vim-sexp: Warning: No syntax available" 
-        return
-    endif
-    return s:is_rgn_type_legacy(a:rgn, a:line, a:col)
+    return s:invoke('is_rgn_type', a:rgn, a:line, a:col)
 endfu
 
 """ CURSOR MOVEMENT {{{1
@@ -4305,9 +4293,9 @@ function! s:post_align_or_indent(mode, state)
     " indent (and possibly by s:cleanup_ws).
     let a:state.win.lnum = a:state.cursor[1]
     let a:state.win.col = a:state.cursor[2] - 1 " .col is zero-based
-    " Design Decision: In normal mode, restore old (adjusted) visual
-    " selection; in visual mode, restore the adjusted super-range.
-    call s:set_visual_marks(a:mode ==? 'n'
+    " Design Decision: In normal mode, restore old (adjusted) visual selection; in visual
+    " mode, restore the adjusted super-range (if valid).
+    call s:set_visual_marks(a:mode ==? 'n' || !a:state.start[1] || !a:state.end[1]
             \ ? [a:state.vs, a:state.ve] : [a:state.start, a:state.end])
     call winrestview(a:state.win)
 endfunction
@@ -4323,7 +4311,10 @@ function! sexp#align_comments(mode, top, count)
         " be using indent commands, which can be configured to do both ws cleanup and eol
         " comment alignment.
         let state = s:pre_align_or_indent(a:mode, a:top, a:count, 0, [])
-        call s:align_comments(state.start, state.end, state.ps)
+        " Don't attempt alignment on null range.
+        if state.start[1] && state.end[1]
+            call s:align_comments(state.start, state.end, state.ps)
+        endif
         call s:post_align_or_indent(a:mode, state)
     finally
         " Re-enable autocmds.

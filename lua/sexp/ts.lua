@@ -99,8 +99,8 @@ function M.is_rgn_type(rgn, line, col)
   --dbg:logf("is_rgn_type(%d, %d: %s", line, col, rgn)
   -- Grab api-indexed pos that supports comparison operators.
   local pos = ApiPos:new(line-1, col-1)
-  local ts = reltime()
   local key, node = cache:lookup(pos, true)
+  --dbg:logf("is_rgn_type: key=%s node=%s", vim.inspect(key), vim.inspect(node))
 
   if key then
     -- Cache hit! But does the matching primitive satisfy rgn?
@@ -204,23 +204,13 @@ function M.current_region_terminal(rgn, dir)
     return dir == 1 and ApiPos:new(node:end_()):to_vim4(true) or ApiPos:new(node:start()):to_vim4()
   else
     -- Caller is responsible for ensuring this doesn't happen!
-    return {0, 0, 0, 0}
+    -- Note: Return must permit caller to differentiate between nullpos and no Treesitter
+    -- tree.
+    return m ~= nil and {0, 0, 0, 0} or nil
   end
 end
 
--- FIXME: Don't like the redundancy with current_atom_terminal, but efficiency is
--- important. Is this needed elsewhere?
-function M.is_atom(line, col)
-  local linetext = vim.fn.getline(line)
-  if #linetext == 0 then
-    return false
-  elseif re_delimiter:match_str(linetext:sub(col, col+1)) and not M.is_rgn_type('str_com_chr', line, col) then
-    return false
-  end
-  --local node = vim.treesitter.get_node({pos = {line-1, col-1}})
-  return M.is_rgn_type('str_com', line, col)
-end
-
+--[[
 TT = {}
 function ProfStart(k)
   local ts = vim.fn.reltime()
@@ -233,60 +223,50 @@ end
 function ProfEnd(k)
   TT[k].tot = TT[k].tot + vim.fn.reltimefloat(vim.fn.reltime(TT[k].ts))
 end
+]]
 
----@param dir 0|1
----@return [integer, integer, integer, integer]
+-- Position of start/end of current atom, else nullpos
+---@param dir 0|1 # 0=start, 1=end
+---@return [integer, integer, integer, integer]?
 function M.current_atom_terminal(dir)
-  --ProfStart('get_cursor')
   local pos = vim.api.nvim_win_get_cursor(0)
-  --ProfEnd('get_cursor')
   local line, col = pos[1], pos[2] + 1
   --dbg:logf("current_atom_terminal(%d) curpos=%d,%d", dir, line, col)
   local fwd = dir == 1
   -- Note: If termcol is still 0 at return, return null pos.
   local termcol = 0
-  --ProfStart('getline')
   local linetext = vim.fn.getline(line)
-  --ProfEnd('getline')
   -- Blank line can't contain atom.
   if #linetext == 0 then return {0, 0, 0, 0} end
   -- Use nearest whitespace on current line in desired direction as boundary.
   -- If no such whitespace, leave limcol nil to use BOL and EOL.
-  --ProfStart('searchpos')
   local limit = vim.fn.searchpos([[\v\s]], fwd and 'nW' or 'nbW', line)
-  --ProfEnd('searchpos')
   ---@type integer?
   local limcol = limit[2] > 0 and limit[2] or nil
   -- Loop over bytes starting at cursor, adjusting termcol as atom chars are verified.
   ---@type integer
-  --ProfStart('col')
   local eol = vim.fn.col({line, '$'})
-  --ProfEnd('col')
-  --ProfStart('Loop')
+  -- If buffer hasn't been parsed by Treesitter, return nil to ensure fallback to legacy.
+  if not M.get_root() then
+    return nil
+  end
   while fwd and col < (limcol or eol) or not fwd and col > (limcol or 0) do
     -- Check col position.
     --dbg:logf("Checking %s at %d, %d", linetext:sub(col, col), line, col)
-    --ProfStart('re_delimiter:match_str')
     if re_delimiter:match_str(linetext:sub(col, col)) and not M.is_rgn_type('str_com_chr', line, col) then
       -- Unignored bracket is not part of atom.
-      --ProfEnd('re_delimiter:match_str')
       break
     end
-    --ProfEnd('re_delimiter:match_str')
     -- Get ts node at current position.
     --dbg:logf("limcol: %s", limcol)
-    --ProfStart('get_node')
     local node = vim.treesitter.get_node({pos = {line-1, col-1}})
-    --ProfEnd('get_node')
     if node and not is_node_rgn_type(node, 'str_com') then
       -- Still within atom. If node is leaf, skip to its end (limit permitting).
       if node:child_count() == 0 then
         --dbg:logf("Skipping in %s direction from %d,%d", (fwd and "fwd" or "bck"), line, col)
         -- Get [1,1] indexed pos.
         -- FIXME: Remove this in favor of ApiRange methods.
-        --ProfStart('convert_node_range')
         local sr, sc, er, ec = convert_node_range(node)
-        --ProfEnd('convert_node_range')
         --dbg:logf("Leaf! %d, %d, %d, %d", sr, sc, er, ec)
         if fwd and er ~= line or not fwd and sr ~= line then
           -- This really shouldn't happen; use whitespace as limit.
@@ -313,7 +293,7 @@ function M.current_atom_terminal(dir)
       break
     end
   end
-  --ProfEnd('Loop')
+  -- Note: This can return nullpos.
   return {0, termcol ~= 0 and line or 0, termcol, 0}
 end
 
@@ -321,6 +301,10 @@ end
 ---@param beg VimPos
 ---@param end_ VimPos
 ---@return [VimPos, VimPos]?
+-- Design Decision: Return nil whenever we're not confident in Treesitter's ability to
+-- calculate correct range (typically, because buffer can't be parsed).
+-- Rationale: Fallback to legacy.
+-- Note: Unlike the legacy version, this function will never return nullpos pair.
 function M.super_range(beg, end_)
   local save_curpos = vim.fn.getcurpos()
   --dbg:logf("super_range(%s, %s)", vim.inspect(beg), vim.inspect(end_))
@@ -339,10 +323,8 @@ function M.super_range(beg, end_)
     -- Note: Could use e or e_ for end of range.
     local enode = root:named_descendant_for_range(e.r, e.c, e_.r, e_.c)
     if not snode or not enode then
-      --dbg:logf("Returning nil: snode=%s enode=%s", vim.inspect(snode), vim.inspect(enode))
       return nil
     end
-    --dbg:logf("Getting container node")
     -- Get node that contains *both* start and end.
     -- Note: Important to use e_ (not e) for end of rnage
     local ct_node = root:named_descendant_for_range(s.r, s.c, e_.r, e_.c)
@@ -350,12 +332,10 @@ function M.super_range(beg, end_)
       -- Shouldn't happen.
       -- Rationale: All code files have a toplevel node called "source" or somesuch, which
       -- contains all user-visible toplevel forms.
-      --dbg:logf("Returning nil: ~ct_node")
       return nil
     end
     --dbg:logf("%d %d %d %d", s.r, s.c, e_.r, e_.c)
-    --dbg:logf("ct_node:type() %s %s %d,%d %d,%d",
-    --  ct_node:type(), vim.inspect(ct_node:id()), ct_node:range())
+    --dbg:logf("ct_node:type() %s %s %d,%d %d,%d", ct_node:type(), vim.inspect(ct_node:id()), ct_node:range())
     if snode == ct_node or enode == ct_node then
       -- When one side is the container itself, both sides must be.
       nodes = {ct_node, ct_node}
@@ -365,8 +345,7 @@ function M.super_range(beg, end_)
       -- pair of siblings whose parent is the container.
       for i = 1, 2 do
         --dbg:logf("i=%d", i)
-        --dbg:logf("nodes[%d]:type() = %s %s %d,%d %d,%d",
-        --  i, nodes[i]:type(), vim.inspect(nodes[i]:id()), nodes[i]:range())
+        --dbg:logf("nodes[%d]:type() = %s %s %d,%d %d,%d", i, nodes[i]:type(), vim.inspect(nodes[i]:id()), nodes[i]:range())
         ---@type TSNode? # starting point for upwards traversal
         local n = nodes[i]
         while n and n ~= ct_node do
@@ -384,21 +363,17 @@ function M.super_range(beg, end_)
   -- Initialize return positions, accounting for any upwards movement in loops above.
   local svp = nodes[1] and ApiPos:new(nodes[1]:start()):to_vim4() or vim.list_slice(beg)
   local evp = nodes[2] and ApiPos:new(nodes[2]:end_()):to_vim4(true) or vim.list_slice(end_)
-  --dbg:logf("---------------------")
-  --dbg:logf("svp=%d,%d evp=%d,%d", svp[2], svp[3], evp[2], evp[3])
   -- Use legacy functions to ensure start and end do not contain *partial* elements: e.g.,
   -- a form without its leading macro chars.
+  -- Design Decision: Don't replace what should always be non-null positions at this point
+  -- with nullpos returned by sexp#current_element_terminal().
   vim.fn.setpos('.', svp)
-  --dbg:logf("Finding current_element_terminal(0) for svp: %s", vim.inspect(svp))
   ---@type [VimPos4, VimPos4]
   local p = vim.fn['sexp#current_element_terminal'](0)
   if p[2] ~= 0 then svp = p end
-  --dbg:logf("Found current_element_terminal(0) for svp: %s", vim.inspect(svp))
   vim.fn.setpos('.', evp)
-  --dbg:logf("Finding current_element_terminal(1) for evp: %s", vim.inspect(evp))
   p = vim.fn['sexp#current_element_terminal'](1)
   if p[2] ~= 0 then evp = p end
-  --dbg:logf("Found current_element_terminal(1) for evp: %s", vim.inspect(evp))
   -- Restore position.
   vim.fn.setpos('.', save_curpos)
   --dbg:logf("super_range returning %s-%s", vim.inspect(svp), vim.inspect(evp))
@@ -412,7 +387,7 @@ end
 ---@param closing integer # 0=backward 1=forward
 ---@param open_re string? # Regex corresponding to open bracket, nil for default
 ---@param close_re string? # Regex corresponding to close bracket, nil for default
----@return [boolean, VimPos4|string] # success flag, followed by position of bracket, else error string
+---@return VimPos4? # position of bracket, else nil if Treesitter parse issue, else nullpos
 function M.nearest_bracket(closing, open_re, close_re)
   -- Get cursor pos as ApiIndex.
   local pos = ApiPos:from_vim4(vim.fn.getcurpos())
@@ -420,14 +395,14 @@ function M.nearest_bracket(closing, open_re, close_re)
   -- Grab the active Treesitter root.
   local root = M.get_root()
   if not root then
-    return {false, "Unable to get Treesitter root for buffer"}
+    return nil
   end
   local row, col = pos:positions()
   -- Convert pos to an exclusive range containing a single char.
   ---@type TSNode?
   local node = root:named_descendant_for_range(row, col, row, col + 1)
   if not node then
-    return {false, "Unable to get Treesitter node"}
+    return nil
   end
   -- Get pattern matching desired bracket type.
   local bracket_re = closing ~= 0
@@ -465,7 +440,7 @@ function M.nearest_bracket(closing, open_re, close_re)
         local ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
         if not ch then
           -- TODO: This shouldn't happen. Can it even, given that node is non-nil?
-          return {false, "Internal error: Unable to obtain buffer text"}
+          return nil
         end
         -- Check for macro chars.
         if vim.fn['sexp#is_macro_char'](ch) ~= 0 then
@@ -478,14 +453,16 @@ function M.nearest_bracket(closing, open_re, close_re)
         --dbg:logf("Testing %s against %s", ch, bracket_re)
         if vim.fn.match(ch, bracket_re) >= 0 then
           -- Found desired bracket! Return inclusive ApiPos as VimPos4.
-          return {true, {0, r + 1, c + 1, 0}}
+          return {0, r + 1, c + 1, 0}
         end
       end
     end
     -- Keep looking upwards till we find what we're seeking or hit root...
     node = node:parent()
   end
-  return {false, "Not found"}
+  -- Didn't find matching bracket.
+  -- TODO: Decide whether to return nil to force fallback to legacy logic.
+  return {0, 0, 0, 0}
 end
 
 return M

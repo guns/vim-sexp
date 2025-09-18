@@ -118,6 +118,10 @@ endfunction
 """ USER INTERFACE {{{1
 
 " Display warning
+" FIXME: Need an 'error' version, and might want to have ts/legacy versions to take
+" advantage of newer Neovim capabilities when available.
+" TODO: Also need to ensure that redraw doesn't erase the messages before user sees them.
+" Find out what's triggering the redraw: winrestview?
 function! s:warnmsg(s)
     try
         echohl WarningMsg
@@ -1661,6 +1665,7 @@ endfu
 
 " Return true iff there's *any* non-whitespace in the range [beg,end].
 " Note: See previous function comment for usage of 'check_ignored'.
+" TODO: Make check_ignored optional, defaulting to true.
 fu! s:range_has_non_ws(beg, end, check_ignored)
     let ret = 0
     let save_cursor = getcurpos()
@@ -3194,23 +3199,36 @@ function! s:yankdel_range__postadjust_positions(adj, spl)
 endfunction
 
 " Yank, delete or splice text in range defined by start/end, returning any
-" deleted text.
+" deleted text, and optionally adjusting input positions to account for deletions.
 " Splice Note: If a string (rather than a boolean flag) is supplied for
 " del_or_spl, the range will be *replaced* by the provided text and the
 " deleted text will be returned.
-" Range Inclusivity: Defaults to inclusive start, exclusive end, but may be
-" overridden by first optional arg (a:1), which may be either a boolean that
-" sets end inclusivity (1=inclusive), or a 2-element list setting inclusivity
-" of start and end independently.
-" Position Adjustment: If caller provides a 2nd optional arg (a:2), it is
-" assumed to be a list of positions that will be modified in-place to account
-" for any deletions. The goal is to preserve position in an intelligent
-" manner: i.e., wherever possible, a position should point to the same
-" character before and after the operation. If this is not possible, we should
-" do the next best thing, which typically means adjusting the position to a
-" deterministic location near the head or tail of the operated region.
+" -- Optional Args --
+" a:1  range inclusivity
+"      Enum:
+"        0=exclusive
+"        1=inclusive
+"        2=exclusive of cursor pos as well as any adjacent end-of-line whitespace,
+"          including the newline itself
+"      Formats:
+"        both_inclusive
+"      | [start_inclusive, end_inclusive]
+"      Defaults to inclusive start, exclusive end (i.e., [1, 0].
+" a:2  list of positions to adjust
+" a:3  failsafe_override - unless this flag is set, function will not delete
+"      non-whitespace. (defaults to 0)
+" Position Adjustment: Any provided list of positions is modified in-place to account for
+" any deletions. The goal is to preserve position in an intelligent manner: i.e., wherever
+" possible, a position should point to the same character before and after the operation.
+" If this is not possible, we should do the next best thing, which typically means
+" adjusting the position to a deterministic location near the head or tail of the operated
+" region.
 " TODO: Idea: Could passing 'splice' arg of one or more newlines obviate need
 " for the special inc==2 value??? Think on this...
+" Failsafe Override: This feature was added to ensure that a bug cannot result in the
+" deletion of non-whitespace text in a user's buffer. The manifestation of a bug may be
+" annoying, but loss of user's text could be catastrophic. (Of course, undo can be used to
+" remedy the loss of text, but probably not the loss of confidence.)
 function! s:yankdel_range(start, end, del_or_spl, ...)
     let ret = ''
     let cursor = getpos('.')
@@ -3220,26 +3238,35 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
     let reg_save = [@a, @"]
     try
         let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
+        let failsafe_override = a:0 > 2 ? a:3 : 0
         let start = s:yankdel_range__preadjust_range_start(a:start, inc[0])
         let end = s:yankdel_range__preadjust_range_end(a:end, inc[1])
+        " Perform redundant safety check when we're about to modify text and caller hasn't
+        " overridden the failsafe intended to inhibit modification of non-whitespace.
+        if !failsafe_override && (type(a:del_or_spl) == type("") || a:del_or_spl)
+                \ && s:range_has_non_ws(start, end, 1)
+            call s:warnmsg("yankdel_range: Internal error detected: refusing to modify non-whitespace!")
+            return
+        endif
         " Special Case: Treat splice of certain types of null replacement
         " regions as a put.
-        " Design Decision: Only *just empty* regions will be treated this way:
-        " e.g., start == end and either end (but not both) exclusive (=== 0).
-        " Though there are simpler ways to accomplish it, you could use such
-        " null regions to perform a simple put, whose direction is determined
-        " by the inclusive side (inclusive start => put before).
+        " Design Decision: Only *just empty* regions will be treated this way: e.g., start
+        " == end and either end (but not both) exclusive (=== 0). Though there are simpler
+        " ways to accomplish it, you could use such null regions to perform a simple put,
+        " whose direction is determined by the inclusive side (inclusive start => put
+        " before).
         " Design Decision: If del_or_spl === 1 (in lieu of splice text), the
         " aforementioned 'just empty' null regions result in NOPs.
         let cmp = s:compare_pos(a:start, a:end)
         " Caveat: Vim 7.3 didn't have xor() function so do it manually.
+        " Note: spl_put is true iff splice can be performed by a "directed put".
         let spl_put = type(a:del_or_spl) == 1 && !cmp
             \ && (!inc[0] && inc[1] == 1 || inc[0] && !inc[1] == 1)
         if spl_put || s:compare_pos(start, end) <= 0
-            " Either splice is a directional put (spl_put) or the adjusted
-            " region is non-empty.
-            " Note: end adjustment may have returned non-physical location; if
-            " so, fix now...
+            " Either splice is a directional put (spl_put) or the adjusted region is
+            " non-empty.
+            " Note: end adjustment may have returned non-physical location; if so, fix
+            " now...
             if start[2] < 0 | let start[2] = 1 | endif
             " non-empty region to be spliced/deleted...
             " Note: Since splice also deletes, del will be set for either.
@@ -3983,10 +4010,10 @@ endfunction
 function! s:dbg_show_eolcs(grps)
     let idx = 0
     for grp in a:grps
-        call s:Dbg("Group %d align=%d", idx, grp.align)
+        "call s:Dbg("Group %d align=%d", idx, grp.align)
         " Loop over group members...
         for eolc in grp.eolcs
-            call s:Dbg("com_s: %s prev_e: %s", string(eolc.com_s), string(eolc.prev_e))
+            "call s:Dbg("com_s: %s prev_e: %s", string(eolc.com_s), string(eolc.prev_e))
         endfor
         let idx += 1
     endfor

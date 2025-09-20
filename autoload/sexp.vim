@@ -117,18 +117,33 @@ endfunction
 
 """ USER INTERFACE {{{1
 
-" Display warning
-" FIXME: Need an 'error' version, and might want to have ts/legacy versions to take
-" advantage of newer Neovim capabilities when available.
-" TODO: Also need to ensure that redraw doesn't erase the messages before user sees them.
-" Find out what's triggering the redraw: winrestview?
-function! s:warnmsg(s)
+" Display warning with requested highlighting.
+function! s:warnmsg_impl(s, hl)
     try
-        echohl WarningMsg
+        exe 'echohl' a:hl
         echomsg a:s
     finally
         echohl None
     endtry
+endfunction
+
+" Called by client to display warning to user via echomsg with appropriate highlighting
+" (WarningMsg unless optional error flag is provided, in which case, use ErrorMsg).
+" If we're inside {pre,post}_op() calls, there will be an active message queue, and we
+" simply add the msg to it; otherwise (e.g., called from insert-mode command, which
+" currently doesn't use the {pre,post}_op() mechanism), we echo the msg immediately.
+" Rationale: Deferring the echomsg call is preferable because it greatly increases the
+" probability it will be seen by the user before being overwritten (e.g., by an already
+" pending redraw).
+function! s:warnmsg(s, ...)
+    let hl = a:0 && a:1 ? 'ErrorMsg' : 'WarningMsg'
+    if exists('s:msg_q')
+        " Add to queue.
+        call add(s:msg_q, {'hl': hl, 'msg': a:s})
+    else
+        " Don't defer: display now.
+        call s:warnmsg_impl(s, hl)
+    endif
 endfunction
 
 """ PRE/POST COMMAND CALLBACKS/CACHE {{{1
@@ -143,6 +158,8 @@ function! s:make_cache(mode, name)
 endfunction
 
 " Dirty flags: m=mode, n=command name, t=changedtick, c=cursor and/or visual range
+" TODO: Remove! This shouldn't be used or needed now that whitespace selection logic has
+" been made non-stateful!
 function! s:is_dirty(...)
     let any = !a:0
     let flags = a:0 ? a:1 : ''
@@ -168,15 +185,40 @@ function! s:is_dirty(...)
     return empty(oc)
 endfunction
 
-let s:sexp_ve_save = 0
-function! sexp#pre_op(mode, name)
-    if type(s:sexp_ve_save) == 0
-        let s:sexp_ve_save = &ve
+" Display to user any messages queued during command execution.
+function! s:echo_queued_msgs()
+    if empty(get(s:, 'msg_q', []))
+        return
     endif
+    " Perform any pending redraws now, to ensure they won't overwrite our message(s).
+    redraw
+    " Send all queued msgs.
+    for m in s:msg_q
+        " Get msg and highlight, noting that queue entry can be either a string (defaults
+        " to warning) or a dict.
+        let [msg, hl] = type(m) == type("") ? [m, 'WarningMsg'] : [m.msg, m.hl]
+        call s:warnmsg_impl(msg, hl)
+    endfor
+endfunction
+
+function! sexp#pre_op(mode, name)
+    let s:sexp_ve_save = &ve
     set ve=onemore
+    " Create the msg queue used by s:warnmsg().
+    let s:msg_q = []
     if !exists('b:sexp_cmd_prev_cache')
         let b:sexp_cmd_prev_cache = {}
     endif
+    " Important TODO: Consider removing the cache, which is currently needed only for its
+    " cvi.at_end flag. In visual mode, we should be able to get this from getpos('v') and
+    " getpos('.'); in non-visual mode, it may be a bit tricker, but worst-case, could be
+    " done by temporarily re-entering visual mode (as is done by
+    " s:get_cursor_and_visual_info(). If we do end up keeping the flag, it could be
+    " script-local rather than buf-local. Also, double-buffering (i.e., prev_cache and
+    " s:is_dirty()) is no longer needed.
+    " Rationale: It was added for the "dirty" mechanism used by *stateful* logic
+    " controlling element selection expansion, which has since been removed.
+    " (Probably do all this on its own commit.)
     let b:sexp_cmd_cache = s:make_cache(a:mode == 'x' ? 'v' : a:mode, a:name)
 endfunction
 
@@ -184,10 +226,13 @@ function! sexp#post_op(mode, name)
     " Restore original 'virtualedit' setting.
     " Assumption: This is called from finally block.
     let &ve = s:sexp_ve_save
-    " Set to integer so we can tell when it's in use.
-    let s:sexp_ve_save = 0
     " Note: Use actual mode in post command handler.
     let b:sexp_cmd_prev_cache = s:make_cache(mode(), a:name)
+    " This is done last to ensure no redraws can be queue after msgs are echoed.
+    call s:echo_queued_msgs()
+    " Caveat: Make sure the queue is used only when we're inside {pre,post}_op() calls
+    " (i.e., not within insert-mode commands).
+    unlet! s:msg_q
 endfunction
 
 " Return 1 iff we're in one of the visual modes.

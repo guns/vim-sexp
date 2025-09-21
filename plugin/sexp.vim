@@ -151,6 +151,11 @@ if !exists('g:sexp_aligncom_optlevel')
     let g:sexp_aligncom_optlevel = 2
 endif
 
+" Expert options
+if !exists('g:sexp_inhibit_failsafe')
+    let g:sexp_inhibit_failsafe = 0
+endif
+
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
@@ -632,21 +637,47 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, '
 
 """ Insert mode mappings {{{1
 
+" This wrapper was created to ensure that even insert-mode maps use {pre,post}_op().
+" Rationale: For now, it simply ensures that warnings from insert-mode maps will use the
+" deferred msg queue, but eventually, may also be used to allow for a more efficient
+" dispatch mechanism: e.g., one that relies on once-only decision upon command invocation,
+" as opposed to repeated tests at the point of each ts/legacy function call.
+function! s:insert_map_wrapper(plug, expr)
+    try
+        call sexp#pre_op("i", a:plug)
+        exe 'let ret =' a:expr
+    finally
+        call sexp#post_op("i", a:plug)
+    endtry
+    return ret
+endfunction
+
+" Note: The expression passed to this function should typically be a single argument, but
+" just in case, we use variadic args and join.
+function! s:defplug_ins(plug, ...)
+    let expr = join(a:000, ' ')
+    exe 'inoremap <silent><expr> <Plug>(' . a:plug 
+        \ . ') <SID>insert_map_wrapper("' . a:plug . '", "' . escape(expr, '"') . '")'
+endfunction
+
+" Command to simplify map definition
+command! -nargs=+       DefplugI  call <SID>defplug_ins(<f-args>)
+
 " Insert opening delimiter
-inoremap <silent><expr> <Plug>(sexp_insert_opening_round)  sexp#opening_insertion('(')
-inoremap <silent><expr> <Plug>(sexp_insert_opening_square) sexp#opening_insertion('[')
-inoremap <silent><expr> <Plug>(sexp_insert_opening_curly)  sexp#opening_insertion('{')
+DefplugI sexp_insert_opening_round sexp#opening_insertion('(')
+DefplugI sexp_insert_opening_square sexp#opening_insertion('[')
+DefplugI sexp_insert_opening_curly  sexp#opening_insertion('{')
 
 " Insert closing delimiter
-inoremap <silent><expr> <Plug>(sexp_insert_closing_round)  sexp#closing_insertion(')')
-inoremap <silent><expr> <Plug>(sexp_insert_closing_square) sexp#closing_insertion(']')
-inoremap <silent><expr> <Plug>(sexp_insert_closing_curly)  sexp#closing_insertion('}')
+DefplugI sexp_insert_closing_round  sexp#closing_insertion(')')
+DefplugI sexp_insert_closing_square sexp#closing_insertion(']')
+DefplugI sexp_insert_closing_curly  sexp#closing_insertion('}')
 
 " Insert double quote
-inoremap <silent><expr> <Plug>(sexp_insert_double_quote) sexp#quote_insertion('"')
+DefplugI sexp_insert_double_quote sexp#quote_insertion('"')
 
 " Delete paired delimiters
-inoremap <silent><expr> <Plug>(sexp_insert_backspace) sexp#backspace_insertion()
+DefplugI sexp_insert_backspace sexp#backspace_insertion()
 
 """ Cleanup {{{1
 

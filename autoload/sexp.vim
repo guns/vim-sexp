@@ -142,7 +142,7 @@ function! s:warnmsg(s, ...)
         call add(s:msg_q, {'hl': hl, 'msg': a:s})
     else
         " Don't defer: display now.
-        call s:warnmsg_impl(s, hl)
+        call s:warnmsg_impl(a:s, hl)
     endif
 endfunction
 
@@ -150,39 +150,11 @@ endfunction
 
 function! s:make_cache(mode, name)
     return {
-        \ 'cvi': s:get_cursor_and_visual_info(),
+        \ 'sel_dir': s:get_sel_dir(a:mode),
         \ 'mode': a:mode,
         \ 'name': a:name,
         \ 'changedtick': b:changedtick
     \ }
-endfunction
-
-" Dirty flags: m=mode, n=command name, t=changedtick, c=cursor and/or visual range
-" TODO: Remove! This shouldn't be used or needed now that whitespace selection logic has
-" been made non-stateful!
-function! s:is_dirty(...)
-    let any = !a:0
-    let flags = a:0 ? a:1 : ''
-    let [oc, nc] = [b:sexp_cmd_prev_cache, b:sexp_cmd_cache]
-    if !empty(oc)
-        " We have a previous object to compare against.
-        if (any || flags =~ 'm') && oc.mode != nc.mode
-            return 1
-        elseif (any || flags =~ 'n') && oc.name != nc.name
-            return 1
-        elseif (any || flags =~ 't') && oc.changedtick != nc.changedtick
-            return 1
-        " TODO: Document this a bit...
-        elseif (any || flags =~ 'c') &&
-            \ ( oc.mode ==? 'v' && nc.mode ==? 'v'
-            \ ? oc.cvi.vs != nc.cvi.vs || oc.cvi.ve != nc.cvi.ve
-            \ : oc.mode ==? 'v' || nc.mode ==? 'v'
-            \ ? oc.mode != nc.mode
-            \ : oc.cvi.cursor != nc.cvi.cursor)
-            return 1
-        endif
-    endif
-    return empty(oc)
 endfunction
 
 " Display to user any messages queued during command execution.
@@ -205,20 +177,10 @@ function! sexp#pre_op(mode, name)
     let s:sexp_ve_save = &ve
     set ve=onemore
     " Create the msg queue used by s:warnmsg().
+    " TODO: Consider whether there are any concerns with making this script-local.
     let s:msg_q = []
-    if !exists('b:sexp_cmd_prev_cache')
-        let b:sexp_cmd_prev_cache = {}
-    endif
-    " Important TODO: Consider removing the cache, which is currently needed only for its
-    " cvi.at_end flag. In visual mode, we should be able to get this from getpos('v') and
-    " getpos('.'); in non-visual mode, it may be a bit tricker, but worst-case, could be
-    " done by temporarily re-entering visual mode (as is done by
-    " s:get_cursor_and_visual_info(). If we do end up keeping the flag, it could be
-    " script-local rather than buf-local. Also, double-buffering (i.e., prev_cache and
-    " s:is_dirty()) is no longer needed.
-    " Rationale: It was added for the "dirty" mechanism used by *stateful* logic
-    " controlling element selection expansion, which has since been removed.
-    " (Probably do all this on its own commit.)
+    " TODO: Consider removing or simplifying the cache, which is currently needed only for
+    " its sel_dir flag.
     let b:sexp_cmd_cache = s:make_cache(a:mode == 'x' ? 'v' : a:mode, a:name)
 endfunction
 
@@ -226,8 +188,6 @@ function! sexp#post_op(mode, name)
     " Restore original 'virtualedit' setting.
     " Assumption: This is called from finally block.
     let &ve = s:sexp_ve_save
-    " Note: Use actual mode in post command handler.
-    let b:sexp_cmd_prev_cache = s:make_cache(mode(), a:name)
     " This is done last to ensure no redraws can be queue after msgs are echoed.
     call s:echo_queued_msgs()
     " Caveat: Make sure the queue is used only when we're inside {pre,post}_op() calls
@@ -704,6 +664,21 @@ endfu
 " to user.
 let s:dispatch_warned = {'ts': {}, 'syn': {}}
 
+" Wrapper for s:warnmsg(), which takes an arbitrary key representing the warning and
+" ensures the warning is displayed only once per buffer.
+" -- Optional Arg(s) --
+" a:1  1 if warning should be displayed with error highlighting
+fu! s:warnmsg_once(key, msg, ...)
+    let b:sexp_did_warn = get(b:, 'sexp_did_warn', {})
+    if get(b:sexp_did_warn, a:key, 0)
+        " Already warned! Do nothing.
+        return
+    endif
+    call s:warnmsg(a:msg, a:0 && !!a:1)
+    " Make sure we don't display this one again for this buffer.
+    let b:sexp_did_warn[a:key] = 1
+endfu
+
 " Invoke either the Treesitter-based Lua function or the legacy syntax-based Vimscript
 " function with the provided arguments, with fallback to the latter if the former returns
 " nil (indicating a missing tree or some other serious issue).
@@ -730,18 +705,16 @@ fu! s:invoke(fn, ...)
             return ret
         endif
         " Warn once only.
-        if !get(s:dispatch_warned.ts, &filetype, 0)
-            let s:dispatch_warned.ts[&filetype] = 1
-            call s:warnmsg(
-                \ "Warning: Falling back to legacy syntax. Have you installed Treesitter parser for " . &filetype . "?")
-        endif
+        call s:warnmsg_once('missing_ts',
+            \ "Warning: Falling back to legacy syntax. Have you installed Treesitter parser for " . &filetype . "?")
     endif
     " Arrival here means we won't or can't use Treesitter. If we don't have legacy syntax,
     " we're going to have a problem, so warn...
-    if empty(get(b:, 'current_syntax', '')) && !get(s:dispatch_warned.syn, &filetype, 0)
-        let s:dispatch_warned.syn[&filetype] = 1
-        call s:warnmsg("Warning: No syntax available for filetype '" . &filetype . "'")
-        " Fall through to legacy, since we've no better option.
+    if empty(get(b:, 'current_syntax', ''))
+        " Note: Display with error highlighting, as this is more serious than missing
+        " Treesitter parser, since we have nothing to fallback to.
+        call s:warnmsg_once('missing_syn', "Warning: No syntax available for filetype '" . &filetype . "'", 1)
+        " Fall through to legacy function *without* syntax, since we've no better option.
     endif
     " Use legacy approach.
     return call('s:' . a:fn . '_legacy', a:000)
@@ -2487,55 +2460,37 @@ function! s:select_child(mode, count, next, inner)
     call s:set_marks_around_current_element('n', a:inner, 0, 0)
 endfunction
 
-" Return dict representing the most recent visual selection.
-" Keys:
-"   vs, ve
-"   cursor
-"   at_end  TODO: If this is redundant with cursor and there's no compelling
-"           reason for the de-normalization, remove one or the other.
-" Note: No point in calling if there's no visual selection, but handle gracefully if not.
-" Important Note and TODO: Ideally, this function would use 'v' and '.' with getpos() to
-" get both ends of visual selection; however, this works only when you're truly in visual
-" mode, which, in turn, entails use of <cmd> (not :<c-u>) for visual mappings. Thus, as
-" long as we support Vim versions prior to v9 (when <Cmd> was added), this function is
-" inherently more complex than it should be.
-function! s:get_cursor_and_visual_info()
-    let o = {}
-
-    let [vs, ve] = s:get_visual_marks()
-    " Note: Since we don't really know what the command's mode was (and don't really
-    " care), differentiate solely on whether visual sel exists; if it doesn't, we'll
-    " return cursor pos along with some innocuous sentinel values for range.
-    if vs[1] && ve[1]
-        " Ascertain (normalized) cursor position.
-        " Note: If we're not in visual mode, we'll have to enter it to
-        " determine which end cursor was on.
-        " TODO: Does Vim provide another way?
-        let mode = mode()
-        if mode !=? 'v'
-            " Caveat: Entering visual mode can alter the viewport, which is a
-            " problem for commands that expect to be able to preserve the
-            " pre-command view; use winsaveview/winrestview to save/restore.
-            let wsv = winsaveview()
+" Return 1 iff the most recent (possibly active) visual selection has cursor at end.
+" Design Decision: If current command isn't visual, just default to cursor at end.
+" Rationale: Sel direction is used only for expansions of a visual selection, and has
+" little meaning outside that context. Moreover, determining sel dir may require
+" re-entering the *last* visual mode, which for non visual commands, may take cursor
+" to a different part of the buffer, thereby necessitating view save/restore! As long
+" as we enter visual mode only for a visual command (and do so only immediately after
+" command invocation), view should be unaffected.
+function! s:get_sel_dir(mode)
+    if a:mode !~ '[xv]'
+        return 1
+    endif
+    try
+        let enter_visual = !s:in_visual_mode()
+        if enter_visual
+            " Assumption: Because we're restoring visual sel active at instant command was
+            " invoked, view should be unchanged (from the one at command invocation).
+            let save_cursor = getpos('.')
+            " Enter visual mode
             normal! gv
         endif
-        " Note: When range begins past eol, exiting visual mode causes cursor to
-        " fall back to last char on line (which is not actually *within* the
-        " visual range). Note that this can happen at both start and end of range.
-        " Note: Default to at_end when '< == '>.
-        let o.at_end = s:compare_pos(getpos('.'), ve) >= 0
-        if mode !=? 'v'
-            exe "normal! \<Esc>"
-            call winrestview(wsv)
+        " Use relative position of '.' and 'v' marks to determine whether cursor is at end
+        " of visual sel.
+        " Design Decision: Single-char selection considered at 'at end'.
+        return s:compare_pos(getpos('.'), getpos('v')) >= 0
+    finally
+        if enter_visual
+            call sexp#ensure_normal_mode()
+            call setpos('.', save_cursor)
         endif
-        let o.cursor = o.at_end ? ve : vs
-    else
-        " No selection has ever been made.
-        let [o.at_end, o.cursor] = [0, getpos('.')]
-    endif
-    " Note: Marks could be invalid sentinels (i.e., [0, 0, 0, 0])
-    let [o.vs, o.ve] = [vs, ve]
-    return o
+    endtry
 endfunction
 
 " TODO: Update this comment to reflect major changes with the handling of counts!!!
@@ -2571,7 +2526,7 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
         " TODO: Should we just use cached cvi, or perhaps have get_visual_marks() return
         " 'at_end' flag to obviate the need for cvi?
         let [vs_orig, ve_orig] = s:get_visual_marks()
-        let dir = b:sexp_cmd_cache.cvi.at_end
+        let dir = b:sexp_cmd_cache.sel_dir
         " Rationalize visual range.
         " TODO: Now that super_range trims surrounding whitespace from selection,
         " optimizations could be added to subsequent logic.
@@ -2781,7 +2736,7 @@ endfunction
 function! sexp#select_current_element(mode, inner, ...)
     let cnt = a:0 && a:1 ? a:1 : 1
     call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
-    return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.cvi.at_end : 1)
+    return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.sel_dir : 1)
 endfunction
 
 " Set visual marks around adjacent element and enter visual mode; 0 for
@@ -3274,6 +3229,10 @@ endfunction
 " deletion of non-whitespace text in a user's buffer. The manifestation of a bug may be
 " annoying, but loss of user's text could be catastrophic. (Of course, undo can be used to
 " remedy the loss of text, but probably not the loss of confidence.)
+" Failsafe override can be set either by user (g:sexp_inhibit_failsafe == 1) *or* via
+" plugin logic.
+" Note: Currently, plugin logic never sets it because there are no commands that modify
+" non-whitespace.
 function! s:yankdel_range(start, end, del_or_spl, ...)
     let ret = ''
     let cursor = getpos('.')
@@ -3283,11 +3242,10 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
     let reg_save = [@a, @"]
     try
         let inc = a:0 ? type(a:1) == 3 ? a:1 : [1, a:1] : [1, 0]
-        let failsafe_override = a:0 > 2 ? a:3 : 0
+        let failsafe_override = g:sexp_inhibit_failsafe || (a:0 > 2 ? a:3 : 0)
         let start = s:yankdel_range__preadjust_range_start(a:start, inc[0])
         let end = s:yankdel_range__preadjust_range_end(a:end, inc[1])
-        " Perform redundant safety check when we're about to modify text and caller hasn't
-        " overridden the failsafe intended to inhibit modification of non-whitespace.
+        " See header comment on failsafe mechanism for purpose of this test.
         if !failsafe_override && (type(a:del_or_spl) == type("") || a:del_or_spl)
                 \ && s:range_has_non_ws(start, end, 1)
             call s:warnmsg("yankdel_range: Internal error detected: refusing to modify non-whitespace!")

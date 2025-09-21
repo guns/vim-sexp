@@ -1181,6 +1181,24 @@ full (level 2) optimization.
         " Default
         let g:sexp_aligncom_density_weight = 5
 <
+Expert options ~
+
+                                                     *g:sexp_inhibit_failsafe*
+In the absence of bugs, this plugin should never modify non-whitespace text
+(though it may occasionally **relocate** brackets). In the real world,
+however, bugs happen; thus, the function responsible for modifying text
+contains redundant logic to ensure that if a bug results in a request to
+delete non-whitespace, the request will be refused with a warning. The regex
+search used by this logic is fairly inexpensive and unlikely to be a
+performance concern; however, for users who prioritize performance and trust
+the developer, their version control system, Vim's undo engine, or some
+combination of the above, an option is provided to inhibit this "failsafe"
+mechanism, potentially eking out a bit more performance, especially for
+operations that perform signficant whitespace cleanup.
+>
+        " Default
+        let g:sexp_inhibit_failsafe = 0
+<
 
 Customizing keymaps ~
                                                              *g:sexp_mappings*

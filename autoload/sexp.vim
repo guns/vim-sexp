@@ -2701,8 +2701,12 @@ endfunction
 
 " Set visual marks at current list's brackets, then enter visual mode with
 " that selection. Selects current element if cursor is not in a list.
-function! sexp#select_current_list(mode, offset, allow_expansion)
+" -- Optional Args --
+" a:1  list_only - Set to inhibit fallback to element if no list.
+function! sexp#select_current_list(mode, offset, allow_expansion, ...)
+    let list_only = a:0 && !!a:1
     if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
+        \ && !list_only
         " TODO: I'd really rather hard-code 1 for inner here, but need to
         " consider backwards-compatability...
         " FIXME: The thing is, "inner" means something different for lists:
@@ -4743,13 +4747,32 @@ endfunction
 " varargs.
 function! sexp#raise(mode, func, ...)
     if a:mode ==# 'v'
-        call s:select_current_marks('v')
+        " Important Note: Blindly using visual selection could unbalance forms; expand
+        " selection as necessary to ensure it contains one or more elements at the same
+        " level.
+        let range = s:super_range(getpos("'<"), getpos("'>"))
+        if !range[0][1] || !range[1][1]
+            " No valid range! Do nothing.
+            return
+        endif
+        " Select the super range.
+        call s:set_visual_marks([range[0], range[1]])
     else
         call call(a:func, a:000)
     endif
-    normal! d
-    call sexp#select_current_list('n', 0, 0)
-    normal! p
+    " Before deleting anything, be sure there's a parent list by moving to start of visual
+    " range and looking for nearest open.
+    call sexp#ensure_normal_mode()
+    call s:setcursor(getpos("'<"))
+    let pos = s:nearest_bracket(0)
+    if pos[1]
+        " Re-select the element(s) to be raised.
+        " Assumption: s:nearest_bracket() didn't alter visual marks.
+        call s:select_current_marks(a:mode)
+        normal! d
+        call sexp#select_current_list('n', 0, 0, 1)
+        normal! p
+    endif
 endfunction
 
 " Logic:

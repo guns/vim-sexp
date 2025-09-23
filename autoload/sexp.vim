@@ -4456,7 +4456,7 @@ function! sexp#indent(mode, top, count, clean, ...)
         call s:post_align_or_indent(a:mode, state)
     finally
         " Re-enable autocmds.
-        "let &ei = ei_save
+        let &ei = ei_save
     endtry
 endfunction
 

@@ -464,15 +464,9 @@ CLONE COMMANDS (normal, visual) ~
         \ 'sexp_clone_element_ml': '...',
 <
 
-                                                      *sexp-clone-does-indent*
-        If |g:sexp_clone_does_indent| is set (the default), indent the
-        compound form (or range of lines at toplevel) containing the cloned
-        elements.
-        Note: Indent is never performed for clone operations affecting only a
-        single line.
-
-        If indent is required, |g:sexp_indent_does_clean| determines whether
-        extra whitespace is removed. (See |clean-indent| for details.)
+        By default, the clone command triggers automatic re-indent of the
+        affected forms whenever the cloned elements span multiple lines. If
+        you dislike this behavior, see |sexp-auto-indent|.
 
 
 INDENT COMMANDS (normal, visual) ~
@@ -519,7 +513,8 @@ Indent with whitespace cleanup ~
         behavior.
 
 
-COMMENT ALIGNMENT COMMANDS (normal, visual) ~
+COMMENT ALIGNMENT COMMANDS (normal, visual)  ~
+                                                      *sexp-comment-alignment*
 
 <LocalLeader>a                                   *<Plug>(sexp_align_comments)*
 <LocalLeader>A                               *<Plug>(sexp_align_comments_top)*
@@ -644,6 +639,12 @@ COMMENT ALIGNMENT COMMANDS (normal, visual) ~
 >
         let g:sexp_indent_aligns_comments = 1
 <
+        Keep in mind, however, that automatic comment alignment operates on
+        the same range as the auto-indent, and because it works by grouping
+        comments into alignment blocks, it works best when it operates on many
+        lines (e.g., a top-level form). Thus, you may wish to leave this
+        option disabled and use `\A` (|sexp_align_comments_top|) at regular
+        intervals to keep comments aligned.
 
 WRAP COMMANDS (normal, visual) ~
 
@@ -695,10 +696,20 @@ LIST MANIPULATION (normal, visual) ~
         times by deleting each list's brackets. This mapping is not available
         in visual mode.
 
+        By default, the splice command triggers automatic re-indent whenever
+        the splice target is multi-line. If you dislike this behavior, see
+        |sexp-auto-indent|.
+
+
 <LocalLeader>o                                       *<Plug>(sexp_raise_list)*
 <LocalLeader>O                                    *<Plug>(sexp_raise_element)*
         Replace [count] enclosing lists (compound FORMs) with the current
         list, element, or visual selection.
+
+        By default, the raise command triggers automatic re-indent whenever
+        the raise target is multi-line. If you dislike this behavior, see
+        |sexp-auto-indent|.
+
 
 <LocalLeader>?                                        *<Plug>(sexp_convolute)*
         Splice the tail of the current list into the current list's parent,
@@ -773,10 +784,9 @@ LIST MANIPULATION (normal, visual) ~
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 
-                                                    *capture-emit-does-indent*
         By default, captures/emits affecting multiple lines trigger an
-        automatic re-indent. If you don't like this behavior, simply set
-        option |g:sexp_capture_emit_does_indent| to 0.
+        automatic re-indent. If you dislike this behavior, see
+        |sexp-auto-indent|.
 
 INSERT MODE MAPPINGS (insert, optional) ~
 
@@ -828,6 +838,29 @@ INSERT MODE MAPPINGS (insert, optional) ~
 
         Normal backspace otherwise.
 
+AUTO INDENT                                                 *sexp-auto-indent*
+
+A number of sexp commands modify forms in a way that changes list structure,
+sometimes dramatically. Rather than force the user to perform a re-indent
+manually in such cases, sexp's default configuration performs an automatic
+re-indent on the affected region. Moreover, depending on the setting of
+|g:sexp_indent_does_clean| and |g:sexp_indent_aligns_comments|, the
+auto-indent may also clean up excess whitespace and/or align trailing
+comments.
+See |sexp-clean-indent| and |sexp-comment-alignment| for details.
+
+In most cases, this targeted re-indent has negligible performance impact;
+however, you can disable it if you wish, either globally or for specific
+commands. To disable auto-indent for **all** commands, simply set
+|g:sexp_auto_indent| to 0. To disable auto-indent for specific commands only,
+leave |g:sexp_auto_indent| at its default value (-1) and clear the applicable
+per-command flags with names given by |g:sexp_{command}_does_indent|. The
+following {command} names are currently supported:
+        clone
+        raise
+        splice
+        capture_emit
+
 ==============================================================================
 III. OPTIONS                                                    *sexp-options*
 
@@ -859,19 +892,45 @@ indent and clone commands. For details, see sections |clean-indent| and
         " Default
         let g:sexp_indent_does_clean = 0
 <
+
+Auto-indent options  ~
+
+                                                          *g:sexp_auto_indent*
+The default value of -1 has no effect, but setting this variable to 0 or 1
+overrides **all** of the command-specific |g:sexp_{command}_does_indent| flags.
+For details, see section |sexp-auto-indent|.
+>
+        " Default
+        let g:sexp_auto_indent = -1
+<
                                                     *g:sexp_clone_does_indent*
-Automatically re-indent the elements involved in a multi-line clone operation.
-For details, see section |clone-does-indent|.
+Automatically re-indent the target(s) of a multi-line clone operation.
+See also |sexp-auto-indent|.
 >
         " Default
         let g:sexp_clone_does_indent = 1
 <
                                              *g:sexp_capture_emit_does_indent*
-Automatically re-indent a multi-line form involved in a capture/emit
-operation. For details, see section |capture-emit-does-indent|.
+Automatically re-indent the forms involved in a multi-line capture/emit
+operation.
+See also |sexp-auto-indent|.
 >
         " Default
         let g:sexp_capture_emit_does_indent = 1
+<
+                                                    *g:sexp_splice_does_indent*
+Automatically re-indent the target(s) of a multi-line sexp_splice operation.
+See also |sexp-auto-indent|.
+>
+        " Default
+        let g:sexp_splice_does_indent = 1
+<
+                                                    *g:sexp_raise_does_indent*
+Automatically re-indent the target(s) of a multi-line sexp_raise operation.
+See also |sexp-auto-indent|.
+>
+        " Default
+        let g:sexp_raise_does_indent = 1
 <
                                                  *g:sexp_prefer_legacy_syntax*
 Prefer using Vim's legacy syntax engine to determine element boundaries, even

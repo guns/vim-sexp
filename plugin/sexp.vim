@@ -43,6 +43,18 @@ if !exists('g:sexp_capture_emit_does_indent')
     let g:sexp_capture_emit_does_indent = 1
 endif
 
+if !exists('g:sexp_raise_does_indent')
+    let g:sexp_raise_does_indent = 1
+endif
+
+if !exists('g:sexp_splice_does_indent')
+    let g:sexp_splice_does_indent = 1
+endif
+
+if !exists('g:sexp_auto_indent')
+    let g:sexp_auto_indent = -1
+endif
+
 if !exists('g:sexp_prefer_legacy_syntax')
     let g:sexp_prefer_legacy_syntax = 0
 endif
@@ -585,10 +597,10 @@ Defplug! nnoremap sexp_insert_at_list_head sexp#insert_at_list_terminal(0)
 Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
 " Raise list
-Defplug! nnoremap sexp_raise_list    sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_list', 'n', 0, 0)
-Defplug  xnoremap sexp_raise_list    sexp#docount(v:prevcount, 'sexp#raise', 'v', '')
-Defplug! nnoremap sexp_raise_element sexp#docount(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
-Defplug  xnoremap sexp_raise_element sexp#docount(v:prevcount, 'sexp#raise', 'v', '')
+Defplug! nnoremap sexp_raise_list    sexp#docount_stateful(v:count, 'sexp#raise', 'n', 'sexp#select_current_list', 'n', 0, 0)
+Defplug  xnoremap sexp_raise_list    sexp#docount_stateful(v:prevcount, 'sexp#raise', 'v', '')
+Defplug! nnoremap sexp_raise_element sexp#docount_stateful(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
+Defplug  xnoremap sexp_raise_element sexp#docount_stateful(v:prevcount, 'sexp#raise', 'v', '')
 
 " Convolute
 " Note: convolute takes pains to preserve cursor position: hence, 'nojump'.

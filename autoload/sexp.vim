@@ -4460,9 +4460,11 @@ function! sexp#indent(mode, top, count, clean, ...)
     endtry
 endfunction
 
-" Create a flat list encompassing all input positions.
-" Note: The flat list is intended to facilitate iteration: the positions it
-" contains are generally modifed in-place.
+" Build and a return a list containing all the non-null VimPos4's provided as input,
+" flattening any provided lists as required to reach the (possibly deeply) nested
+" VimPos4's.
+" Important Note: We do not flatten the VimPos4's themselves, as their list identity must
+" be preserved.
 " TODO: Consider adding position uniquifying logic.
 " Rationale: The created lists are generally used in pass-by-ref position
 " modification strategies, which would modify the same position multiple times
@@ -4470,13 +4472,13 @@ endfunction
 function! s:concat_positions(...)
     let ret = []
     for p in a:000
-        " p will be one of the following:
-        "   1) empty list 2) position, 3) position list
-        " Caveat: Discard null positions appearing either singly or in list.
+        " If current element is a valid position, append it; otherwise, recurse on list
+        " (possibly nested) of VimPos4 and append the returned list.
+        " Discard nullpos and empty lists; assume all other terminals are valid positions.
         if !empty(p) && p != [0, 0, 0, 0]
-            let ret += type(p[0]) == 0
+            let ret += type(p[0]) == type(0)
                 \ ? [p]
-                \ : filter(copy(p), 'v:val != [0, 0, 0, 0]')
+                \ : call('s:concat_positions', p)
         endif
     endfor
     return ret
@@ -4743,9 +4745,11 @@ function! sexp#wrap(scope, bra, ket, at_tail, insert)
     endif
 endfunction
 
-" Replace parent list with selection resulting from executing func with given
-" varargs.
-function! sexp#raise(mode, func, ...)
+" Callback invoked at start of sexp_raise.
+" Contains mode-specific logic to determine the initial raise target of a sexp_raise that
+" may use a count. Because each iteration of a counted operation adjusts the visual marks
+" around the raised target, the logic is needed only on the first iteration.
+function! sexp#raise__init(mode, func, ...)
     if a:mode ==# 'v'
         " Important Note: Blindly using visual selection could unbalance forms; expand
         " selection as necessary to ensure it contains one or more elements at the same
@@ -4758,21 +4762,59 @@ function! sexp#raise(mode, func, ...)
         " Select the super range.
         call s:set_visual_marks([range[0], range[1]])
     else
+        " Perform selection using provided func and args.
         call call(a:func, a:000)
     endif
+endfunction
+
+" Callback invoked to complete sexp_raise.
+" Performs automatic re-indent (if appropriate), and leaves the cursor/visual selection in
+" proper state: i.e., for visual mode command, leaves the raised target selected; for
+" normal mode command, positions at start of raised target.
+function! sexp#raise__final(ex, state, mode, func, ...)
+    let [s, e] = s:get_visual_marks()
+    " Perform indent if auto-indent enabled *and* raise target is multiline.
+    " Rationale: Raised target should start exactly where replaced list did; thus,
+    " need for re-indent depends on what was raised, not what was replaced.
+    if ((g:sexp_auto_indent != -1 && g:sexp_auto_indent) || g:sexp_raise_does_indent)
+        \ && s[1] != e[1]
+        " Note: Though we use visual marks, it's important that we be in normal mode.
+        call sexp#ensure_normal_mode()
+        call sexp#indent('v', 0, 1, -1, 1, [s, e])
+        " Adjust visual selection to account for re-indent.
+        call s:set_visual_marks([s, e])
+    endif
+    " Depending on command mode, either select the raised target or position on its start.
+    if a:mode ==# 'v'
+        call s:select_current_marks(a:mode)
+    else
+        call s:setcursor(s)
+    endif
+endfunction
+
+" Replace parent list with selection resulting from executing func with given varargs.
+" Precondition: Visual marks have been set around the element(s) to be raised.
+" Postcondition: Visual marks have been adjusted to reflect raised target to ensure that
+" next iteration has the information it needs. (This approach obviates the need for state
+" dict and calls to *__init() and *__update() functions.)
+function! sexp#raise(mode, func, ...)
     " Before deleting anything, be sure there's a parent list by moving to start of visual
     " range and looking for nearest open.
     call sexp#ensure_normal_mode()
     call s:setcursor(getpos("'<"))
     let pos = s:nearest_bracket(0)
-    if pos[1]
-        " Re-select the element(s) to be raised.
-        " Assumption: s:nearest_bracket() didn't alter visual marks.
-        call s:select_current_marks(a:mode)
-        normal! d
-        call sexp#select_current_list('n', 0, 0, 1)
-        normal! p
+    if !pos[1]
+        " Will be caught by docount_stateful().
+        throw 'sexp-done'
     endif
+    " Re-select the element(s) to be raised.
+    " Assumption: s:nearest_bracket() didn't alter visual marks.
+    call s:select_current_marks(a:mode)
+    normal! d
+    call sexp#select_current_list('n', 0, 0, 1)
+    normal! p
+    " Set marks around raised target (pasted text).
+    call s:set_visual_marks([getpos("'["), getpos("']")])
 endfunction
 
 " Logic:
@@ -5112,31 +5154,47 @@ function! sexp#splice_list(...)
     let marks = s:get_visual_marks()
     let cursor = getpos('.')
 
-    " Climb the expression tree a:1 times
+    " Climb the expression tree a:1 times (or until top-level hit).
     if a:0 && a:1 > 1
         let idx = a:1
         let dir = getline(cursor[1])[cursor[2] - 1] =~ s:opening_bracket
         while idx > 0
-            call s:move_to_nearest_bracket(dir)
+            let pos = s:nearest_bracket(dir)
+            if !pos[1]
+                " Top-level reached.
+                break
+            endif
+            call s:setcursor(pos)
             let idx -= 1
         endwhile
     endif
 
     call s:set_marks_around_current_list('n', 0, 0)
 
-    let start = s:get_visual_beg_mark()
+    let [start, end] = [s:get_visual_beg_mark(), s:get_visual_end_mark()]
 
     if start[1] > 0
         " Delete ending bracket first so we don't mess up '<
-        call s:setcursor(s:get_visual_end_mark())
+        call s:setcursor(end)
         normal! dl
         call s:setcursor(start)
         normal! dl
     else
         call s:setcursor(cursor)
     endif
+    " Perform indent if auto-indent enabled *and* multiple lines affected by splice.
+    if g:sexp_auto_indent != -1 ? g:sexp_auto_indent : g:sexp_splice_does_indent
+        \ && start[1] != end[1]
+        " Assumption: Visual marks should still span correct line range.
+        " Note: Though we use visual marks, it's important that we be in normal mode.
+        call sexp#ensure_normal_mode()
+        call sexp#indent('v', 0, 1, -1, 1, [cursor, marks, start, end])
+    endif
 
-    call s:set_visual_marks(marks)
+    " Restore original visual marks (if there were any), possibly adjusted for re-indent.
+    if marks[0][1]
+        call s:set_visual_marks(marks)
+    endif
 endfunction
 
 " Invoked by docount_stateful() to initialize state object, which will be provided to each
@@ -5175,10 +5233,10 @@ function! sexp#stackop__final(ex, state, mode, last, capture)
     let did_indent = 0
     if empty(a:ex) || a:ex == 'sexp-done'
         " Normal termination
-        if g:sexp_capture_emit_does_indent
+        if g:sexp_auto_indent != -1 ? g:sexp_auto_indent : g:sexp_capture_emit_does_indent
             " Convert range to corresponding super range before multi-line test.
-            " Assumption: One end of the range always includes a bracket of the operated
-            " on list, so super range should expand the range.
+            " Rationale: For the sake of implementation simplicity, stackop_emit doesn't
+            " return a super range.
             let range = s:super_range(a:state.range[0], a:state.range[1])
             if range[0][1] != range[1][1]
                 " Super range spans multiple lines, so re-indent.
@@ -5247,6 +5305,7 @@ function! sexp#stackop(mode, last, capture)
     endif
 
     " Assumption: Capture/emit has positioned us on bracket of the target list.
+    " TODO: Could defer this till the *__final() callback.
     if a:mode ==? 'v'
         call sexp#select_current_element('n', 1)
     endif

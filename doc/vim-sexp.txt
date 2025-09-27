@@ -66,7 +66,7 @@ will work as expected, even for changes made with |operator-pending| commands.
 
 The key mappings are only available in |FileType|s that match the
 |g:sexp_filetypes| option, but the <Plug> mappings are available globally, so
-you can bind them manually in any filetype:
+you can bind them manually in any filetype: e.g.,
 >
         " Clojure:
         "   Use the FireplacePrint operator from fireplace.vim [2] to evaluate
@@ -88,6 +88,23 @@ Insert mode mappings are enabled by default and can be disabled with
 
 All mappings can be easily changed via |g:sexp_mappings|. Users who prefer
 more explicit, opt-in configuration should read |sexp-explicit-mappings|.
+
+Use of Meta/Alt keys in default keymap  ~
+Some users may consider a keymap based on Meta/Alt keys more efficient than
+one relying primarily on multi-stroke, leader-based sequences. Unfortunately,
+Meta key bindings are more likely to cause problems and/or require special
+configuration in terminal-based legacy Vim, and for this reason, are used in
+only a few of the default bindings. However, users who prefer Meta/Alt keys
+should have no difficulty customizing the keymap to use them. Neovim users can
+simply map `<A-...>`, but terminal Vim users may need to use the special
+termcap `:set` command to ensure Meta/Alt keys are interpreted correctly:
+e.g., to allow <M-j> to be used in terminal Vim, put this in your vimrc.
+<
+set <M-j>=j
+
+Note: The character preceding the `j` is a literal ESC.
+:help set-termcap
+<
 
 [1]: https://github.com/tpope/vim-repeat
 [2]: https://github.com/tpope/vim-fireplace

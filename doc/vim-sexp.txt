@@ -468,7 +468,7 @@ CLONE COMMANDS (normal, visual) ~
         an end-of-line comment, the comment will be cloned along with the
         target (whether explicitly selected or not).
 
-        Overriding the default logic ~
+        Overriding the default clone logic ~
         Command variants forcing single-line (`_sl`) or multi-line (`_ml`)
         clones are provided, but not mapped by default. If you find yourself
         frequently wishing to override the default behavior, simply add the

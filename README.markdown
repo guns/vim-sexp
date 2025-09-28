@@ -122,6 +122,8 @@ Hint: Square bracket commands tend to move down and into lists, curly braces up 
 
 If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` commands remove extra whitespace before performing indent. If you set this option, you may wish to unmap `<M-=>` and `<M-->` to avoid creating redundant mappings.
 
+If `g:sexp_indent_aligns_comments` is set (false by default), the `==` and `=-` commands also trigger re-alignment of end-of-line comments, as described in the subsequent section. If you set this option, you may wish to unmap `<LocalLeader>a` and `<LocalLeader>A` to avoid creating redundant mappings.
+
 ### Comment Alignment Commands (normal, visual)
 
 * `<LocalLeader>a` aligns end-of-line comments in the current COMPOUND FORM or visual selection without moving the cursor
@@ -129,18 +131,16 @@ If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` comma
 
 **Note:** Vim-sexp uses a weighted-cost dynamic programming algorithm to perform comment alignment, based on weights and thresholds you can easily customize.
 
-:help sexp-comment-alignment-algorithm
+:help sexp-comment-alignment
 
 ### Clone Commands (normal, visual)
 
 * `<LocalLeader>c` inserts copy(s) of current list or visual selection before cursor without moving cursor
-* `<LocalLeader><LocalLeader>c` like previous, but inhibits insertion of newlines between copies
-* `<LocalLeader>C` inserts copy(s) of current element or visual selection before cursor without moving cursor
-* `<LocalLeader><LocalLeader>C` like previous, but inhibits insertion of newlines between copies
 
-**Note:** The clone commands above use simple heuristics to decide whether to perform a single or multi-line clone: i.e., whether to insert a space or a newline between the cloned elements. If you find that the default logic doesn't always do what you expect, you can add mappings for the single and multi-line command variants to your `g:sexp_mappings` override.
+**Note:** Simple heuristics are used to decide whether to perform a single or multi-line clone: i.e., whether to insert a space or a newline between the cloned elements.
+If you find that the default logic doesn't always do what you expect, you can add mappings for the single and multi-line command variants to your `g:sexp_mappings` override.
 
-:help single-vs-multi-line-clone
+:help sexp-clone-logic
 
 If `g:sexp_clone_does_indent` is set (true by default) and cloned text spans multiple lines, all elements involved in the clone (both original and copies) will be indented.
 
@@ -175,6 +175,18 @@ current COMPOUND FORM or ELEMENT.
 * `<M-?>` _convolutes_ the current COMPOUND FORM, splicing the tail of the current list into the current list's parent and moving the head of the current list to the head of a new list containing the parent of the current list.
 
 The `Emit` and `capture` commands are known as `barfage` and `slurpage` in [paredit.el][].
+
+### Auto-Indent
+
+Although vim-sexp contains explicit commands for re-indenting forms, re-indenting after a command that alters form structure is a common enough use
+case that vim-sexp provides an auto-indent capability.
+When enabled, commands such as clone, emit/capture, raise, and splice will perform an auto-reindent of
+the affected region.
+As with an explicitly requested indent, auto-indent uses option settings to determine whether to perform excess whitespace cleanup and/or trailing comment alignment.
+
+For details on enabling/disabling auto-indent, whitespace cleanup and comment alignment...
+
+:help sexp-auto-indent
 
 ### Cursor Insertion (normal)
 

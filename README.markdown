@@ -23,6 +23,12 @@ Vim-sexp brings the Vim philosophy of _precision editing_ to S-expressions.
   Enables use of the `.` command for repeating change operations in vim-sexp,
   as well as repeating builtin operations with vim-sexp's text objects.
 
+## Treesitter Support
+
+Although Treesitter is not a requirement, vim-sexp will use it to achieve significant performance gains if it's available.
+
+:help sexp-treesitter-support
+
 ## Definitions
 
 A COMPOUND FORM is a region of text delimited by a pair of `(` and `)`,
@@ -68,6 +74,8 @@ Text object selections refer to text _around_ the cursor.
 * The `aF` and `iF` objects select top-level COMPOUND FORMS.
 * The `as` and `is` objects select STRINGS.
 * The `ae` and `ie` objects select ELEMENTS.
+* The `ac` and `ic` objects select Nth CHILD ELEMENT from **start** of current COMPOUND FORM.
+* The `aC` and `iC` objects select Nth CHILD ELEMENT from **end** of current COMPOUND FORM.
 
 ### Text Object Motions (normal, visual, operator-pending)
 
@@ -81,10 +89,60 @@ operator-pending mode.
 * The `[[` and `]]` motions move the cursor to an adjacent top-level ELEMENT.
 * The `[e` and `]e` mappings select an adjacent ELEMENT.
 
-### Indent Commands (normal)
+### Flow Motions (normal, visual)
 
-* `==` indents the current COMPOUND FORM without moving the cursor
-* `=-` indents the current top-level COMPOUND FORM without moving the cursor
+Flow motions move the cursor in normal mode and move (not extend) the selection in visual mode. Unlike text object motions, flow motions are completely unconstrained by list structure, permitting the cursor to move freely in and out of compound forms.
+
+Note: Since the application of delete operators across list boundaries could destroy structural integrity, flow-motions are not provided in operator-pending mode.
+
+There are 2 types of flow motions:
+1. "list" motions land only on brackets
+1. "leaf" motions land only on non-list elements (e.g., atoms, strings and comments).
+
+#### List flow commands
+* The `<M-]>` motion moves the cursor forward by open brackets
+* The `<M-[>` motion moves the cursor backward by close brackets
+* The `<M-}>` motion moves the cursor forward by close brackets
+* The `<M-{>` motion moves the cursor backward by open brackets
+
+Hint: Square bracket commands tend to move down and into lists, curly braces up and out. If you picture a top-level form as a tree, `<M-]>`/`<M-[>` perform forwards/backwards depth-first recursive descents, and `<M-{>`/`<M-}>` may be used to "rewind" the descent.
+
+#### Leaf flow commands
+* The `<M-S-b>` motion moves the cursor backward to leaf head
+* The `<M-S-w>` motion moves the cursor forward to leaf head
+* The `<M-S-g>` motion moves the cursor backward to leaf tail
+* The `<M-S-e>` motion moves the cursor forward to leaf tail
+
+### Indent Commands (normal, visual)
+
+* `==` indents the current COMPOUND FORM or visual selection without moving the cursor
+* `=-` indents the current top-level COMPOUND FORM without moving the cursor (normal mode only)
+* `<M-=>` indents and removes extra whitespace from the current COMPOUND FORM or visual selection without moving the cursor
+* `<M-->` indents and removes extra whitespace from the current top-level COMPOUND FORM without moving the cursor (normal mode only)
+
+If `g:sexp_indent_does_clean` is set (false by default), the `==` and `=-` commands remove extra whitespace before performing indent. If you set this option, you may wish to unmap `<M-=>` and `<M-->` to avoid creating redundant mappings.
+
+If `g:sexp_indent_aligns_comments` is set (false by default), the `==` and `=-` commands also trigger re-alignment of end-of-line comments, as described in the subsequent section. If you set this option, you may wish to unmap `<LocalLeader>a` and `<LocalLeader>A` to avoid creating redundant mappings.
+
+### Comment Alignment Commands (normal, visual)
+
+* `<LocalLeader>a` aligns end-of-line comments in the current COMPOUND FORM or visual selection without moving the cursor
+* `<LocalLeader>A` aligns end-of-line comments in the current top-level COMPOUND FORM without moving the cursor (normal mode only)
+
+**Note:** Vim-sexp uses a weighted-cost dynamic programming algorithm to perform comment alignment, based on weights and thresholds you can easily customize.
+
+:help sexp-comment-alignment
+
+### Clone Commands (normal, visual)
+
+* `<LocalLeader>c` inserts copy(s) of current list or visual selection before cursor without moving cursor
+
+**Note:** Simple heuristics are used to decide whether to perform a single or multi-line clone: i.e., whether to insert a space or a newline between the cloned elements.
+If you find that the default logic doesn't always do what you expect, you can add mappings for the single and multi-line command variants to your `g:sexp_mappings` override.
+
+:help sexp-clone-logic
+
+If `g:sexp_clone_does_indent` is set (true by default) and cloned text spans multiple lines, all elements involved in the clone (both original and copies) will be indented.
 
 ### Wrap Commands (normal, visual)
 
@@ -114,8 +172,21 @@ current COMPOUND FORM or ELEMENT.
 * `<M-h>` and `<M-l>` swap the position of the current ELEMENT with a sibling ELEMENT.
 * `<M-S-j>` and `<M-S-k>` emit the terminal ELEMENTS of the current COMPOUND FORM.
 * `<M-S-h>` and `<M-S-l>` capture adjacent ELEMENTS into the current COMPOUND FORM.
+* `<M-?>` _convolutes_ the current COMPOUND FORM, splicing the tail of the current list into the current list's parent and moving the head of the current list to the head of a new list containing the parent of the current list.
 
-The last two commands are also known as `barfage` and `slurpage` in [paredit.el][].
+The `Emit` and `capture` commands are known as `barfage` and `slurpage` in [paredit.el][].
+
+### Auto-Indent
+
+Although vim-sexp contains explicit commands for re-indenting forms, re-indenting after a command that alters form structure is a common enough use
+case that vim-sexp provides an auto-indent capability.
+When enabled, commands such as clone, emit/capture, raise, and splice will perform an auto-reindent of
+the affected region.
+As with an explicitly requested indent, auto-indent uses option settings to determine whether to perform excess whitespace cleanup and/or trailing comment alignment.
+
+For details on enabling/disabling auto-indent, whitespace cleanup and comment alignment...
+
+:help sexp-auto-indent
 
 ### Cursor Insertion (normal)
 

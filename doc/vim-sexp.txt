@@ -449,7 +449,7 @@ CLONE COMMANDS (normal, visual) ~
         selected lists and elements so that structural integrity is
         maintained.
 
-                                                 *single-vs-multi-line-clone*
+                                                            *sexp-clone-logic*
         A "multi-line" clone is one in which the copies of the target are
         separated from the target (and from each other) by a newline. The
         default logic selects multi-line operation whenever any of the
@@ -795,15 +795,72 @@ LIST MANIPULATION (normal, visual) ~
 <M-S-k>                                       *<Plug>(sexp_emit_tail_element)*
 <M-S-h>                                    *<Plug>(sexp_capture_prev_element)*
 <M-S-l>                                    *<Plug>(sexp_capture_next_element)*
-        Emit [count] terminal elements of the current list, or capture [count]
-        elements adjacent to the current list. A list will never emit its last
-        element and can not capture its parent.
+        Emit  ~
+        Emit [count] terminal elements from the current list (or nearest
+        ancestor with elements to emit).
+        Capture  ~
+        Capture [count] elements from parent list, or nearest ancestor with
+        elements to capture.
+
+        In the absence of a [count], a single Emit/capture operation moves a
+        single element one level up or down, respectively. As long as there
+        are elements to capture/emit at higher levels of the sexp tree, the
+        operations will not block, though you may need to use a [count] or
+        perform the operation several times in succession to move the
+        element(s) to the desired level.
+
+        Cursor Positioning / Visual Selection  ~
+        To prevent loss of editing context, Vim-sexp attempts to maintain
+        cursor position across a normal-mode emit/capture. A natural
+        consequence of this approach is that the cursor can "escape" the
+        current list along with the element under it, causing a subsequent
+        emit to operate on the parent list. Although this behavior seems quite
+        natural when successive emit operations are triggered manually, it
+        could be surprising when a [count] is used. Thus, a future version of
+        vim-sexp may prevent cursor emission for an emit with a [count]. If
+        you wish to prevent cursor emission even for emits without a [count],
+        simply set |g:sexp_never_emit_cursor| to have the cursor stick with
+        the emitting list bracket in such cases. In visual mode, the list
+        doing the capturing or emitting will be selected after the operation.
+        Note that selecting the list effectively prevents "cursor escape",
+        thereby ensuring that successive capture/emit operations in visual
+        mode operate on the same list.
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
+
 
         By default, captures/emits affecting multiple lines trigger an
         automatic re-indent. If you dislike this behavior, see
         |sexp-auto-indent|.
+
+        Capture Examples:  ~
+>
+        (((|foo) bar) baz)
+        (((|foo bar)) baz)
+        (((|foo bar) baz))
+        (((|foo bar baz)))
+<
+        Emit Examples:  ~
+
+        -- g:sexp_never_emit_cursor == 0 --  ~
+>
+        (((foo |bar)))
+        (((foo) |bar))
+        (((foo)) |bar)
+<
+        -- g:sexp_never_emit_cursor == 1 --  ~
+>
+        (((foo |bar)))
+        (((foo|) bar))
+        (((|) foo bar))
+        (((|) foo) bar)
+        (((|)) foo bar)
+        ((|) () foo bar)
+        ((|) () foo) bar
+        ((|) ()) foo bar
+        ((|)) () foo bar
+        (|) () () foo bar
+<
 
 INSERT MODE MAPPINGS (insert, optional) ~
 
@@ -948,6 +1005,12 @@ See also |sexp-auto-indent|.
 >
         " Default
         let g:sexp_raise_does_indent = 1
+<
+Set this flag to force cursor to remain with its list, even when the element
+under it is emitted. Default behavior matches Paredit.
+>
+        " Default
+        let g:sexp_never_emit_cursor = 0
 <
                                                  *g:sexp_prefer_legacy_syntax*
 Prefer using Vim's legacy syntax engine to determine element boundaries, even

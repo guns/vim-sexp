@@ -51,6 +51,10 @@ if !exists('g:sexp_splice_does_indent')
     let g:sexp_splice_does_indent = 1
 endif
 
+if !exists('g:sexp_never_emit_cursor')
+    let g:sexp_never_emit_cursor = 0
+endif
+
 if !exists('g:sexp_auto_indent')
     let g:sexp_auto_indent = -1
 endif

@@ -135,6 +135,7 @@ endfunction
 " Rationale: Deferring the echomsg call is preferable because it greatly increases the
 " probability it will be seen by the user before being overwritten (e.g., by an already
 " pending redraw).
+" TODO: Support printf-style formatting.
 function! s:warnmsg(s, ...)
     let hl = a:0 && a:1 ? 'ErrorMsg' : 'WarningMsg'
     if exists('s:msg_q')
@@ -1827,8 +1828,7 @@ endfunction
 " If no such adjacent element exists, moves to beginning or end of element
 " respectively. Analogous to native w, e, and b commands.
 " TODO: Consider an optional flag requesting return of s:nullpos if no adjacent.
-" FIXME: Move this (or the api sexp#move_to_adjacent_element we're trying to deconflict)
-" and get rid of the kludgy suffix.
+" FIXME: Move this (or the api sexp#move_to_adjacent_element we're trying to deconflict).
 function! s:move_to_adjacent_element(next, tail, top)
     let cursor = getpos('.')
 
@@ -2809,145 +2809,6 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Capture nearest non-comment sibling of current list, given the starting position of the
-" list's bracket minus any leading macro characters (spos) and the position of the bracket
-" itself (bpos).
-" Return: Pair [beg, end] representing modified range, else []
-" Note: For tail capture, spos == bpos.
-" Cursor Preservation: Caller handles.
-function! s:stackop_capture(last, spos, bpos)
-    " Find position of matching bracket (needed only for returned range).
-    call s:setcursor(a:bpos)
-    let other_bpos = s:nearest_bracket(!a:last)
-    if !other_bpos[1]
-        " Note: Should happen only if there are unmatched brackets.
-        return []
-    endif
-    " Position on bracket to be moved.
-    call s:setcursor(a:spos)
-    let nextpos = a:spos
-    " Move outwards, landing on successive elements' outer edges, looking for a
-    " non-comment element, which will become the new terminal.
-    while 1
-        let prevpos = nextpos
-        " Move to outside edge of adjacent element.
-        let nextpos = s:move_to_adjacent_element(a:last, a:last, 0)
-        " Make sure the call above actually moved us to a different element.
-        " Note: s:move_to_adjacent_element() returns terminal position of *current* element
-        " if no next element exists, and we started on the outside edge of an element
-        " (i.e., the terminal position we'll end up on when there's no adjacent element).
-        if !nextpos[1] || s:compare_pos(prevpos, nextpos) == 0
-            " Nothing to capture
-            return []
-        endif
-        if !s:is_comment(nextpos[1], nextpos[2])
-            " Found a capturable (non-comment) element.
-            break
-        endif
-    endwhile
-    " Get the bracket (and possibly leading macro chars) to be relocated.
-    let reg_save = @b
-    let @b = getline(a:spos[1])[a:spos[2] - 1 : a:bpos[2] - 1]
-    let blen = len(@b)
-
-    " Insertion and deletion must be done from the bottom up to avoid
-    " recalculating our marks
-    " Post-Condition: Leave cursor on relocated bracket.
-    if a:last
-        call s:setcursor(nextpos)
-        execute 'silent! normal! "bp'
-        call s:setcursor(a:spos)
-        execute 'silent! normal! "_d' . blen . 'l'
-        " Position on relocated bracket, whose new col offset relative to nextpos depends
-        " on whether deletion was colinear with nextpos.
-        " Implicit Assumption: No multibyte brackets.
-        let nextpos = s:pos_with_col_offset(nextpos, 1 + -(a:spos[1] == nextpos[1]))
-        call s:setcursor(nextpos)
-    else
-        call s:setcursor(a:spos)
-        execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(nextpos)
-        execute 'silent! normal! "bP'
-    endif
-
-    let @b = reg_save
-    " Return modified range.
-    return a:last ? [a:bpos, nextpos] : [nextpos, a:spos]
-endfunction
-
-" Emit outermost non-comment element from current list, given the starting position of the
-" list's bracket minus any leading macro characters (spos) and the position of the bracket
-" itself (bpos).
-" Return: Pair [beg, end] representing modified range, else []
-" Constraint: Never emit the final non-comment from the list.
-" Note: For tail capture, spos == bpos.
-" Design Decision: Although we could allow comment as terminal, provided we inserted a
-" newline before bracket, let's stick as closely to original behavior as possible, and
-" also do what was agreed upon in Github issue #13.
-" Cursor Preservation: Caller handles.
-function! s:stackop_emit(last, spos, bpos)
-    " Start on the list bracket.
-    call s:setcursor(a:bpos)
-
-    " Move inwards onto the terminal element's outer edge.
-    " Note: If emit occurs, this element will definitely be emitted.
-    let [l, c] = s:findpos('\v\S', !a:last)
-    if l < 1 | return 0 | endif
-    let nextpos = [0, l, c, 0]
-    call s:setcursor(nextpos)
-
-    " Continue inwards, landing on successive elements' outer edges, looking for a
-    " non-comment element, which can become the new terminal.
-    while 1
-        let prevpos = nextpos
-        " Move to outside edge of adjacent element.
-        let nextpos = s:move_to_adjacent_element(!a:last, a:last, 0)
-        if nextpos[1] < 1 | return [] | end
-
-        " Make sure we actually moved to a new element, and the element is contained.
-        " Note: The sexp#current_element_terminal() call is needed to ensure we moved to a
-        " new element, but I don't believe the containment test is necessary, since
-        " s:move_to_adjacent_element() should guarantee containment. Perhaps it was
-        " intended to deal with unbalanced forms? TODO: Consider removal.
-        if s:compare_pos(sexp#current_element_terminal(a:last), prevpos) == 0
-            \ || s:compare_pos(nextpos, s:nearest_bracket(!a:last)) != (a:last ? 1 : -1)
-            return []
-        endif
-        if !s:is_comment(nextpos[1], nextpos[2])
-            " Found non-comment element that can serve as terminal.
-            break
-        endif
-    endwhile
-
-    " Get the bracket (and possibly leading macro chars) to be relocated.
-    let reg_save = @b
-    let @b = getline(a:spos[1])[a:spos[2] - 1 : a:bpos[2] - 1]
-    let blen = len(@b)
-
-    " Insertion and deletion must be done from the bottom up to avoid
-    " recalculating our marks.
-    " Post-Condition: Leave cursor on relocated bracket.
-    if a:last
-        call s:setcursor(a:spos)
-        execute 'silent! normal! "_d' . blen . 'l'
-        call s:setcursor(nextpos)
-        " Note: Put will leave cursor on bracket.
-        execute 'silent! normal! "bp'
-    else
-        execute 'silent! normal! "bP'
-        call s:setcursor(a:spos)
-        execute 'silent! normal! "_d' . blen . 'l'
-        " Position on relocated bracket, whose new col offset relative to nextpos depends
-        " on whether deletion was colinear with nextpos.
-        let nextpos = a:spos[1] == nextpos[1] ? s:pos_with_col_offset(nextpos, -1) : nextpos
-        call s:setcursor(nextpos)
-    endif
-
-    let @b = reg_save
-    " Return modified range.
-    return a:last ? [nextpos, a:bpos] : [a:spos, nextpos]
-endfunction
-
 " Swap current visual selection with adjacent element. If pairwise is true,
 " swaps with adjacent pair of elements. If mode is 'v', the newly moved
 " selection is reselected.
@@ -3237,8 +3098,11 @@ endfunction
 " plugin logic.
 " Note: Currently, plugin logic never sets it because there are no commands that modify
 " non-whitespace.
+" Cursor Positioning: Let cursor position fall where it naturally would after
+" yank/put/delete.
 function! s:yankdel_range(start, end, del_or_spl, ...)
     let ret = ''
+    " TODO: Probably stop saving and adjusting cursor.
     let cursor = getpos('.')
     " Assumption: 'virtualedit' has been set to onemore (by pre-op handler).
     " Rationale: Need to be able to select (visually) past EOL in certain
@@ -3268,7 +3132,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
         " Caveat: Vim 7.3 didn't have xor() function so do it manually.
         " Note: spl_put is true iff splice can be performed by a "directed put".
         let spl_put = type(a:del_or_spl) == 1 && !cmp
-            \ && (!inc[0] && inc[1] == 1 || inc[0] && !inc[1] == 1)
+            \ && (!inc[0] && inc[1] == 1 || inc[0] == 1 && !inc[1])
         if spl_put || s:compare_pos(start, end) <= 0
             " Either splice is a directional put (spl_put) or the adjusted region is
             " non-empty.
@@ -3309,8 +3173,6 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 call s:set_visual_marks([start, end])
                 call s:select_current_marks('v')
             endif
-            " FIXME: Add test to ensure nothing but whitespace is deleted by
-            " del/splice!!!!!!
             if spl
                 let @a = spl_text
                 " Caveat: Need to treat splice text ending in newline
@@ -3325,13 +3187,17 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 if linewise
                     " Save [ and ] marks for restoration after space deletion.
                     let [smark, emark] =
-                        \ [getpos("'["), [0, line("']") - 1, col([line("']"), '$']) - 1, 0]]
+                        \ [getpos("'["), [0, line("']") - 1, col([line("']") - 1, '$']) - 1, 0]]
                     " Cleanup the space that was appended to inhibit linewise put.
                     normal! `]"_x
                     " Restore the [ and ] marks, which are clobbered by normal
                     " x, even when lockmarks is used.
                     call setpos("'[", smark)
                     call setpos("']", emark)
+                    " Position cursor on end of put text.
+                    " TODO: Currently, we're restoring at end of function, but I don't
+                    " think callers rely on that, and this is probably better...
+                    call s:setcursor(emark)
                     let @" = @"[:-2]
                 endif
                 if !spl_put
@@ -3349,7 +3215,8 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
     finally
         " Restore options/regs/cursor...
         let [@a, @"] = reg_save
-        call s:setcursor(cursor)
+        " TODO: Decide on this.
+        "call s:setcursor(cursor)
     endtry
 
     return ret
@@ -4797,7 +4664,7 @@ endfunction
 " Postcondition: Visual marks have been adjusted to reflect raised target to ensure that
 " next iteration has the information it needs. (This approach obviates the need for state
 " dict and calls to *__init() and *__update() functions.)
-function! sexp#raise(mode, func, ...)
+function! sexp#raise(state, mode, func, ...)
     " Before deleting anything, be sure there's a parent list by moving to start of visual
     " range and looking for nearest open.
     call sexp#ensure_normal_mode()
@@ -5198,84 +5065,258 @@ function! sexp#splice_list(...)
 endfunction
 
 " Invoked by docount_stateful() to initialize state object, which will be provided to each
-" invocation of stackop__update().
+" invocation of stackop__update(), and ultimately, to stackop__final().
 function! sexp#stackop__init(mode, last, capture)
     " Make sure stackop__final() has the information it needs to finalize the operation.
+    " mode:    command invocation mode
+    " range:   affected range, used to determine re-indent
+    " curpos:  initially, cursor pos at invocation, but subject to change by operation
+    " vmarks:  initially, visual marks at invocation, but subject to change by operation
+    "          Logic:
+    "            visual command: changed to reflect operated on list
+    "            normal command: adjusted only to reflect bracket relocation/re-indent
     return {
-            \ 'multiline': 0,
+            \ 'mode': a:mode,
             \ 'range': [s:nullpos, s:nullpos],
             \ 'curpos': getpos('.'),
-            \ 'marks': s:get_visual_marks()
+            \ 'vmarks': s:get_visual_marks(),
     \ }
 endfunction
 
 " Invoked by docount_stateful() after each iteration to perform state update.
-" FIXME: Need to keep up with the total range of lines affected, not just multiline.
+" -- Args --
+" state:    The state dict created by stackop__init() and updated by stackop__update().
+" result:   Dict returned by sexp#stackop() to reflect the operation performed (see below)
+" <rest>:   The invocation arguments, unmodified
+" The 'result' dict contains optional keys, whose names generally correspond to names in
+" the state dict. Provided keys are used in a possibly mode and/or option-dependent way to
+" update the state dict.
 function! sexp#stackop__update(state, result, mode, last, capture)
-    " Update the range of lines affected.
-    if !a:state.range[0][1] || s:compare_pos(a:result[0], a:state.range[0]) < 0
-        let a:state.range[0] = a:result[0]
+    if has_key(a:result, 'range')
+        if !a:state.range[0][1] || s:compare_pos(a:result.range[0], a:state.range[0]) < 0
+            let a:state.range[0] = a:result.range[0]
+        endif
+        if !a:state.range[1][1] || s:compare_pos(a:result.range[1], a:state.range[1]) > 0
+            let a:state.range[1] = a:result.range[1]
+        endif
     endif
-    if !a:state.range[1][1] || s:compare_pos(a:result[1], a:state.range[1]) > 0
-        let a:state.range[1] = a:result[1]
+    if a:state.mode ==? 'v' && has_key(a:result, 'vmarks')
+        " Update visual marks to reflect updated list boundary.
+        " Note: If command mode is non-visual, vmarks are adjusted only for bracket
+        " relocations, and that happens automatically elsewhere.
+        let a:state.vmarks = a:result.vmarks
     endif
-    " Upon each successful iteration, establish new rollback point for visual marks and
-    " cursor pos.
-    let a:state.marks = s:get_visual_marks()
-    let a:state.curpos = getpos('.')
+    " Cursor modification logic
+    if g:sexp_never_emit_cursor && !a:capture
+        " Don't let cursor be emitted by list.
+        if s:compare_pos(a:result.vmarks[a:last], a:state.curpos) == (a:last ? -1 : 1)
+            " Pull cursor inward to list boundary before next iteration.
+            let a:state.curpos = a:result.vmarks[a:last]
+        endif
+    endif
 endfunction
 
 " Invoked by docount_stateful() at the end of all iterations to restore appropriate cursor
 " pos and/or visual state, and to perform re-indent if multiple lines were affected and
-" user has enabled auto-reindent for stackops.
+" user has enabled auto-reindent for capture/emit.
 " Handles exceptional (!empty(ex) && ex != 'sexp-done') as well as normal termination.
 function! sexp#stackop__final(ex, state, mode, last, capture)
-    let did_indent = 0
     if empty(a:ex) || a:ex == 'sexp-done'
         " Normal termination
         if g:sexp_auto_indent != -1 ? g:sexp_auto_indent : g:sexp_capture_emit_does_indent
             " Convert range to corresponding super range before multi-line test.
-            " Rationale: For the sake of implementation simplicity, stackop_emit doesn't
-            " return a super range.
+            " TODO: Consider skipping this.
+            " Rationale: sexp#indent currently calculates a super range in visual mode and
+            " stackop_{capture,emit} returns a super range naturally.
             let range = s:super_range(a:state.range[0], a:state.range[1])
             if range[0][1] != range[1][1]
                 " Super range spans multiple lines, so re-indent.
                 call s:set_visual_marks(range)
                 " Note: Though we use visual marks, it's important that we be in normal mode.
                 call sexp#ensure_normal_mode()
-                call sexp#indent('v', 0, 1, -1, 1, a:state.marks + [a:state.curpos])
-                let did_indent = 1
+                call sexp#indent('v', 0, 1, -1, 1, [a:state.vmarks, a:state.curpos])
             endif
         endif
     endif
-    " For a normal termination, we should already be in correct state unless re-indent was
-    " performed.
-    " Design Decision: In case of abnormal termination, restore last established rollback
-    " point, not state prior to user-executed command with [count].
-    " Rationale: We're not undo'ing any of the iterations already performed.
-    if a:ex != 'sexp-done' || did_indent
-        if a:mode ==? 'v'
-            call sexp#ensure_normal_mode()
-            call s:set_visual_marks(a:state.marks)
-            normal! gv
-        else
-            keepjumps call s:setcursor(a:state.curpos)
-        endif
+    " Restore visual marks whether we've adjusted only for bracket relocations or more
+    " substantially (e.g., to prevent cursor escaping form when g:sexp_never_emit_cursor
+    " is set).
+    " Assumption: vmarks and curpos have been adjusted for any bracket relocations.
+    call sexp#ensure_normal_mode()
+    call s:set_visual_marks(a:state.vmarks)
+    " TODO: Should we handle the abnormal termination scenario any differently?
+    if a:mode ==? 'v'
+        " TODO: Any advantage to using select_current_marks() instead?
+        normal! gv
+    else
+        keepjumps call s:setcursor(a:state.curpos)
     endif
 endfunction
 
-" Capture or emit the first or last element into or out of the current list.
-" The cursor will be placed on the new bracket position, or if mode is 'v',
-" the resulting list will be selected.
+" Capture nearest non-comment sibling of current list, given the starting position of the
+" list's bracket minus any leading macro characters (spos) and the position of the bracket
+" itself (bpos).
+" Note: For tail capture, spos == bpos.
+" Return: Dict with the following keys:
+"   vmarks  start/end of list that did the capture
+"           Used in visual mode to select the list after operation completes
+"   range   range affected by the operation
+"           Used to calculate reindent
+" Cursor Preservation: Caller handles.
+function! s:stackop_capture(last, spos, bpos, ps)
+    " Find position of matching bracket (needed only for returned range).
+    call s:setcursor(a:bpos)
+    let opp_bpos = s:nearest_bracket(!a:last)
+    if !opp_bpos[1]
+        " Note: Should happen only if there are unmatched brackets.
+        throw 'sexp-error'
+    endif
+    " Position on outer edge of bracket construct (possibly macro chars) to be relocated.
+    call s:setcursor(a:spos)
+    let nextpos = a:spos
+    " Move outwards, landing on successive elements' outer edges, looking for a
+    " non-comment element, which will become the new terminal.
+    while 1
+        let prevpos = nextpos
+        " Move to outside edge of adjacent element.
+        let nextpos = s:move_to_adjacent_element(a:last, a:last, 0)
+        " Make sure the call above actually moved us to a different element.
+        " Note: s:move_to_adjacent_element() returns terminal position of *current* element
+        " if no next element exists, and we started on the outside edge of an element
+        " (i.e., the terminal position we'll end up on when there's no adjacent element).
+        " Assumption: s:move_to_adjacent_element() will not return nullpos unless a:top is
+        " set.
+        if s:compare_pos(prevpos, nextpos) == 0
+            " Nothing to capture
+            return {}
+        endif
+        if !s:is_comment(nextpos[1], nextpos[2])
+            " Found a capturable (non-comment) element.
+            break
+        endif
+    endwhile
+    " Yank and delete the bracket (and possibly leading macro chars) to be relocated.
+    let btext = s:yankdel_range(a:spos, a:bpos, 1, 1, a:ps, 1)
+
+    " Put the yanked bracket construct on the *outside* of nextpos using directed put.
+    call s:yankdel_range(nextpos, nextpos, btext, a:last ? [0, 1] : [1, 0], a:ps)
+
+    " New bracket pos can be obtained from either '. or '] mark
+    let bpos = getpos('.')
+    " Update visual marks to reflect updated list boundary.
+    let vmarks = a:last ? [opp_bpos, bpos] : [bpos, opp_bpos]
+    " Update the superset range of affected lines using ends of capturing list.
+    " Assumption: yankdel_range() updates '[ and '].
+    " Assunmption: No need to pull in leading macro chars, given how range is used.
+    let range = a:last ? [opp_bpos, bpos] : [bpos, opp_bpos]
+    return {'vmarks': vmarks, 'range': range}
+endfunction
+
+" Emit outermost non-comment element from current list, given the starting position of the
+" list's bracket minus any leading macro characters (spos) and the position of the bracket
+" itself (bpos).
+" Note: For tail capture, spos == bpos.
+" Return: Dict with the same keys as stackop_capture()
+" Design Decision: Although we could allow comment as terminal, provided we inserted a
+" newline before bracket, let's stick as closely to original behavior as possible, and
+" also do what was agreed upon in Github issue #13.
+" Cursor Preservation: Caller handles.
+function! s:stackop_emit(last, spos, bpos, ps)
+    " Start on the list bracket.
+    call s:setcursor(a:bpos)
+    " Get opposite bracket, needed for empty list test.
+    let opp_bpos = s:nearest_bracket(!a:last)
+    " Move inwards onto the terminal element's outer edge.
+    let [l, c] = s:findpos('\v\S', !a:last)
+    " TODO: l == -1 shouldn't happen in well-formed buffer. Throw exception?
+    if l < 1 | return {} | endif
+    let nextpos = [0, l, c, 0]
+    " Make sure findpos didn't find other bracket pos.
+    if !s:compare_pos(opp_bpos, nextpos)
+        " List is empty. Nothing to emit. Let caller decide how to handle.
+        return {}
+    endif
+    call s:setcursor(nextpos)
+    " Save pos of outermost element to be emitted.
+    let outerpos = nextpos
+    " Set this if we need to insert separating space around bracket.
+    let insert_space = 0
+
+    " Continue inwards, landing on successive elements' outer edges, looking for a
+    " non-comment element, which can become the new terminal.
+    " Note: When only one element remains, opposite bracket serves as terminal.
+    while 1
+        let prevpos = nextpos
+        " Move to outside edge of adjacent element.
+        let nextpos = s:move_to_adjacent_element(!a:last, a:last, 0)
+        " Make sure we actually moved to a new element.
+        " Rationale: s:move_to_adjacent_element() will not return nullpos unless a:top is
+        " set.
+        if s:compare_pos(sexp#current_element_terminal(a:last), prevpos) == 0
+            " Final element being emitted; let bracket serve as "terminal".
+            let nextpos = opp_bpos
+            " Special Case: If no whitespace adjacent to opposite bracket, we need to
+            " insert a space to avoid creating something like `()foo' or `foo()'.
+            call s:setcursor(opp_bpos)
+            if getline(opp_bpos[1])[a:last ? opp_bpos[2] : opp_bpos[2] - 2] !~ '\s'
+                let insert_space = 1
+            endif
+            break
+        endif
+        if !s:is_comment(nextpos[1], nextpos[2])
+            " Found non-comment element that can serve as terminal.
+            break
+        endif
+    endwhile
+
+    " Note: Augment list of adjusted positions to eliminate modification order
+    " constraints.
+    let ps = s:concat_positions(a:ps, outerpos, nextpos)
+    " Yank and delete the bracket (and possibly leading macro chars) to be relocated.
+    let btext = s:yankdel_range(a:spos, a:bpos, 1, 1, ps, 1)
+    if insert_space
+        let btext = a:last ? btext . ' ' : ' ' . btext
+    endif
+
+    " Put the yanked bracket construct on the *outside* of nextpos using directed put.
+    " Note: If emitting final element, nextpos will be opposite bracket.
+    call s:yankdel_range(nextpos, nextpos, btext, a:last ? [0, 1] : [1, 0], ps)
+
+    " Get location of relocated bracket.
+    " Note: getpos('.') and getpos("']") should be identical.
+    let bpos = getpos('.')
+    " Note: When emitting at end, inserted space necessitates adjustment.
+    if insert_space && a:last
+        let bpos[2] -= 1
+    endif
+    " Update visual marks to reflect updated list boundary.
+    let vmarks = a:last ? [opp_bpos, bpos] : [bpos, opp_bpos]
+    " Update the superset range of affected lines using outermost *emitted* element and
+    " opposite bracket (whose position has not been affected by bracket relocation).
+    let range = a:last ? [opp_bpos, outerpos] : [outerpos, opp_bpos]
+    return {'vmarks': vmarks, 'range': range}
+endfunction
+
+" Capture or emit the first or last element into or out of the current list, unless
+" current list is empty, in which case, we capture/emit from containing list, recursively.
+" For normal mode command, cursor position is preserved (subject to constraints imposed by
+" current setting of option g:sexp_never_emit_cursor); for visual mode, operated on list
+" will be selected.
 "
-" For implementation simplicity a list will never emit its last non-comment element, or
-" capture its containing list.
 " Note: docount_stateful() makes [count] calls to this function, followed by a single call
 " to the __final() function to handle cleanup; thus, this function need only ensure that
-" cursor position (and visual selection) is correct after each iteration.
+" cursor position in state dict is correct after each iteration. Currently, the cursor
+" position and/or visual marks we'll need to restore can be changed by emit/capture, but
+" the modification logic is confined to the __update() function to obviate the need to
+" make the implementation functions state dict-aware.
+"
 " Throws 'sexp-error' in case of abnormal termination and 'sexp-done' for a normal
-" termination (when there are no more siblings to emit/capture).
-function! sexp#stackop(mode, last, capture)
+" termination (when there are no more siblings *at any level* to emit/capture).
+function! sexp#stackop(state, mode, last, capture)
+    " Note: capture/emit function can change a:state.curpos: changes made by capture are
+    " strictly adjustments for bracket relocation, but emit can make more dramatic
+    " changes, depending on g:sexp_never_emit_cursor option.
+    call s:setcursor(a:state.curpos)
     let [_b, cursorline, cursorcol, _o] = getpos('.')
     let char = getline(cursorline)[cursorcol - 1]
 
@@ -5297,18 +5338,23 @@ function! sexp#stackop(mode, last, capture)
         let pos = s:move_to_current_element_terminal(0)
     endif
 
-    " Perform capture/emit and save the range of lines operated on.
-    let result = a:capture ? s:stackop_capture(a:last, pos, bpos)
-                 \ : s:stackop_emit(a:last, pos, bpos)
-    if empty(result)
-        throw 'sexp-done'
-    endif
+    " Loop till successful capture/emit performed or deemed impossible.
+    while 1
+        let result = s:{a:capture ? 'stackop_capture' : 'stackop_emit'}(
+            \ a:last, pos, bpos,
+            \ s:concat_positions(a:state.curpos, a:state.vmarks, a:state.range))
+        if !empty(result)
+            return result
+        endif
+        " Blocked at current level; ascend if possible and retry.
+        let bpos = s:move_to_nearest_bracket(a:last)
+        if !bpos[1]
+            throw 'sexp-done'
+        endif
+        " TODO: Validate the call to sexp#current_element_terminal()?
+        let pos = a:last ? bpos : sexp#current_element_terminal(0)
+    endwhile
 
-    " Assumption: Capture/emit has positioned us on bracket of the target list.
-    " TODO: Could defer this till the *__final() callback.
-    if a:mode ==? 'v'
-        call sexp#select_current_element('n', 1)
-    endif
     return result
 endfunction
 
@@ -5405,14 +5451,16 @@ function! sexp#docount_stateful(count, func, ...)
     try
         for n in range(a:count > 0 ? a:count : 1)
             " Perform single iteration.
-            let ret = call(a:func, a:000)
+            let ret = call(a:func, [state] + a:000)
             if exists('*' . update_fn)
                 " Pass results of current iteration to update function.
                 call call(update_fn, [state, ret] + a:000)
             endif
         endfor
-    catch
+    catch /sexp-/
         let ex = v:exception
+    catch
+        call s:warnmsg(printf("Internal error at %s: %s", v:throwpoint, v:exception))
     finally
         if exists('*' . final_fn)
             call call(final_fn, [ex, state] + a:000)

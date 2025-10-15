@@ -5107,12 +5107,16 @@ function! sexp#stackop__update(state, result, mode, last, capture)
         let a:state.vmarks = a:result.vmarks
     endif
     " Cursor modification logic
-    if g:sexp_never_emit_cursor && !a:capture
+    if !a:capture && g:sexp_never_emit_cursor
         " Don't let cursor be emitted by list.
         if s:compare_pos(a:result.vmarks[a:last], a:state.curpos) == (a:last ? -1 : 1)
             " Pull cursor inward to list boundary before next iteration.
             let a:state.curpos = a:result.vmarks[a:last]
         endif
+    endif
+    if a:capture && g:sexp_cursor_rides_capturing_bracket && a:result.can_ride_bracket
+        " Since cursor started on capturing bracket, let it relocate with it.
+        let a:state.curpos = a:result.vmarks[a:last]
     endif
 endfunction
 
@@ -5196,7 +5200,7 @@ function! s:stackop_capture(last, spos, bpos, ps)
         endif
     endwhile
     " Yank and delete the bracket (and possibly leading macro chars) to be relocated.
-    let btext = s:yankdel_range(a:spos, a:bpos, 1, 1, a:ps, 1)
+    let btext = s:yankdel_range(a:spos, a:bpos, 1, 1, [a:ps, nextpos], 1)
 
     " Put the yanked bracket construct on the *outside* of nextpos using directed put.
     call s:yankdel_range(nextpos, nextpos, btext, a:last ? [0, 1] : [1, 0], a:ps)
@@ -5338,15 +5342,20 @@ function! sexp#stackop(state, mode, last, capture)
         let pos = s:move_to_current_element_terminal(0)
     endif
 
+    " Is cursor *on* bracket performing capture?
+    let can_ride_bracket = a:capture && a:state.curpos == bpos
     " Loop till successful capture/emit performed or deemed impossible.
     while 1
         let result = s:{a:capture ? 'stackop_capture' : 'stackop_emit'}(
             \ a:last, pos, bpos,
             \ s:concat_positions(a:state.curpos, a:state.vmarks, a:state.range))
         if !empty(result)
+            let result.can_ride_bracket = can_ride_bracket
             return result
         endif
         " Blocked at current level; ascend if possible and retry.
+        " Prevent riding higher level brackets.
+        let can_ride_bracket = 0
         let bpos = s:move_to_nearest_bracket(a:last)
         if !bpos[1]
             throw 'sexp-done'

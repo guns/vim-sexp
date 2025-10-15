@@ -55,6 +55,10 @@ if !exists('g:sexp_never_emit_cursor')
     let g:sexp_never_emit_cursor = 0
 endif
 
+if !exists('g:sexp_cursor_rides_capturing_bracket')
+    let g:sexp_cursor_rides_capturing_bracket = 0
+endif
+
 if !exists('g:sexp_auto_indent')
     let g:sexp_auto_indent = -1
 endif

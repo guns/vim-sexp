@@ -444,7 +444,13 @@ function M.nearest_bracket(closing, open_re, close_re)
         end
         -- Check for macro chars.
         if vim.fn['sexp#is_macro_char'](ch) ~= 0 then
+          -- Move to macro char for call to sexp#current_macro_character_terminal().
+          vim.fn.setpos('.', {0, r+1, c+1, 0})
+          -- FIXME: I don't like this approach: should just test macro chars directly
+          -- without calling slow legacy method.
           local macro_end = vim.fn['sexp#current_macro_character_terminal'](1)
+          -- Restore position.
+          vim.fn.setpos('.', pos:to_vim4())
           -- Get the char just *past* the end of the leading macro, which will be bracket
           -- if this is some sort of special form.
           c = macro_end[3]

@@ -51,12 +51,12 @@ if !exists('g:sexp_splice_does_indent')
     let g:sexp_splice_does_indent = 1
 endif
 
-if !exists('g:sexp_never_emit_cursor')
-    let g:sexp_never_emit_cursor = 0
+if !exists('g:sexp_emitting_bracket_is_sticky')
+    let g:sexp_emitting_bracket_is_sticky = 0
 endif
 
-if !exists('g:sexp_cursor_rides_capturing_bracket')
-    let g:sexp_cursor_rides_capturing_bracket = 0
+if !exists('g:sexp_capturing_bracket_is_sticky')
+    let g:sexp_capturing_bracket_is_sticky = 0
 endif
 
 if !exists('g:sexp_auto_indent')

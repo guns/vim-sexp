@@ -3332,7 +3332,7 @@ endfunction
 
 " Go to position of last non-whitespace char on specified line, else leave position
 " unchanged.
-" Return col, else 0 if no jump.
+" Return col of last non-ws, else 0.
 function! s:goto_last_non_ws(line)
     let ecol = col([a:line, '$'])
     if ecol == 1
@@ -3348,8 +3348,6 @@ function! s:goto_last_non_ws(line)
         " We're on non-whitespace.
         return col('.')
     endif
-    " Note: Shouldn't be possible to get here, as prior logic guarantees the search()
-    " above will succeed.
     return 0
 endfunction
 
@@ -3376,9 +3374,6 @@ endfunction
 "   is_eol_com:   1 iff specified line ends in eol comment
 "   prev_e:       position of last non-ws preceding eol comment
 "   com_s:        position of start of eol comment (else s:nullpos)
-"   eff_linelen:  minimum possible length of line (in screen cols), taking both
-"                 g:sexp_aligncom_min_separation and g:sexp_aligncom_colstops
-"                 into account
 "   comlen:       length of trailing comment (else 0)
 " Cursor Preservation: None (caller expected to handle)
 " Terminology: There's an ambiguity inherent in the phrase "ends in comment": if an
@@ -3397,7 +3392,10 @@ function! s:aligncom__characterize(line)
     let c = s:goto_last_non_ws(a:line)
     if !c
         " Effectively empty line
-        return [0, 0, 0, 0, s:nullpos]
+        return {
+            \ 'ecol': 1, 'is_com': 0, 'is_eol_com': 0,
+            \ 'prev_e': s:nullpos, 'com_s': s:nullpos, 'comlen': 0
+        \ }
     endif
     " This will be adjusted later for eol comment, but if there's no eol comment, we'll
     " need screen pos just past last non-ws for alignment purposes.
@@ -3442,8 +3440,6 @@ function! s:aligncom__characterize(line)
             " TODO: Do we need to consider possibility that comment could contain tabs,
             " whose screen width could change if comment is shifted? Possibly not, since
             " eff_linelen is used for cost calculation, not alignment.
-            " TODO: Currently, eff_linelen is used only in the calculation of comlen, so
-            " perhaps remove it from the return dict.
             let eff_linelen = eol_ecol - 1 - (virtcol([com_s[1], com_s[2]]) - ecol)
             " Also calculate length of trailing comment, which is needed by overrun logic.
             let comlen = eff_linelen - prev_e[2]
@@ -3451,7 +3447,7 @@ function! s:aligncom__characterize(line)
     endif
     return {
             \ 'ecol': ecol, 'is_com': is_com, 'is_eol_com': is_eol_com,
-            \ 'eff_linelen': eff_linelen, 'comlen': comlen, 'prev_e': prev_e, 'com_s': com_s
+            \ 'comlen': comlen, 'prev_e': prev_e, 'com_s': com_s
     \ }
 endfunction
 
@@ -4113,7 +4109,7 @@ endfunction
 " Preprocess range of lines potentially containing eol comments, building a list of dicts
 " intended to streamline the subsequent alignment logic in aligncom__optimize_range().
 " At the end of preprocessing, each element will have the following keys:
-"   line, ecol, is_eol_com, is_com, com_s, pre_max, prev_e, com_s, eff_linelen
+"   line, ecol, is_eol_com, is_com, com_s, pre_max, prev_e, com_s
 " Additionally...
 " Opt lvl < 2:
 "   If element is head of a 'greedy' segment, it will contain the following:

@@ -449,7 +449,7 @@ CLONE COMMANDS (normal, visual) ~
         selected lists and elements so that structural integrity is
         maintained.
 
-                                                 *single-vs-multi-line-clone*
+                                                            *sexp-clone-logic*
         A "multi-line" clone is one in which the copies of the target are
         separated from the target (and from each other) by a newline. The
         default logic selects multi-line operation whenever any of the
@@ -795,15 +795,90 @@ LIST MANIPULATION (normal, visual) ~
 <M-S-k>                                       *<Plug>(sexp_emit_tail_element)*
 <M-S-h>                                    *<Plug>(sexp_capture_prev_element)*
 <M-S-l>                                    *<Plug>(sexp_capture_next_element)*
-        Emit [count] terminal elements of the current list, or capture [count]
-        elements adjacent to the current list. A list will never emit its last
-        element and can not capture its parent.
+        Emit  ~
+        Emit [count] terminal non-comment elements (along with surrounding
+        comments) from the current list (or nearest ancestor with elements to
+        emit).
+
+        Capture  ~
+        Capture [count] non-comment elements from parent list (or nearest
+        ancestor with elements to capture), skipping over comments as
+        necessary to find the next capturable element.
+
+        In the absence of a [count], each emit/capture operation moves a
+        single element one level up or down, respectively. As long as there
+        are elements to capture/emit at higher levels of the sexp tree, the
+        operation will not block.
+
+                                                      *sexp-emit-cursor-logic*
+        Cursor Positioning (Emit)  ~
+        To prevent loss of editing context, vim-sexp attempts to keep the
+        cursor position unchanged relative to the current element, even when
+        that element is emitted from its containing list. When the cursor
+        "escapes" a list in this way, a subsequent emit will operate on the
+        parent list. Although this behavior seems quite natural when
+        successive emit operations are triggered manually, it could be
+        surprising when a [count] is used. Thus, a future version of vim-sexp
+        may prevent cursor emission for an emit with a [count] (or may provide
+        an option governing this behavior). To ensure the cursor is never
+        emitted from its list, simply set |g:sexp_emitting_bracket_is_sticky|
+        to have the cursor stick to the emitting list bracket when the bracket
+        passes over it.
+
+                                                   *sexp-capture-cursor-logic*
+        Cursor Positioning (Capture)  ~
+        The default capture logic also attempts to preserve cursor position
+        relative to the current element, but what if the cursor is positioned
+        not on an element, but on the capturing bracket itself? By default, it
+        stays put in this case, since that's how Paredit works; however, if
+        you would prefer that the cursor move with the capturing bracket in
+        this scenario, simply set |g:sexp_capturing_bracket_is_sticky|.
+
+        Heuristic: If the cursor touches a "sticky" capturing/emitting bracket
+        (either because the bracket is passing over it (emit) or because the
+        cursor started out on the bracket (capture)), it will move with the
+        bracket.
+        
+        Visual Selection  ~
+        In visual mode, the list doing the capturing or emitting will be
+        selected after the operation. Note that selecting the list effectively
+        prevents "cursor escape", thereby ensuring that successive emits in
+        visual mode operate on the same list, regardless of "sticky" options.
 
         These commands are similar to "barfage" and "slurpage" in paredit.el.
 
         By default, captures/emits affecting multiple lines trigger an
         automatic re-indent. If you dislike this behavior, see
         |sexp-auto-indent|.
+
+        Capture Examples:  ~
+>
+        (((|foo) bar) baz)
+        (((|foo bar)) baz)
+        (((|foo bar) baz))
+        (((|foo bar baz)))
+<
+        Emit Examples:  ~
+
+        -- g:sexp_emitting_bracket_is_sticky == 0 --  ~
+>
+        (((foo |bar)))
+        (((foo) |bar))
+        (((foo)) |bar)
+<
+        -- g:sexp_emitting_bracket_is_sticky == 1 --  ~
+>
+        (((foo |bar)))
+        (((foo|) bar))
+        (((|) foo bar))
+        (((|) foo) bar)
+        (((|)) foo bar)
+        ((|) () foo bar)
+        ((|) () foo) bar
+        ((|) ()) foo bar
+        ((|)) () foo bar
+        (|) () () foo bar
+<
 
 INSERT MODE MAPPINGS (insert, optional) ~
 
@@ -948,6 +1023,20 @@ See also |sexp-auto-indent|.
 >
         " Default
         let g:sexp_raise_does_indent = 1
+<
+Set this flag to force cursor to remain with its list, even when the element
+under it is emitted. Default behavior matches Paredit.
+See also |sexp-emit-cursor-logic|.
+>
+        " Default
+        let g:sexp_emitting_bracket_is_sticky = 0
+<
+Set this flag to force cursor to stick to a capturing bracket positioned
+beneath it at capture command invocation. Default behavior matches Paredit.
+See also |sexp-capture-cursor-logic|.
+>
+        " Default
+        let g:sexp_capturing_bracket_is_sticky = 0
 <
                                                  *g:sexp_prefer_legacy_syntax*
 Prefer using Vim's legacy syntax engine to determine element boundaries, even

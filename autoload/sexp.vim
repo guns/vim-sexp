@@ -5130,30 +5130,30 @@ function! sexp#stackop__final(ex, state, mode, last, capture)
     if empty(a:ex) || a:ex == 'sexp-done'
         " Normal termination
         if g:sexp_auto_indent != -1 ? g:sexp_auto_indent : g:sexp_capture_emit_does_indent
-            " Logic: In most cases, accurate re-indent is ensured by including a sibling
-            " on either side of the operated-on range; however, there are corner cases
-            " (most notably, capture/emit of head) in which it's necessary to re-indent
-            " the parent.
-            " Note: nearest_element_terminal() returns current el terminal if no adjacent.
+            " Logic: In most cases, accurate re-indent is ensured by using the range in
+            " the state dict; however, there are corner cases (most notably, capture/emit
+            " of head) in which it's necessary to re-indent the parent. Thus, if last == 0
+            " and there is no sibling preceding the range, re-indent parent; otherwise,
+            " re-indent the range in state dict.
+            " Assumption: For an emit at head, range includes the emitted element.
             let indent_parent = 0
-            " Look for preceding sibling.
-            call s:setcursor(a:state.range[0])
-            let p = sexp#current_element_terminal(0)
-            let s = s:nearest_element_terminal(0, 0)
-            if !s:compare_pos(p, s)
-                " No preceding sibling; re-indent parent (if it exists).
-                let p = s:move_to_nearest_bracket(0)
-                if p[1]
-                    let s = p
-                    " Position on parent close bracket for sexp#indent().
-                    let e = s:move_to_nearest_bracket(1)
-                    let indent_parent = 1
+            let [s, e] = a:state.range
+            if !a:last
+                " Look for sibling preceding range.
+                call s:setcursor(s)
+                let p = sexp#current_element_terminal(0)
+                " Note: nearest_element_terminal() returns current el terminal if no adjacent.
+                let s = s:nearest_element_terminal(0, 0)
+                if !s:compare_pos(p, s)
+                    " No preceding sibling; re-indent parent (if it exists).
+                    let p = s:move_to_nearest_bracket(0)
+                    if p[1]
+                        let s = p
+                        " Position on parent close bracket for sexp#indent().
+                        let e = s:move_to_nearest_bracket(1)
+                        let indent_parent = 1
+                    endif
                 endif
-            endif
-            if !indent_parent
-                " Attempt to extend range by 1 sibling at tail.
-                call s:setcursor(a:state.range[1])
-                let e = s:nearest_element_terminal(1, 1)
             endif
             " Skip single-line indents.
             if s[1] != e[1]

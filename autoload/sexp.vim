@@ -1001,13 +1001,17 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
-" Return 1 iff element at specified position is head of list.
-function! s:is_list_head(pos)
+" Return 1 iff element at specified position is in head/tail list context: i.e., on or
+" outside head/tail element.
+" TODO: Consider renaming to in_terminal_context() or something that emphasizes fact that
+" we don't need to be on the terminal, and can't be *inside* it.
+" TODO: Consider making these helpers not save/restore cursor.
+function! s:is_list_terminal(pos, tail)
     let save_cursor = getpos('.')
     try
         call s:setcursor(a:pos)
         " Attempt to find previous element.
-        let p = s:nearest_element_terminal(0, 1, 1)
+        let p = s:nearest_element_terminal(a:tail, !a:tail, 1)
         if p != a:pos
             " Previous element implies not head of list.
             " Note: In many cases, this allows short-circuiting a test for top-level.
@@ -1018,6 +1022,19 @@ function! s:is_list_head(pos)
     finally
         call s:setcursor(save_cursor)
     endtry
+endfunction
+
+" Return 1 iff input position is adjacent to comment in specified direction.
+" TODO: Consider making these helpers not save/restore cursor.
+function! s:is_adjacent_to_comment(pos, tail)
+    let save_cursor = getpos('.')
+    try
+        let p = s:nearest_element_terminal(a:tail, !a:tail, 1)
+        return p != a:pos && s:is_comment(p[1], p[2])
+    finally
+        call s:setcursor(save_cursor)
+    endtry
+    return 0
 endfunction
 
 " Using options and the input object produced by s:terminals_with_whitespace_info(),
@@ -1074,6 +1091,42 @@ function! s:outer_element_can_append(twwi)
     return 1
 endfunction
 
+" Return 1 iff the input positions can be made colinear.
+function! s:can_join(start, end)
+    let [start, end] = [a:start, a:end]
+    let tw = g:sexp_cleanup_join_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
+    let [affinity, ml] =
+        \ [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
+    " Get prev/next.
+    let next_s = s:nearest_element_terminal(1, 0, 1)
+    let next_e = next_s[1] ? s:nearest_element_terminal(1, 1, 1) : s:nullpos
+    let prev_s = s:nearest_element_terminal(0, 0, 1)
+    let prev_e = prev_s[1] ? s:nearest_element_terminal(0, 1, 1) : s:nullpos
+
+    " Note: affinity shouldn't be less than zero, but err on side of disabling...
+    if affinity <= 0 || !next_s[1]
+        " Joining disabled or no next element to append.
+        return 0
+    endif
+    " Is join precluded by line length constraint?
+    if tw > 0 && tw < prev_e[2] + col([next_s[1], '$']) - next_s[2]
+        return 0
+    endif
+    if !ml && next_s[1] != next_e[1] || prev_s[1] != prev_e[1]
+        " Only single-line joins permitted.
+        return 0
+    endif
+    " Apply affinity constraints.
+    if affinity == 1 && !s:is_list_terminal(prev_e, 0)
+        " Affinity is for appends to list head, but prev element is not list head.
+        return 0
+    endif
+    " Now that all other checks have passed, do top-level check only if necessary.
+    if affinity < 3 && s:at_top(start[1], start[2])
+        return 0
+    endif
+    return 1
+endfunction
 " Return 1 to prioritize preservation of leading indent, 0 to prioritize removal of
 " leading whitespace.
 function! s:prioritize_leading_indent(twwi)
@@ -1129,7 +1182,7 @@ endfunction
 "
 " This behavior diverges from the behavior of the native text object aw in
 " that it allows multiline whitespace selections.
-function! s:terminals_with_whitespace(start, end)
+function! s:terminals_with_whitespace_new(start, end)
     let [start, end] = [a:start, a:end]
 
     " TODO: Rename as get_ctx or some such...
@@ -1181,6 +1234,52 @@ function! s:terminals_with_whitespace(start, end)
     return [start, end]
 endfunction
 
+function! s:get_context(start, end)
+    let ret = {'bol': 0, 'at_head': 0, 'at_tail': 0, 'trailing_com': 0, 'preceding_com': 0}
+
+endfunction
+
+" More like original, but not the same...
+function! s:terminals_with_whitespace(start, end)
+    let [start, end] = [a:start, a:end]
+    let ws_end = s:adjacent_whitespace_terminal(end, 1)
+    let ws_start = s:adjacent_whitespace_terminal(start, 0)
+    let eff_nextl = ws_end[2] == col([ws_end[1], '$']) - 1
+            \ ? ws_end[1] + 1 : ws_end[1]
+    " Determine join type.
+    if s:is_list_terminal(start, 0) && !s:is_adjacent_to_comment(end, 1)
+        \ || s:is_list_terminal(end, 1) && !s:is_adjacent_to_comment(start, 0)
+        " Full join
+        let [start, end] = [ws_start, ws_end]
+        " TODO: Probably have adjacent_whitespace_terminal subsume this logic.
+        if start[2] == 1 && start[1] > 1
+            " Pull in newline from previous line.
+            let start = [0, start[1] - 1, col([start[1] - 1, '$']), 0]
+        endif
+        if eff_nextl > end[1]
+            " Pull in trailing newline
+            let end = [0, end[1], col([end[1], '$']), 0]
+        endif
+    elseif end[1] == eff_nextl || s:at_bol(start[1], start[2]) || s:can_join(start, end)
+        " Half join
+        let end = ws_end
+    else
+        " No join: either limit to colinear ws, or delete some (but not all) of the
+        " newlines at end.
+        " Assumption: elseif above has handled the next colinear with end case.
+        if ws_start[1] == start[1] && ws_start[2] > 1
+            " Select back to colinear prev.
+            " Note: Otherwise, we leave start as-is to avoid losing indent.
+            let start[2] = ws_start[2]
+        endif
+        " Delete to *a* line end, possibly deleting some (but not all) blanks.
+        let endline = max([
+            \ eff_nextl - g:sexp_cleanup_keep_empty_lines - 1),
+            \ end[1]])
+        let ws_end = [0, endline, col([end[1], '$') - 1, 0]
+    endif
+    return [start, end]
+endfunction
 " Extend given positions to the terminals of any partially contained elements.
 " If there exist any unpaired brackets in the region, the positions are
 " extended to include those lists.

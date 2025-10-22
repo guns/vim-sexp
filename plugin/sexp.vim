@@ -75,10 +75,6 @@ if !exists('g:sexp_cleanup_collapse_whitespace')
     let g:sexp_cleanup_collapse_whitespace = 0
 endif
 
-if !exists('g:sexp_cleanup_never_append_comment')
-    let g:sexp_cleanup_never_append_comment = 0
-endif
-
 if !exists('g:sexp_cleanup_join_affinity')
     let g:sexp_cleanup_join_affinity = 1
 endif
@@ -89,6 +85,14 @@ endif
 
 if !exists('g:sexp_cleanup_join_multiline')
     let g:sexp_cleanup_join_multiline = 0
+endif
+
+if !exists('g:sexp_cleanup_join_comments')
+    let g:sexp_cleanup_join_comments = 1
+endif
+
+if !exists('g:sexp_cleanup_join_backwards')
+    let g:sexp_cleanup_join_backwards = 1
 endif
 
 " TODO: Consider encapsulating related options in a dict.

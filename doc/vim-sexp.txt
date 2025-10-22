@@ -178,27 +178,31 @@ ie                                                *<Plug>(sexp_inner_element)*
 Outer Element whitespace selection logic ~
                                            *sexp-surrounding-whitespace-rules*
         Inner motion does not include surrounding whitespace, but the outer
-        motion attempts to include all the whitespace you would wish to delete if
-        you were using the text object to delete element(s). The algorithm is
-        complex, but can be expressed roughly as follows: select as many
-        surrounding whitespace characters (including newlines) as possible,
-        while ensuring that a subsequent deletion of the selection will not do
-        any of the following:
+        motion attempts to include all the whitespace you would wish to delete
+        if you were using the text object to delete element(s).
+
+        Algorithm Description:  ~
+        Select as much surrounding whitespace as possible without violating
+        any of the following constraints, some of which are user
+        configurable:
 
             * increase the length of the line preceding the selection beyond a
               configurable limit (by combining it with the line past the
               selection)
-            * pull a comment onto the end of an earlier line
+              See |g:sexp_cleanup_join_textwidth| to configure line length.
+              See |g:sexp_cleanup_join_affinity| to enable join selectively.
+            * pull a comment onto the end of an earlier line (unless
+              |g:sexp_cleanup_join_comments| is set).
+              Rationale: Comments are often line/element-specific.
             * pull the element following the selection into an end of line
               comment
-              Rationale: Comments are often line/element-specific.
             * remove all whitespace separating adjacent siblings
             * remove all blank lines between elements when
               |g:sexp_cleanup_keep_empty_lines| is set to a value >= 1,
               representing the maximum number of blanks you'd like to keep.
-        Note: The rules may sound complex, but they mostly follow Ruby's
-        "Principle of Least Surprise" and Perl's "Do What I Mean"...
 
+        The rules may sound complex, but the results mostly obey Ruby's
+        "Principle of Least Surprise" and Perl's "Do What I Mean"...
 
                                                    *sexp-cleanup-vs-extension*
         These text objects can be used to "clean up" the current selection
@@ -1060,13 +1064,6 @@ it's not within a comment or string or immediately preceding a comment.
         " Default
         let g:sexp_cleanup_collapse_whitespace = 0
 <
-                                         *g:sexp_cleanup_never_append_comment*
-When performing cleanup or outer element selection, allow a comment to joined
-to an earlier line, provided other conditions for the join are met.
->
-        " Default
-        let g:sexp_cleanup_never_append_comment = 0
-<
                                                 *g:sexp_cleanup_join_affinity*
 Determines scenarios in which outer selection attempts to ensure that a
 subsequent delete would pull element following selection onto end of line
@@ -1114,7 +1111,21 @@ Related options: ~
         " Default
         let g:sexp_cleanup_join_multiline = 0
 <
-
+                                                *g:sexp_cleanup_join_comments*
+When all other join conditions are met, allow an outer element selection whose
+deletion would result in a comment being appended to a non-empty line.
+>
+        " Default
+        let g:sexp_cleanup_join_comments = 1
+<
+                                               *g:sexp_cleanup_join_backwards*
+When all other join conditions are met, allow an outer element selection whose
+deletion would remove one or more preceding newlines, thereby moving the
+cursor to an earlier line.
+>
+        " Default
+        let g:sexp_cleanup_join_backwards = 1
+<
                                                *g:sexp_indent_aligns_comments*
 Align end-of-line comments automatically after performing an indent.
 >

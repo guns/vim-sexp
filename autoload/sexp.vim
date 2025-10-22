@@ -803,6 +803,7 @@ endfunction
 " completely characterize it, with the goal of supporting the logic in
 " s:terminals_with_whitespace() that determines the optimal visual selection for an outer
 " element.
+" TODO: Remove this!!!!!!
 function! s:terminals_with_whitespace_info(start, end, leading)
     let cursor = getpos('.')
     let o = {}
@@ -1004,7 +1005,8 @@ endfunction
 " Return 1 iff element at specified position is in head/tail list context: i.e., on or
 " outside head/tail element.
 " TODO: Consider renaming to in_terminal_context() or something that emphasizes fact that
-" we don't need to be on the terminal, and can't be *inside* it.
+" we don't need to be on the terminal, and can't be *inside* it. Rename would also help
+" avoid confusion with "is list bracket".
 " TODO: Consider making these helpers not save/restore cursor.
 function! s:is_list_terminal(pos, tail)
     let save_cursor = getpos('.')
@@ -1037,11 +1039,11 @@ function! s:is_adjacent_to_comment(pos, tail)
     return 0
 endfunction
 
-" Return 1 iff the input positions can be made colinear.
-" Considering options and surrounding buffer context, return true iff selection should be
-" adjusted to ensure that, upon delete, the element following selection will be appended
-" to the element before the selection.
-" Note: Take all relevant options into account.
+" Return 1 iff making both sides of the input positions colinear would not violate any
+" constraints.
+" Considering relevant options and surrounding buffer context, return 1 iff deleting range
+" start..end would not cause a constraint-violating join.
+" Relevant Options:
 " join_affinity:
 "     0 = never join
 "     1 = append only to head of list
@@ -1054,15 +1056,25 @@ endfunction
 "     0 = disables checking (as with 'tw')
 "     -1 use &tw
 "     else override &tw
+" Cursor Positioning: No need to preserve
 function! s:can_join(start, end)
     let [start, end] = [a:start, a:end]
     let tw = g:sexp_cleanup_join_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
-    let [affinity, ml] =
-        \ [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
+    let [affinity, ml] = [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
     " Get prev/next.
-    let next_s = s:nearest_element_terminal(1, 0, 1)
+    " TODO: Desperately need to rework s:nearest_element_terminal() and
+    " s:move_to_adjacent_element() to support request for nullpos return if no such
+    " element. The 'ignore_current' flag was a step in the right direction, but
+    " insufficient.
+    " TODO: Consider hiding this in a function called get_surrounding_elements() or
+    " somesuch.
+    keepjumps call s:setcursor(end)
+    let p = s:nearest_element_terminal(1, 0, 1)
+    let next_s = p == end ? s:nullpos : p
     let next_e = next_s[1] ? s:nearest_element_terminal(1, 1, 1) : s:nullpos
-    let prev_s = s:nearest_element_terminal(0, 0, 1)
+    keepjumps call s:setcursor(start)
+    let p = s:nearest_element_terminal(0, 0, 1)
+    let prev_s = p == start ? s:nullpos : p
     let prev_e = prev_s[1] ? s:nearest_element_terminal(0, 1, 1) : s:nullpos
 
     " Note: affinity shouldn't be less than zero, but err on side of disabling...
@@ -1074,8 +1086,10 @@ function! s:can_join(start, end)
     if tw > 0 && tw < prev_e[2] + col([next_s[1], '$']) - next_s[2]
         return 0
     endif
-    if !ml && next_s[1] != next_e[1] || prev_s[1] != prev_e[1]
+    if !ml && (next_s[1] != next_e[1] || prev_s[1] != prev_e[1])
         " Only single-line joins permitted.
+        " TODO: Original logic considered only next; should we consider both the element
+        " joined and joined to?
         return 0
     endif
     " Apply affinity constraints.
@@ -1090,12 +1104,6 @@ function! s:can_join(start, end)
     return 1
 endfunction
 
-function! s:get_context(start, end)
-    let ret = {'bol': 0, 'at_head': 0, 'at_tail': 0, 'trailing_com': 0, 'preceding_com': 0}
-
-endfunction
-
-let g:sexp_join_preserves_line = 0
 " More like original, but not the same...
 function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
@@ -1109,13 +1117,13 @@ function! s:terminals_with_whitespace(start, end)
     let eff_nextl = ws_end[2] == col([ws_end[1], '$']) - 1
             \ ? ws_end[1] + 1 : ws_end[1]
     " Determine join type.
-    if (!g:sexp_join_preserves_line || eff_prevl == start[1])
+    if (g:sexp_cleanup_join_backwards || eff_prevl == start[1])
         \ && s:is_list_terminal(start, 0)
-        \ && !(g:sexp_cleanup_never_append_comment && s:is_adjacent_to_comment(end, 1))
+        \ && (g:sexp_cleanup_join_comments || !s:is_adjacent_to_comment(end, 1))
         \ || s:is_list_terminal(end, 1) && !s:is_adjacent_to_comment(start, 0)
-        " Head and tail (full) join
-        " Use end of leading/trailing whitespace, taking care to pull in any newline
-        " immediately adjacent to the open/close.
+        " Full join: select everything between open or close bracket and the nearest
+        " non-ws, which we've already determined can be safely juxtaposed to the bracket.
+        " Pull in any newline immediately adjacent to the open/close.
         let start = ws_start[2] == 1 && ws_start[1] > 1
             \ ? [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
             \ : ws_start
@@ -1123,12 +1131,13 @@ function! s:terminals_with_whitespace(start, end)
             \ ? [0, ws_end[1], col([ws_end[1], '$']), 0]
             \ : ws_end
     elseif end[1] == eff_nextl || s:at_bol(start[1], start[2]) || s:can_join(start, end)
-        " Tail only (half) join
-        " Leave start as-is to prevent loss of indent.
+        " Half join (at end only): select up to next non-ws, leaving start as-is to
+        " prevent loss of indent.
         let end = ws_end
     else
-        " No join: select all colinear whitespace some (but not all) of the trailing
-        " newlines, taking care to respect options related to # of blank lines to keep.
+        " No join: selecting to next non-ws would result in an illegal join; accordingly,
+        " select all colinear whitespace and some (but not all) of the trailing newlines,
+        " taking care to respect options related to # of blank lines to keep.
         " Assumption: Arrival here guarantees !bol and eol
         " Select back to colinear prev.
         let start[2] = ws_start[2]

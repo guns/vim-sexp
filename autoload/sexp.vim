@@ -1053,21 +1053,29 @@ endfunction
 "     0 = allow append of single line elements only
 "     1 = allow append of both single and multi-line elements
 " join_tw
-"     0 = disables checking (as with 'tw')
-"     -1 use &tw
+"     <floatnr> fraction of original line length
+"     0         disables checking (as with 'tw')
+"     -1        use &tw
 "     else override &tw
 " Cursor Positioning: No need to preserve
 function! s:can_join(start, end)
     let [start, end] = [a:start, a:end]
-    let tw = g:sexp_cleanup_join_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
+    if has('float') && type(g:sexp_cleanup_join_textwidth) == 5
+        " Treat 'textwidth' as fraction of original start line length.
+        let tw = float2nr(g:sexp_cleanup_join_textwidth * col([start[1], '$']))
+    else
+        let tw = g:sexp_cleanup_join_textwidth < 0
+            \ ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
+    endif
     let [affinity, ml] = [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
     " Get prev/next.
     " TODO: Desperately need to rework s:nearest_element_terminal() and
     " s:move_to_adjacent_element() to support request for nullpos return if no such
     " element. The 'ignore_current' flag was a step in the right direction, but
     " insufficient.
-    " TODO: Consider hiding this in a function called get_surrounding_elements() or
-    " somesuch.
+    " TODO: Consider hiding this block in a function called get_surrounding_elements() or
+    " perhaps get_surrounding_context() (in which case, it should put the elements and
+    " more in a returned dict).
     keepjumps call s:setcursor(end)
     let p = s:nearest_element_terminal(1, 0, 1)
     let next_s = p == end ? s:nullpos : p
@@ -1105,6 +1113,7 @@ function! s:can_join(start, end)
 endfunction
 
 " More like original, but not the same...
+" TODO: Updated function comment before merge...
 function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
     " Note: These functions ignore newlines, but will return the position of the NUL at
@@ -1123,7 +1132,7 @@ function! s:terminals_with_whitespace(start, end)
         \ || s:is_list_terminal(end, 1) && !s:is_adjacent_to_comment(start, 0)
         " Full join: select everything between open or close bracket and the nearest
         " non-ws, which we've already determined can be safely juxtaposed to the bracket.
-        " Pull in any newline immediately adjacent to the open/close.
+        " Extra logic is needed to pull in a newline adjacent to the open/close.
         let start = ws_start[2] == 1 && ws_start[1] > 1
             \ ? [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
             \ : ws_start
@@ -1135,9 +1144,10 @@ function! s:terminals_with_whitespace(start, end)
         " prevent loss of indent.
         let end = ws_end
     else
-        " No join: selecting to next non-ws would result in an illegal join; accordingly,
-        " select all colinear whitespace and some (but not all) of the trailing newlines,
-        " taking care to respect options related to # of blank lines to keep.
+        " No join: selecting all the way to next non-ws would result in an illegal join;
+        " accordingly, select all colinear whitespace and some (but not all) of the
+        " trailing newlines, taking care to respect options related to number of blank
+        " lines to keep.
         " Assumption: Arrival here guarantees !bol and eol
         " Select back to colinear prev.
         let start[2] = ws_start[2]
@@ -1147,7 +1157,7 @@ function! s:terminals_with_whitespace(start, end)
             \ end[1]])
         " Select up to but not including the newline.
         " Caveat: Must account for fact that col 1 (or 0) of empty line selects the
-        " newline!
+        " newline we wish to exclude!
         let endcol = col([endline, '$']) - 1
         let end = endcol > 0
             \ ? [0, endline, endcol, 0]
@@ -1155,6 +1165,7 @@ function! s:terminals_with_whitespace(start, end)
     endif
     return [start, end]
 endfunction
+
 " Extend given positions to the terminals of any partially contained elements.
 " If there exist any unpaired brackets in the region, the positions are
 " extended to include those lists.

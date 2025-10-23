@@ -183,21 +183,23 @@ Outer Element whitespace selection logic ~
 
         Algorithm Description:  ~
         Select as much surrounding whitespace as possible without violating
-        any of the following constraints, some of which are user
-        configurable:
+        the following constraints, some of which are user configurable.
+        Note: The constraints are applied to the hypothetical buffer state
+        that would be produced by deleting the outer element selection.
 
-            * increase the length of the line preceding the selection beyond a
-              configurable limit (by combining it with the line past the
-              selection)
-              See |g:sexp_cleanup_join_textwidth| to configure line length.
+            * increase the length of the line containing the start of the
+              selection beyond a configurable limit.
+              See |g:sexp_cleanup_join_textwidth| to configure limit.
               See |g:sexp_cleanup_join_affinity| to enable join selectively.
+            * select whitespace on lines above the first element of the
+              selection (unless |g:sexp_cleanup_join_backwards| is set).
             * pull a comment onto the end of an earlier line (unless
               |g:sexp_cleanup_join_comments| is set).
-              Rationale: Comments are often line/element-specific.
+              Rationale: Comments are often element-specific.
             * pull the element following the selection into an end of line
               comment
             * remove all whitespace separating adjacent siblings
-            * remove all blank lines between elements when
+            * leave trailing blank lines unless
               |g:sexp_cleanup_keep_empty_lines| is set to a value >= 1,
               representing the maximum number of blanks you'd like to keep.
 
@@ -1081,6 +1083,7 @@ second element of a list: e.g., with the default setting...
 <
 ...dae on "foo" would pull "bar baz" onto the start
 line, but dae on "baz" would *not* pull "blammo" onto the same line as "bar".
+
 Related options: ~
         |g:sexp_cleanup_join_textwidth|, |g:sexp_cleanup_join_multiline|
 >
@@ -1090,10 +1093,18 @@ Related options: ~
                                                *g:sexp_cleanup_join_textwidth*
 Line length constraint applied to outer selection cleanup logic, which avoids
 making selections whose deletion would result in a line longer than the
-specified length.
+specified length. The value can take either of the following forms:
+Integer:  ~
   -1  use &tw
    0  ignore line length
   >0  max line width to create with join
+Float:  ~
+  >0  Fraction of original line length used to validate join.
+      For instance, a value of 1.5 would prohibit joins that increased line
+      length by more than 50%.
+
+Note: This option has no effect if |g:sexp_cleanup_join_affinity| is 0.
+
 Related options ~
         |g:sexp_cleanup_join_affinity|, |g:sexp_cleanup_join_multiline|
 >

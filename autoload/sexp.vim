@@ -4757,9 +4757,10 @@ fu! sexp#convolute(count, ...)
     " Note: Not using sexp#splice because it doesn't preserve macro
     " chars/brackets.
     " Note: Work backwards since deletions invalidate positions.
-    let ket = s:yankdel_range(tpos_i, tpos_i, 1, 1)
-    let del = s:yankdel_range(bpos_i, pos, 1, [0, 0])
-    let bra = s:yankdel_range(spos_i, bpos_i, 1, 1)
+    " FIXME: Refactor yankdel_range() take optional args dict!!!
+    let ket = s:yankdel_range(tpos_i, tpos_i, 1, 1, [], 1)
+    let del = s:yankdel_range(bpos_i, pos, 1, [0, 0], [], 1)
+    let bra = s:yankdel_range(spos_i, bpos_i, 1, 1, [], 1)
 
     " Since the deleted text is going to be prepended to a list, make sure
     " that if it contains non-whitespace, it ends with whitespace. Normally,

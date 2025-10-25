@@ -178,27 +178,33 @@ ie                                                *<Plug>(sexp_inner_element)*
 Outer Element whitespace selection logic ~
                                            *sexp-surrounding-whitespace-rules*
         Inner motion does not include surrounding whitespace, but the outer
-        motion attempts to include all the whitespace you would wish to delete if
-        you were using the text object to delete element(s). The algorithm is
-        complex, but can be expressed roughly as follows: select as many
-        surrounding whitespace characters (including newlines) as possible,
-        while ensuring that a subsequent deletion of the selection will not do
-        any of the following:
+        motion attempts to include all the whitespace you would wish to delete
+        if you were using the text object to delete element(s).
 
-            * increase the length of the line preceding the selection beyond a
-              configurable limit (by combining it with the line past the
-              selection)
-            * pull a comment onto the end of an earlier line
+        Algorithm Description:  ~
+        Select as much surrounding whitespace as possible without violating
+        the following constraints, some of which are user configurable.
+        Note: The constraints are applied to the hypothetical buffer state
+        that would be produced by deleting the outer element selection.
+
+            * increase the length of the line containing the start of the
+              selection beyond a configurable limit.
+              See |g:sexp_cleanup_join_textwidth| to configure limit.
+              See |g:sexp_cleanup_join_affinity| to enable join selectively.
+            * select whitespace on lines above the first element of the
+              selection (unless |g:sexp_cleanup_join_backwards| is set).
+            * pull a comment onto the end of an earlier line (unless
+              |g:sexp_cleanup_join_comments| is set).
+              Rationale: Comments are often element-specific.
             * pull the element following the selection into an end of line
               comment
-              Rationale: Comments are often line/element-specific.
             * remove all whitespace separating adjacent siblings
-            * remove all blank lines between elements when
+            * leave trailing blank lines unless
               |g:sexp_cleanup_keep_empty_lines| is set to a value >= 1,
               representing the maximum number of blanks you'd like to keep.
-        Note: The rules may sound complex, but they mostly follow Ruby's
-        "Principle of Least Surprise" and Perl's "Do What I Mean"...
 
+        The rules may sound complex, but the results mostly obey Ruby's
+        "Principle of Least Surprise" and Perl's "Do What I Mean"...
 
                                                    *sexp-cleanup-vs-extension*
         These text objects can be used to "clean up" the current selection
@@ -1053,14 +1059,12 @@ When there are multiple consecutive empty lines, preserve up to this many.
         " Default
         let g:sexp_cleanup_keep_empty_lines = 1
 <
-
                                           *g:sexp_cleanup_collapse_whitespace*
 Collapse all adjacent whitespace between elements to a single space, provided
 it's not within a comment or string or immediately preceding a comment.
 >
         " Default
         let g:sexp_cleanup_collapse_whitespace = 0
-
 <
                                                 *g:sexp_cleanup_join_affinity*
 Determines scenarios in which outer selection attempts to ensure that a
@@ -1079,6 +1083,7 @@ second element of a list: e.g., with the default setting...
 <
 ...dae on "foo" would pull "bar baz" onto the start
 line, but dae on "baz" would *not* pull "blammo" onto the same line as "bar".
+
 Related options: ~
         |g:sexp_cleanup_join_textwidth|, |g:sexp_cleanup_join_multiline|
 >
@@ -1088,10 +1093,18 @@ Related options: ~
                                                *g:sexp_cleanup_join_textwidth*
 Line length constraint applied to outer selection cleanup logic, which avoids
 making selections whose deletion would result in a line longer than the
-specified length.
+specified length. The value can take either of the following forms:
+Integer:  ~
   -1  use &tw
    0  ignore line length
   >0  max line width to create with join
+Float:  ~
+  >0  Fraction of original line length used to validate join.
+      For instance, a value of 1.5 would prohibit joins that increased line
+      length by more than 50%.
+
+Note: This option has no effect if |g:sexp_cleanup_join_affinity| is 0.
+
 Related options ~
         |g:sexp_cleanup_join_affinity|, |g:sexp_cleanup_join_multiline|
 >
@@ -1109,77 +1122,20 @@ Related options: ~
         " Default
         let g:sexp_cleanup_join_multiline = 0
 <
-                                              *g:sexp_cleanup_lineshift_limit*
-Threshold at which outer element cleanup logic switches from preserving
-leading indent to prioritizing the removal of leading empty lines. (Takes
-|g:sexp_cleanup_keep_empty_lines| into account.)
-   0  Allow any number of leading empty lines to be left behind by cleanup, if
-      required to preserve leading indent: i.e., whether to preserve leading
-      indent or remove leading blanks is determined solely by the colshift
-      options described below.
- >=1  Prioritize removal of leading whitespace if doing so would remove at
-      least this many empty lines.
-      Note: This option is considered an upper limit, which takes precedence
-      over the colshift options below.
-
-Example: >
-        (foo
-
-
-          bar baz)
-<
-With cursor on bar, the value of this option determines whether 'dae' cleans
-up the leading blank lines or preserves the leading indent on the final line.
-
-        g:sexp_cleanup_lineshift_limit == 0: ~
-        (foo
-
-
-          baz)
-<
-        g:sexp_cleanup_lineshift_limit == 1: ~
-        (foo
- baz)
-<
+                                                *g:sexp_cleanup_join_comments*
+When all other join conditions are met, allow an outer element selection whose
+deletion would result in a comment being appended to a non-empty line.
 >
         " Default
-        let g:sexp_cleanup_lineshift_limit = 2
+        let g:sexp_cleanup_join_comments = 1
 <
-                                                     *g:sexp_cleanup_colshift*
-The number of columns of leading indent that can be sacrificed to clean up
-leading blank lines is calculated by the following expression...
->
-  columns = (leading_blanks - 1) * sexp_cleanup_colshift_slope + sexp_cleanup_colshift
-<
-...where leading_blanks is the number of blank lines the normal cleanup logic
-would remove if unconstrained by the need to preserve leading indent.
-*Rationale*: For the type of outer element selection to which this option
-applies, it is impossible both to preserve leading indent *and* to remove
-leading blank lines: a choice must be made, and the relevant "opportunity
-cost" is highly subjective. This and the subsequent option permit the user to
-customize the behavior to his preference.
-  0            Leading indent threshold depends only on the number of blank
-               lines susceptible to cleanup in leading whitespace.
-  1..v:maxcol  If sexp_cleanup_colshift_slope == 0, sets a constant leading
-               indent threshold; if sexp_cleanup_colshift_slope > 0, sets the
-               minimum leading indent threshold, with the actual value
-               increasing linearly with the number of leading blank lines
-               susceptible to removal.
+                                               *g:sexp_cleanup_join_backwards*
+When all other join conditions are met, allow an outer element selection whose
+deletion would remove one or more preceding newlines, thereby moving the
+cursor to an earlier line.
 >
         " Default
-        let g:sexp_cleanup_colshift = 4
-<
-                                               *g:sexp_cleanup_colshift_slope*
-The rate at which the leading indent threshold (see |g:sexp_cleanup_colshift|)
-increases with the number of empty lines susceptible to removal.
-  0            Leading indent threshold is constant, given by
-               g:sexp_cleanup_colshift.
-  1..v:maxcol  Rate at which leading indent threshold grows with number of
-               blank lines in leading whitespace.
-               (For details, see |g:sexp_cleanup_colshift|.)
->
-        " Default
-        let g:sexp_cleanup_colshift_slope = 8
+        let g:sexp_cleanup_join_backwards = 1
 <
                                                *g:sexp_indent_aligns_comments*
 Align end-of-line comments automatically after performing an indent.

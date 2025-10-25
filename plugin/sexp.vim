@@ -87,16 +87,12 @@ if !exists('g:sexp_cleanup_join_multiline')
     let g:sexp_cleanup_join_multiline = 0
 endif
 
-if !exists('g:sexp_cleanup_lineshift_limit')
-    let g:sexp_cleanup_lineshift_limit = 2
+if !exists('g:sexp_cleanup_join_comments')
+    let g:sexp_cleanup_join_comments = 1
 endif
 
-if !exists('g:sexp_cleanup_colshift')
-    let g:sexp_cleanup_colshift = 4
-endif
-
-if !exists('g:sexp_cleanup_colshift_slope')
-    let g:sexp_cleanup_colshift_slope = 8
+if !exists('g:sexp_cleanup_join_backwards')
+    let g:sexp_cleanup_join_backwards = 1
 endif
 
 " TODO: Consider encapsulating related options in a dict.

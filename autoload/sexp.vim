@@ -777,7 +777,7 @@ function! s:adjacent_whitespace_terminal(pos, trailing)
 
     let [_b, termline, termcol, _o] = a:pos
 
-    " FIXME: This is an inefficient way to do this! Fix it!
+    " FIXME: Construct a single regex for this.
     while 1
         " Include empty lines
         let [line, col] = s:findpos('\v\_.', a:trailing)
@@ -803,6 +803,7 @@ endfunction
 " completely characterize it, with the goal of supporting the logic in
 " s:terminals_with_whitespace() that determines the optimal visual selection for an outer
 " element.
+" TODO: Remove this!!!!!!
 function! s:terminals_with_whitespace_info(start, end, leading)
     let cursor = getpos('.')
     let o = {}
@@ -1001,13 +1002,18 @@ function! s:terminals_with_whitespace_info(start, end, leading)
     return o
 endfunction
 
-" Return 1 iff element at specified position is head of list.
-function! s:is_list_head(pos)
+" Return 1 iff element at specified position is in head/tail list context: i.e., on or
+" outside head/tail element.
+" TODO: Consider renaming to in_terminal_context() or something that emphasizes fact that
+" we don't need to be on the terminal, and can't be *inside* it. Rename would also help
+" avoid confusion with "is list bracket".
+" TODO: Consider making these helpers not save/restore cursor.
+function! s:is_list_terminal(pos, tail)
     let save_cursor = getpos('.')
     try
         call s:setcursor(a:pos)
         " Attempt to find previous element.
-        let p = s:nearest_element_terminal(0, 1, 1)
+        let p = s:nearest_element_terminal(a:tail, !a:tail, 1)
         if p != a:pos
             " Previous element implies not head of list.
             " Note: In many cases, this allows short-circuiting a test for top-level.
@@ -1020,10 +1026,24 @@ function! s:is_list_head(pos)
     endtry
 endfunction
 
-" Using options and the input object produced by s:terminals_with_whitespace_info(),
-" return true iff selection should be adjusted to ensure that, upon delete, the element
-" following selection will be appended to the element before the selection.
-" Note: Take all relevant options into account.
+" Return 1 iff input position is adjacent to comment in specified direction.
+" TODO: Consider making these helpers not save/restore cursor.
+function! s:is_adjacent_to_comment(pos, tail)
+    let save_cursor = getpos('.')
+    try
+        let p = s:nearest_element_terminal(a:tail, !a:tail, 1)
+        return p != a:pos && s:is_comment(p[1], p[2])
+    finally
+        call s:setcursor(save_cursor)
+    endtry
+    return 0
+endfunction
+
+" Return 1 iff making both sides of the input positions colinear would not violate any
+" constraints.
+" Considering relevant options and surrounding buffer context, return 1 iff deleting range
+" start..end would not cause a constraint-violating join.
+" Relevant Options:
 " join_affinity:
 "     0 = never join
 "     1 = append only to head of list
@@ -1033,150 +1053,115 @@ endfunction
 "     0 = allow append of single line elements only
 "     1 = allow append of both single and multi-line elements
 " join_tw
-"     0 = disables checking (as with 'tw')
-"     -1 use &tw
+"     <floatnr> fraction of original line length
+"     0         disables checking (as with 'tw')
+"     -1        use &tw
 "     else override &tw
-function! s:outer_element_can_append(twwi)
-    let o = a:twwi
-    let tw = g:sexp_cleanup_join_textwidth < 0 ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
-    let [affinity, ml] =
-        \ [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
+" Cursor Positioning: No need to preserve
+function! s:can_join(start, end)
+    let [start, end] = [a:start, a:end]
+    if has('float') && type(g:sexp_cleanup_join_textwidth) == 5
+        " Treat 'textwidth' as fraction of original start line length.
+        let tw = float2nr(g:sexp_cleanup_join_textwidth * col([start[1], '$']))
+    else
+        let tw = g:sexp_cleanup_join_textwidth < 0
+            \ ? (&tw ? &tw : 80) : g:sexp_cleanup_join_textwidth
+    endif
+    let [affinity, ml] = [g:sexp_cleanup_join_affinity, g:sexp_cleanup_join_multiline]
+    " Get prev/next.
+    " TODO: Desperately need to rework s:nearest_element_terminal() and
+    " s:move_to_adjacent_element() to support request for nullpos return if no such
+    " element. The 'ignore_current' flag was a step in the right direction, but
+    " insufficient.
+    " TODO: Consider hiding this block in a function called get_surrounding_elements() or
+    " perhaps get_surrounding_context() (in which case, it should put the elements and
+    " more in a returned dict).
+    keepjumps call s:setcursor(end)
+    let p = s:nearest_element_terminal(1, 0, 1)
+    let next_s = p == end ? s:nullpos : p
+    let next_e = next_s[1] ? s:nearest_element_terminal(1, 1, 1) : s:nullpos
+    keepjumps call s:setcursor(start)
+    let p = s:nearest_element_terminal(0, 0, 1)
+    let prev_s = p == start ? s:nullpos : p
+    let prev_e = prev_s[1] ? s:nearest_element_terminal(0, 1, 1) : s:nullpos
+
     " Note: affinity shouldn't be less than zero, but err on side of disabling...
-    if affinity <= 0 || !o.next_s[1]
+    if affinity <= 0 || !next_s[1]
         " Joining disabled or no next element to append.
         return 0
     endif
-    " Is join precluded by context?
-    " Logic:
-    " * Don't append to an element that wasn't already followed by an element on its line.
-    " * Don't join elements that were separated by a comment
-    " * Don't append a comment to anything or anything to a comment
-    if o.bol || o.is_com || o.precedes_com || o.follows_com
-        return 0
-    endif
     " Is join precluded by line length constraint?
-    if tw > 0 && tw < o.prev_e[2] + col([o.next_s[1], '$']) - o.next_s[2]
+    if tw > 0 && tw < prev_e[2] + col([next_s[1], '$']) - next_s[2]
         return 0
     endif
-    if !ml && o.next_s[1] != o.next_e[1]
+    if !ml && (next_s[1] != next_e[1] || prev_s[1] != prev_e[1])
         " Only single-line joins permitted.
+        " TODO: Original logic considered only next; should we consider both the element
+        " joined and joined to?
         return 0
     endif
     " Apply affinity constraints.
-    if affinity == 1 && !s:is_list_head(o.prev_e)
+    if affinity == 1 && !s:is_list_terminal(prev_e, 0)
         " Affinity is for appends to list head, but prev element is not list head.
         return 0
     endif
     " Now that all other checks have passed, do top-level check only if necessary.
-    if affinity < 3 && s:at_top(o.start[1], o.start[2])
+    if affinity < 3 && s:at_top(start[1], start[2])
         return 0
     endif
     return 1
 endfunction
 
-" Return 1 to prioritize preservation of leading indent, 0 to prioritize removal of
-" leading whitespace.
-function! s:prioritize_leading_indent(twwi)
-    let o = a:twwi
-    let [cs, css, lsl] =
-            \ [g:sexp_cleanup_colshift, g:sexp_cleanup_colshift_slope, g:sexp_cleanup_lineshift_limit]
-    " Short-circuit in left-margin case.
-    if o.start[2] == 1 | return 0 | endif
-    " Short-circuit in top-level case.
-    if s:at_top(o.start[1], o.start[2]) | return 0 | endif
-    " Short-circuit if removal of leading whitespace wouldn't remove any lines.
-    if o.ws_si[1] >= o.start[1] | return 1 | endif
-    " Short-circuit if options preclude possibility of preferring leading blanks.
-    if !cs && !css && !lsl | return 1 | endif
-    " Guarantee: At least one nonzero option value needs to be considered.
-    " Since g:sexp_cleanup_leading_newlines takes precedence, consider it first.
-    let lshift = o.start[1] - o.ws_si[1]
-    if lsl > 0 &&  lshift >= lsl
-        " Prioritize leading whitespace removal.
-        return 0
-    endif
-    " Calculate col shift threshold according to linear eq.
-    let cshift = cs + css * lshift
-    " Short-circuit if zero cshift precludes need for comparison.
-    if !cshift | return 1 | endif
-    " Use leading indent (in screen width) of start of selection to make final decision.
-    " Note: The -2 offset accounts for 1-to-0-based index conversion and excludes the
-    " start char itself from the calculation (since we're calculating width of what
-    " precedes it).
-    return strdisplaywidth(getline(o.start[1])[:o.start[2] - 2]) >= cshift
-endfunction
-
-" Given start and end positions, returns new positions [start', end'],
-" according to logic described below.
-" TODO: Review this comment to make sure it's still correct...
-" If (bos or eos) and !(precedes_com || follows_com)
-" 	Include *all* leading and trailing whitespace.
-" ElseIf eol
-" 	If !bol
-" 	  If next element isn't multiline and joining it to start line wouldn't violate 'textwidth'
-" 	    end' includes all trailing whitespace up to the next element
-" 	  Else
-"       start' includes all leading whitespace
-"       end' includes all trailing whitespace up to the end of line preceding next element.
-"   Else
-"     " Rationale: Don't delete leading indent, as it could discombobulate
-"     If precedes_com
-"       end' includes all trailing whitespace up to the end of line preceding next element.
-"     Else
-"       end' includes the trailing whitespace up to the next element (or EOB)
-" Else " Element follows on same line
-"   end' includes trailing whitespace
-"
-" This behavior diverges from the behavior of the native text object aw in
-" that it allows multiline whitespace selections.
+" More like original, but not the same...
+" TODO: Updated function comment before merge...
 function! s:terminals_with_whitespace(start, end)
     let [start, end] = [a:start, a:end]
-
-    " TODO: Rename as get_ctx or some such...
-    let o = s:terminals_with_whitespace_info(start, end, [])
-    if (o.bos || o.eos) && (!o.precedes_com && !o.follows_com)
-        " No need to preserve any whitespace adjacent to bracket; include *all*
-        " leading/trailing whitespace.
-        " Note: s:outer_element_can_append() is the only other place we require special
-        " handling for comments and begin/end of sexp.
-        let [start, end] = [o.ws_vs, o.ws_ve]
-    elseif o.eol
-        " Consider join, but only if it won't violate option-dependent constraints.
-        " Note: Comment constraints are applied by outer_element_can_append().
-        if s:outer_element_can_append(o)
-            " Note: Ideally, we would select all trailing ws, excluding leading ws to
-            " preserve alignment of next element; however, in pathological scenario in
-            " which there's only trailing ws, exclude it to ensure a subsequent delete
-            " won't result in spurious join.
-            let end = o.start == o.ws_s && o.end != o.ws_e ? o.ws_ei : o.ws_ve
-        elseif !o.bol
-            " Decided not to append.
-            let [start, end] = [o.ws_vs, o.ws_ei]
-        else " eol && bol
-            " ws_si/ws_ei are not independent: terminals_with_whitespace_info() has set
-            " them correctly.
-            let [start, end] = [o.ws_si, o.ws_ei]
-        endif
-    else " !eol
-        if !o.bol
-            " Note: bos/eos case handled elsewhere; no need to consider here...
-            " No choice about join, but leave original whitespace at head to ensure next
-            " element is aligned with selection start after delete.
-            " Special Case: In pathological case of no whitespace at head, try to leave it
-            " at tail to prevent spurious join.
-            let end = start == o.ws_e ? o.ws_ei : o.ws_ve
-        else " o.bol
-            " Select all trailing ws to pull next element back to selection start.
-            let end = o.ws_ve
-            " Use options and selection context to decide whether to pull in leading
-            " whitespace.
-            " Rationale: Pulling in leading whitespace entails the loss of leading indent
-            " before start, which can be disorienting to user, especially when there was a
-            " lot of it (e.g., inside deeply-nested form).
-            if !s:prioritize_leading_indent(o)
-                let start = o.ws_si
-            endif
-        endif
+    " Note: These functions ignore newlines, but will return the position of the NUL at
+    " the start of a blank line.
+    let ws_end = s:adjacent_whitespace_terminal(end, 1)
+    let ws_start = s:adjacent_whitespace_terminal(start, 0)
+    " Get line containing the last non-newline char before start of whitespace.
+    let eff_prevl = ws_start[2] == 1 && ws_start[1] > 0 ? ws_start[1] - 1 : ws_start[1]
+    " Get line containing the first non-newline char past end of whitespace.
+    let eff_nextl = ws_end[2] == col([ws_end[1], '$']) - 1
+            \ ? ws_end[1] + 1 : ws_end[1]
+    " Determine join type.
+    if (g:sexp_cleanup_join_backwards || eff_prevl == start[1])
+        \ && s:is_list_terminal(start, 0)
+        \ && (g:sexp_cleanup_join_comments || !s:is_adjacent_to_comment(end, 1))
+        \ || s:is_list_terminal(end, 1) && !s:is_adjacent_to_comment(start, 0)
+        " Full join: select everything between open or close bracket and the nearest
+        " non-ws, which we've already determined can be safely juxtaposed to the bracket.
+        " Extra logic is needed to pull in a newline adjacent to the open/close.
+        let start = ws_start[2] == 1 && ws_start[1] > 1
+            \ ? [0, ws_start[1] - 1, col([ws_start[1] - 1, '$']), 0]
+            \ : ws_start
+        let end = eff_nextl > ws_end[1]
+            \ ? [0, ws_end[1], col([ws_end[1], '$']), 0]
+            \ : ws_end
+    elseif end[1] == eff_nextl || s:at_bol(start[1], start[2]) || s:can_join(start, end)
+        " Half join (at end only): select up to next non-ws, leaving start as-is to
+        " prevent loss of indent.
+        let end = ws_end
+    else
+        " No join: selecting all the way to next non-ws would result in an illegal join;
+        " accordingly, select all colinear whitespace and some (but not all) of the
+        " trailing newlines, taking care to respect options related to number of blank
+        " lines to keep.
+        " Assumption: Arrival here guarantees !bol and eol
+        " Select back to colinear prev.
+        let start[2] = ws_start[2]
+        " Calculate line whose newline should be excluded from selection.
+        let endline = max([
+            \ eff_nextl - g:sexp_cleanup_keep_empty_lines - 1,
+            \ end[1]])
+        " Select up to but not including the newline.
+        " Caveat: Must account for fact that col 1 (or 0) of empty line selects the
+        " newline we wish to exclude!
+        let endcol = col([endline, '$']) - 1
+        let end = endcol > 0
+            \ ? [0, endline, endcol, 0]
+            \ : [0, endline - 1, col([endline - 1, '$']), 0]
     endif
     return [start, end]
 endfunction

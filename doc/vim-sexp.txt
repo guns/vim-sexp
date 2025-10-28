@@ -973,6 +973,20 @@ wish to activate vim-sexp mappings.
 >
         " Default
         let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel'
+
+<
+                                            *g:sexp_filetype_macro_characters*
+A dictionary listing the macro characters as a string for each of the
+supported |FileTypes|.
+>
+        " Default
+        let g:sexp_filetype_macro_characters = {
+                \ 'clojure': "#'`~@^_=",
+                \ 'scheme':  "#'`,@",
+                \ 'lisp':    "#'`,@",
+                \ 'timl':    "#'`~@^_*",
+                \ 'fennel':  "#'`,@",
+                \ }
 <
                                           *g:sexp_enable_insert_mode_mappings*
 Toggle insert mode mappings in |g:sexp_filetypes|.

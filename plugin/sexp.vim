@@ -64,16 +64,6 @@ if !exists('g:sexp_filetypes')
     let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel'
 endif
 
-if !exists('g:sexp_filetype_macro_characters')
-    let g:sexp_filetype_macro_characters = {
-        \ 'clojure': "#'`~@^_=",
-        \ 'scheme':  "#'`,@",
-        \ 'lisp':    "#'`,@",
-        \ 'timl':    "#'`~@^_*",
-        \ 'fennel':  "#'`,@",
-        \ }
-endif
-
 if !exists('g:sexp_enable_insert_mode_mappings')
     let g:sexp_enable_insert_mode_mappings = 1
 endif

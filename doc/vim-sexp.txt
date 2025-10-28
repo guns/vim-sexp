@@ -977,7 +977,8 @@ wish to activate vim-sexp mappings.
 <
                                             *g:sexp_filetype_macro_characters*
 A dictionary listing the macro characters as a string for each of the
-supported |FileTypes|.
+|FileTypes| that the user wants to configure. The default values for the
+built-in supported |FileTypes| are effectively:
 >
         " Default
         let g:sexp_filetype_macro_characters = {

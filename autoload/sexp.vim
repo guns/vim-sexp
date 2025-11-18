@@ -510,10 +510,9 @@ endfunction
 
 " Returns position of previous/next element's head/tail.
 " Returns current element's terminal if no adjacent element exists, unless optional
-" 'ignore_current' argument is set, in which case, return unmodified current position.
-" TODO: Currently, returns initial position unmodified if no adjacent and no current. Is
-" this best approach? It's always worked like this, so changing it to (eg) null pos should
-" not be done without significant analysis/testing.
+" 'ignore_current' argument is set, in which case, return unmodified current position,
+" unless 'nullpos_on_fail' (2nd optional arg) is also set, in which case, return nullpos.
+" TODO: Convert the optional args to a (possibly optional) flags dict.
 function! s:nearest_element_terminal(next, tail, ...)
     let cursor = getpos('.')
     let pos = cursor
@@ -1251,7 +1250,7 @@ function! s:offset_char(pos, dir, ...)
                     " Empty line
                     if a:pos[1] == 1
                         " Special Case: BOF
-                        let pos = [0, 1, 0, 0]
+                        let pos = [0, 1, -1, 0]
                     else
                         " Need to consider inc_nl
                         let prev_eol = col([a:pos[1] - 1, '$'])
@@ -2805,11 +2804,16 @@ endfunction
 " Build and return a dict characterizing the text in the put register and canonicalize the
 " register contents.
 function! s:put__get_reginfo()
-    let regstr = getreg(v:register)
     " Note: Processed text added later.
     let ret = {
         \ 'reg_s_is_com': 0, 'reg_e_is_com': 0, 'reg_is_com': 0, 'reg_is_ml': 0,
     \ }
+    let regstr = getreg(v:register)
+    if regstr =~ '^\s*$'
+        " No-op!
+        let ret.text = ''
+        return ret
+    endif
     let ret.is_ml = regstr =~ '\n'
     let ret.s_is_com = regstr =~ '^\s*;'
     let ret.e_is_com = regstr =~ ';\s*$'
@@ -2842,6 +2846,7 @@ endfunction
 "   tgt_is_alone:    target is alone on its line, with possible exception of open or
 "                    close, but not both
 "   tgt_is_terminal: target is head or tail of list in put direction
+"   tgt_is_open:     determines whether tgt represents position of element or open bracket
 "   adj_colinear:    element adjacent to target on put side is colinear with target
 "   empty_list:      putting into empty list
 "   empty_buffer:    putting into empty buffer
@@ -2862,20 +2867,21 @@ function! s:put__get_context(count, tail)
     let t = sexp#current_element_terminal(a:tail)
     if !t[1]
         " Nothing under cursor; see if there's a next element.
-        let t = s:nearest_element_terminal(1, a:tail)
+        let t = s:nearest_element_terminal(1, a:tail, 1, 1)
         if !t[1]
             " Fall back to prev element.
-            let t = s:nearest_element_terminal(0, a:tail)
+            let t = s:nearest_element_terminal(0, a:tail, 1, 1)
             if !t[1]
-                " Must be empty list; treat like 'put after' with cursor on virtual
-                " element located at open bracket.
-                " Note: This type of put would be more likely to use the "put into list"
-                " put variant.
-                let t = s:nearest_bracket(0)
+                " Must be empty list or empty buffer.
+                " Design Decision: Let tgt/adj brackets be determined by put direction.
+                " Rationale: Minimizes need for special handling downstream.
+                let t = s:nearest_bracket(!a:tail)
                 if t[1]
-                    " Note: Could also name this flag put_into_empty.
-                    let ret.tgt_is_open = 1
-                    " TODO: Decide on name: keep only one.
+                    " Treat like 'put after' with cursor on virtual element located at
+                    " open bracket.
+                    " Note: This type of put would be more likely to use the "put into
+                    " list" put variant.
+                    let [ret.tgt_is_terminal, ret.tgt_is_open] = [1, 1]
                     let ret.empty_list = 1
                 else
                     " Empty buffer?
@@ -2887,14 +2893,24 @@ function! s:put__get_context(count, tail)
             endif
         endif
     endif
-    " Assumption: t is on desired (put) side of tgt.
+    " Assumption: t is on desired (put) side of tgt (or on open/close bracket in case of
+    " empty list).
     let ret.tgt = t
     call s:setcursor(ret.tgt)
-    if !ret.empty_list && !ret.empty_buffer
-        " Find near side of adjacent
-        " Note: Optional flag forces return of same position if no adjacent.
-        " FIXME!!!! How is ret.adj being left at nullpos??????
-        let adj = s:nearest_element_terminal(a:tail, !a:tail, 1)
+    if ret.empty_list
+        " Treat empty list as special case to avoid complicating the logic for case
+        " involving actual (non-bracket) target. See earlier comment regarding rationale
+        " behind use of a:tail.
+        let ret.adj_bracket = s:nearest_bracket(a:tail)
+        " Design Decision: Treat empty list as having colinear open/close.
+        " Rationale: With no contained elements, there's no reason to force multi-line
+        " context.
+        let ret.adj_colinear = ret.tgt[1] == ret.adj_bracket[1]
+        let [ret.tgt_is_terminal, ret.tgt_is_alone, ret.at_top] = [1, 0, 0]
+    elseif !ret.empty_buffer
+        " Find near side of adjacent (else closing bracket).
+        " Note: Optional flags force return of nullpos if no adjacent.
+        let adj = s:nearest_element_terminal(a:tail, !a:tail, 1, 1)
         if adj[1]
             " Found an adjacent element.
             let ret.adj = adj
@@ -2907,9 +2923,9 @@ function! s:put__get_context(count, tail)
             let adj_bracket = s:nearest_bracket(a:tail)
         endif
         let ret.adj_bracket = adj_bracket
-        " Check other (away) side of target, passing 'ignore_current' to ensure nullpos
-        " returned if no adjacent.
-        let away = s:nearest_element_terminal(!a:tail, a:tail, 1)
+        " Check other (away) side of target, passing 'ignore_current' and
+        " 'nullpos_on_fail' to ensure nullpos returned if no adjacent.
+        let away = s:nearest_element_terminal(!a:tail, a:tail, 1, 1)
         " Find away bracket unconditionally (even if away is not nullpos) to obviate need
         " for at_top() call; however, put nullpos in return dict if away is non-null.
         " Note: Must position on far side of away element before looking for bracket.
@@ -2929,7 +2945,7 @@ function! s:put__get_context(count, tail)
         " bracket is irrelevant if the intervening element exists.
         let ret.tgt_is_terminal = !adj[1] && adj_bracket[1]
     else
-        " Special Case: empty list or empty buffer
+        " Special Case: empty buffer
         let ret.at_top = ret.empty_buffer
     endif
     return ret
@@ -2982,13 +2998,14 @@ function! s:put__get_seps(tail, ctx, reg)
     " -- Far separator
     " Logic: Default (else) to NL, with special cases requiring SPC/EMPTY in the
     " if/elseifs.
-    if ctx.adj_colinear && !reg.is_ml
+    if ctx.empty_buffer
+        \ || ((ctx.empty_list || ctx.tgt_is_terminal)
+        \     && !(tail && reg.e_is_com || !tail && reg.s_is_com))
+        " Safe to butt register up against bracket (or edge of buffer).
+        let ret.far_sep = EMPTY
+    elseif ctx.adj_colinear && !reg.is_ml
         " Preserve colinearity unless pasted text is ml.
         let ret.far_sep = SPC
-    elseif ctx.tgt_is_terminal 
-        \ && !(tail && reg.e_is_com || !tail && reg.s_is_com)
-        " Safe to butt register up against bracket
-        let ret.far_sep = EMPTY
     elseif ctx.tgt_is_terminal && !tail && reg.s_is_com
         " Start of comment can be separated from terminal by single space.
         let ret.far_sep = SPC
@@ -3011,49 +3028,6 @@ function! s:put__get_seps(tail, ctx, reg)
     "   Rationale: The logic that determined a NL should separate tgt from put text would
     "   quite naturally extend to subsequent copies of the put text.
     let ret.interior_sep = reg.is_ml || reg.has_com || ret.near_sep == NL ? NL : SPC
-    return ret
-endfunction
-
-" Calculate and return (unadjusted) range that will need to be re-indented after the put
-" described by the inputs is performed.
-" Note: The returned range will need to be adjusted to account for the put.
-" Return:
-"   [pos]        position of bracket for list to indent
-"   [start, end] start/end of range to adjust
-" TODO: OBSOLETE!!! Remove if not needed.
-function! s:put__get_reindent_range(tail, ctx, reg, sep)
-    let ret = [s:nullpos, s:nullpos]
-    let [ctx, reg, sep] = [a:ctx, a:reg, a:sep]
-    if ctx.empty_list
-    elseif ctx.empty_buffer
-    else
-        " Start of range
-        " Assumption: Arrival here guarantees presence of either adj or adj_bracket.
-        " NO!!! Could be a single element in buffer: i.e., tgt but !adj
-        " Also Note: In theory, pasting at head of list can necessitate re-indent of
-        " parent.
-        let ret[0] = a:tail ? ctx.tgt : ctx.adj[1] ? ctx.adj : ctx.adj_bracket
-        " End of range
-        " Assumption: SPC separator implies existence of adj/away element.
-        let extra_el = a:tail && sep.far_sep == ' '
-            \ ? ctx.adj
-            \ : !a:tail && sep.near_sep == ' '
-            \ ? ctx.away
-            \ : s:nullpos
-        if extra_el[1]
-            " Assumption: SPC sep implies actual adj element.
-            call s:setcursor(extra_el)
-            " Need far side of adj
-            let ret[1] = sexp#current_element_terminal(1)
-        else
-            " Don't need to indent extra element. If this is a tail put, leave at nullpos
-            " to have end of range taken from ']; otherwise, start of tgt marks end of
-            " range.
-            if !a:tail
-                let ret[1] = ctx.tgt
-            endif
-        endif
-    endif
     return ret
 endfunction
 
@@ -3093,10 +3067,13 @@ function! s:last_colinear_sibling(tail)
     endtry
 endfunction
 
+" Return a dict that characterizes the splice (or directed put) to be performed as the set
+" of arguments to s:yankdel_range().
 function! s:put__get_splice_info(count, tail, ctx, reg, sep, flags)
     let ret = { 'range': [s:nullpos, s:nullpos], 'text': '', 'inc': 0}
     let [ctx, reg, sep] = [a:ctx, a:reg, a:sep]
     let [NL, SPC, EMPTY] = ["\n", " ", ""]
+    let [near_sep, interior_sep, far_sep] = [sep.near_sep, sep.interior_sep, sep.far_sep]
 
     " Set the target-side splice position.
     " Assumption: Currently, ctx.tgt is always set to something non-null.
@@ -3104,52 +3081,54 @@ function! s:put__get_splice_info(count, tail, ctx, reg, sep, flags)
     let ret.range[!a:tail] = ctx.tgt
     call s:setcursor(ctx.tgt)
     " Determine the range.
-    if ctx.empty_list
-        " TODO
-    elseif ctx.empty_buffer
-        " Just put in indicated direction.
-        " TODO: Should we eat whitespace?
+    " Nominal case: we have a target to put before/after.
+    " Note: Target could be element or open bracket.
+    " Note: This handles both nominal and empty_list cases.
+    let adj_pos = ctx.adj[1] ? ctx.adj : ctx.adj_bracket[1] ? ctx.adj_bracket : s:nullpos
+    if ctx.empty_buffer
+        " Replace entire buffer (possibly ws or maybe just NUL char at head).
+        let ret.range = [[0, 1, 1, 0], [0, line('$'), col([line('$'), '$']), 0]]
+        let ret.inc = [1, 1]
+    elseif !adj_pos[1]
+        " No element or bracket in direction of put, so put to BOF or EOF.
+        " Note: Empty buffer case currently handled separately in if, but could be handled
+        " here if we wanted to replace only whitespace in direction of put.
+        let ret.range[a:tail] = a:tail
+            \ ? [0, line('$'), col([line('$'), '$']), 0]
+            \ : [0, 1, 1, 0]
+        " Note: The following resolves to a directed put towards BOF/EOF if no whitespace
+        " separates tgt position from BOF/EOF.
+        let ret.inc = a:tail ? [0, 1] : [1, 0]
     else
-        " Nominal case: we have a target to put before/after.
-        let adj_pos = ctx.adj[1] ? ctx.adj : ctx.adj_bracket[1] ? ctx.adj_bracket : s:nullpos
-        if !adj_pos[1]
-            " No element or bracket in direction of put, so put to BOF or EOF.
-            let ret.range[a:tail] = a:tail
-                \ ? [0, line('$'), col([line('$'), '$']), 0]
-                \ : [0, 1, 1, 0]
-            " Use directed put (direction determined by inclusive end).
-            let ret.inc = a:tail ? [0, 1] : [1, 0]
-        else
-            " There's something adjacent to target to anchor splice at other end.
-            let ret.range[a:tail] = adj_pos
-            let [near_sep, far_sep] = [sep.near_sep, sep.far_sep]
-            " May be set to 2 (EOL-exclusive) later.
-            let exc_typ = 0
-            if far_sep == NL
-                " Determine number of newlines to prepend/append on far side of put text,
-                " as function of number of blank lines between target and adjacent (taking
-                " options into account).
-                let gap = ret.range[1][1] - ret.range[0][1]
-                let num_nl = min([gap, g:sexp_cleanup_keep_empty_lines + 1])
-                if a:tail
-                    " Keep the final NL to avoid clobbering leading indent.
-                    " Rationale: Permits earlier "clean point" for re-indent.
-                    let exc_typ = 2
-                    let num_nl -= 1
-                endif
-                let far_sep = repeat("\n", num_nl)
+        " There's something adjacent to target to anchor splice at other end.
+        let ret.range[a:tail] = adj_pos
+        " May be set to 2 (EOL-exclusive) later.
+        let exc_typ = 0
+        if far_sep == NL
+            " Determine number of newlines to prepend/append on far side of put text,
+            " as function of number of blank lines between target and adjacent (taking
+            " options into account).
+            let gap = ret.range[1][1] - ret.range[0][1]
+            " Note: Because far_sep has been determined to be NL, we must ensure a
+            " min gap of 1, even if tgt and adj are currently colinear.
+            let num_nl = min([max([gap, 1]), g:sexp_cleanup_keep_empty_lines + 1])
+            if a:tail
+                " Use adjacent whitespace-exclusive mode at end to preserve any
+                " leading indent on line following the put.
+                " Rationale: Permits earlier "clean point" for re-indent; otherwise,
+                " we'd have to include at least one extra element at tail.
+                let exc_typ = 2
             endif
-            " Build splice string.
-            " TODO: Refactor this into a function somehow, since something similar is used
-            " elsewhere (for cloning, I think).
-            " TODO: Do we need to consider 'collapse whitespace' option?
-            let t = repeat([reg.text], a:count)
-            let t = join(t, sep.interior_sep)
-            let t = a:tail ? near_sep . t . far_sep : far_sep . t . near_sep
-            let ret.text = t
-            let ret.inc = [0, exc_typ]
+            let far_sep = repeat("\n", num_nl)
         endif
+        let ret.inc = [0, exc_typ]
     endif
+    " Build splice string.
+    " TODO: Refactor this into a function somehow, since something similar is used
+    " elsewhere (for cloning, I think).
+    " TODO: Do we need to consider 'collapse whitespace' option?
+    let t = join(repeat([reg.text], a:count), interior_sep)
+    let ret.text = a:tail ? near_sep . t . far_sep : far_sep . t . near_sep
     return ret
 endfunction
 
@@ -3157,39 +3136,60 @@ function! sexp#put(count, tail)
     " Save/adjust visual marks.
     let [vs, ve] = s:get_visual_marks()
     let count = a:count ? a:count : 1
+    let [NL, SPC, EMPTY] = ["\n", " ", ""]
     " Calculate the put.
     let reg = s:put__get_reginfo()
+    if empty(reg.text)
+        " Treat empty text like NOOP!
+        return
+    endif
     let ctx = s:put__get_context(count, a:tail)
     let sep = s:put__get_seps(a:tail, ctx, reg)
     let spl = s:put__get_splice_info(count, a:tail, ctx, reg, sep, {})
     let ps = [vs, ve]
-    if !spl.range[1][1]
-        " TODO: Consider handling this with simple p/P: i.e., without yankdel_range().
-        " Question: Do we need yankdel_range for position adjustments?
-        echoerr "FIXME: WIP!!!"
-    else
-        " TODO: Consider having put__get_context() build the position list.
-        let ps = s:concat_positions(vs, ve,
-            \ ctx.tgt, ctx.adj, ctx.away, ctx.adj_bracket, ctx.away_bracket)
-        call s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps, 1)
-        " Determine final cursor position.
-        " Design Decision: Analogously to builtin p and P, always position at end;
-        " however, unlike the builtins, always position on last non-ws at end.
-        let curpos = getpos("']")
-        if sep[a:tail ? 'far_sep' : 'near_sep'] != ''
-            " Need to back '] up to closest non-ws (i.e., final put element).
-            call s:setcursor(curpos)
-            " TODO: Consider adding stopline, but shouldn't be necessary.
-            let p = searchpos('\S', 'bW')
-            if !p[1]
-                " This shouldn't happen!
-                throw 'sexp-error'
-            endif
-            let curpos = [0, p[0], p[1], 0]
-            call setpos("']", curpos)
-        endif
+    " TODO: Consider having put__get_context() build the position list.
+    let ps = s:concat_positions(vs, ve,
+        \ ctx.tgt, ctx.adj, ctx.away, ctx.adj_bracket, ctx.away_bracket)
+    " Note: Don't set 'failsafe override': a put should change only whitespace.
+    call s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps)
+    " Determine final cursor position.
+    " Design Decision: Analogously to builtin p and P, always position at end;
+    " however, unlike the builtins, always position on last non-ws at end.
+    let curpos = getpos("']")
+    if sep[a:tail ? 'far_sep' : 'near_sep'] != ''
+        " Need to back '] up to closest non-ws (i.e., final put element).
+        " TODO: Consider trimming register context to obviate need for this.
+        call s:setcursor(curpos)
+        " TODO: Consider adding stopline, but shouldn't be necessary.
+        " Assumption: Earlier short-circuit precludes possibility of empty or
+        " whitespace-only put, thereby ensuring this search will succeed.
+        let p = searchpos('\S', 'bW')
+        let curpos = [0, p[0], p[1], 0]
+        call setpos("']", curpos)
     endif
-    let [s, e] = [getpos("'["), getpos("']")]
+    " Determine range to pass to s:post_op_reindent.
+    " Assumption: Indent logic always looks back to non-empty line preceding start, so
+    " there's no need for start adjustment.
+    let s = getpos("'[")
+    " Special Case: If sep following put text is NL but element following it was
+    " originally colinear with element on other side, include the element past the NL.
+    " Note: If adjacent was not colinear, adjustment is not needed because the splice will
+    " have used adjacent whitespace-exlusive mode to preserve leading indent.
+    " Note: What makes this tricky is that s:post_op_reindent() assumes a NL creates a
+    " 'clean point', but this is true only for *pre-existing* NLs, not ones inserted by
+    " the put!
+    " TODO: Consider putting in a separate function; also, consider whether to just make
+    " s:post_op_reindent always look to subsequent element, rather than trying to shave it
+    " this close.
+    " FIXME: I believe nearest_bracket_{legacy,ts}() are inconsistent! The ts version
+    " finds close bracket when on leading macro chars. Need to resolve this as it has
+    " implications for parent reindent: specifically, whether count should be 1 or 2 when
+    " on leading macro chars.
+    if ctx.adj_colinear && sep[a:tail ? 'far_sep' : 'near_sep'] == NL
+        let e = a:tail ? ctx.adj : ctx.tgt
+    else
+        let e = getpos("']")
+    endif
     " FIXME: Make sure all branches above set curpos.
     call s:post_op_reindent(s, e, [ps, curpos])
     " !!!!! WIP !!!!!
@@ -3300,6 +3300,7 @@ endfunction
 "   1 = inclusive (nop)
 "   2 = exclusive of whitespace up to and including newline at EOL
 "       Note: Equivalent to inc==0 if not in whitespace at EOL
+"   3 = exclusive of non-NL whitespace adjacent to pos
 " Example:
 " foo)|<SPC>   ==>   foo)<SPC>
 " bar                |bar
@@ -3316,9 +3317,20 @@ function! s:yankdel_range__preadjust_range_start(start, inc)
             " position before BOF returned by *_range_end())?
             let ret = getpos([line('$'), '$'])
         endif
-    elseif a:inc != 1 " 0 or 2
-        " Move to next position, including newline.
-        let ret = s:offset_char(ret, 1, 1)
+    elseif a:inc != 1 " 0, 2 (treated as 0) or 3
+        if a:inc == 3
+            let idx = match(getline(ret[1]), '\v^.\s*\zs\S', ret[2] - 1)
+            if idx >= 0
+                " Use nearest colinear non-ws.
+                let ret[2] = ret[2] + idx
+            else
+                " Use NL
+                let ret[2] = col([ret[1], '$'])
+            endif
+        else
+            " Move to next position, including newline.
+            let ret = s:offset_char(ret, 1, 1)
+        endif
     endif
     return ret
 endfunction
@@ -3329,6 +3341,7 @@ endfunction
 "   1 = inclusive (nop)
 "   2 = exclusive of whitespace back to and including newline at BOL
 "       Note: Equivalent to inc==0 if not in whitespace at BOL
+"   3 = exclusive of non-NL whitespace adjacent to pos
 " Example:
 " foo)        ==>   foo)|
 " <SPC>|bar         <SPC>bar
@@ -3359,12 +3372,25 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
             " before beginning of first line.
             let ret[1:2] = [1, -1]
         endif
-    elseif a:inc != 1 " 0 or 2
+    elseif a:inc != 1 " 0, 2 or 3
         " Move to prev position, including newline.
         if ret[1:2] == [1, 1]
             " Already at BOF, so return the special sentinel position just
             " prior to first char.
             let ret[2] = -1
+        elseif a:inc == 3
+            " adjacent whitespace-exclusive
+            let idx = match(getline(ret[1]), '\v\S\s*%' . ret[2] . 'c.')
+            if idx >= 0
+                " Use nearest colinear non-ws.
+                let ret[2] = idx + 1
+            elseif ret[1] > 1
+                " Consumed all whitespace back to BOL. Use previous line's NL.
+                let ret = [0, ret[1] - 1, col([ret[1] - 1, '$']), 0]
+            else
+                " Use virtual position just before BOF.
+                let ret[1:2] = [1, -1]
+            endif
         else
             let ret = s:offset_char(ret, 0, 1)
         endif
@@ -3439,26 +3465,72 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
             endif
             if i0 == 2 || i1 == 2
                 " At least one end is (still) EOL-exclusive, so we know a:start and a:end
-                " are separated by at least a NL, guaranteeing our ability to determine
-                " non-empty splice range (even if only a NL). Handle as a splice using
-                " corresponding normal-exclusive range, with NL's prepended/appended to
-                " the splice text as required.
-                let [pre_nl, post_nl] = ['', '']
-                if i0 == 2
-                    let start = s:yankdel_range__preadjust_range_start(a:start, 0)
-                    let pre_nl = "\n"
-                endif
-                if i1 == 2
-                    let end = s:yankdel_range__preadjust_range_end(a:end, 0)
-                    let post_nl = "\n"
-                endif
-                " Treat like splice, with adjusted splice text.
-                let [ret.start, ret.end] = [start, end]
-                let ret.text = pre_nl . ret.text . post_nl
+                " are separated by at least a NL (but possibly 2, due to a corner case
+                " involving blank line), guaranteeing our ability to determine non-empty
+                " splice range (even if only a NL).
+                " Logic: Make inclusive region from NL at end of a:start to NL just before
+                " a:end (possibly the same NL), which will be replaced with spliced text
+                " prefixed/suffixed with NL according to the following logic:
+                " * prefix NL if adjusted start on later line than original start
+                " * suffix NL if adjusted end on earlier line than original end
+                " Rationale: Respect desire to include or exclude the NL from splice.
+                let ret.text = (a:start[1] < start[1] ? NL : '')
+                    \ . ret.text
+                    \ . (a:end[1] > end[1] ? NL : '')
+                let ret.start = [0, a:start[1], col([a:start[1], '$']), 0]
+                let ret.end = [0, a:end[1] - 1, col([a:end[1] - 1, '$']), 0]
             else
-                " Both ends normal-exclusive implies original a:start/a:end were adjacent.
-                " Directed put from unadjusted start
-                let [ret.pos, ret.cmd] = [a:start, 'p']
+                " Both sides exclusive, but neither side EOL-exclusive
+                let [pre, post] = ['', '']
+                if i0 == 3 || i1 == 3
+                    " At least one side is adjacent whitespace-exclusive.
+                    if a:start < a:end
+                        " Only one way reversed range could have occurred: a:start was NL
+                        " and a:end was in leading whitespace of subsequent line. Highly
+                        " improbable, but most sensible thing is to replace the NL with...
+                        "   NL . spl_text.
+                        let [pre, start, end] = [NL, a:start, a:start]
+                    else
+                        " Both start/end in same run of colinear whitespace. Replace the
+                        " normal-exclusive range from a:start..a:end with...
+                        "   [pre] . spl_text . [post]
+                        " ...where pre/post is the whitespace in the open range a:start..a:end.
+                        " Rationale: Makes intuitive sense, as it preserves the whitespace
+                        " both sides requested preserved (albeit preserves it twice). Keep
+                        " in mind that the duplicthis is a scenario that should probably never
+                        " arise, mainly because the adjacent whitespace exclusion mode
+                        " has valid use cases only at the end.
+                        let s = s:offset_char(a:start, 1, 1)
+                        " Note: Handle adjacent a:{start,end} like normal exclusive.
+                        if s:compare_pos(s, a:end) < 0
+                            " a:start/a:end *not* adjacent.
+                            " Grab all the whitespace between them.
+                            let ws = getline(s[1])[s[2] - 1 : a:end[2] - 2]
+                            if i0 == 3 && i1 == 3
+                                let [pre, post] = [ws, ws]
+                            elseif i0 == 3
+                                let pre = ws
+                            else " i1 == 3
+                                let post = ws
+                            endif
+                            " Make the splice range normal exclusive since pre/post are
+                            " accounted for.
+                            let [start, end] = [s, i0 == 3
+                                \ ? s:yankdel_range__preadjust_range_end(a:end, 0)
+                                \ : end]
+                        endif
+                    endif
+                endif
+                if empty(pre) && empty(post)
+                    " a:start/a:end were adjacent. Directed put from unadjusted start
+                    let [ret.pos, ret.cmd] = [a:start, 'p']
+                else
+                    " Wrap splice text and use normal exlusive positions.
+                    " Assumption: Getting here implies pre and/or post non-empty, which
+                    " means it's safe to use normal exclusive range at both ends.
+                    let ret.text = pre . ret.text . post
+                    let [ret.start, ret.end] = [start, end]
+                endif
             endif
         endif
     else
@@ -3616,6 +3688,8 @@ endfunction
 "        both_inclusive
 "      | [start_inclusive, end_inclusive]
 "      Defaults to inclusive start, exclusive end (i.e., [1, 0].
+"      FIXME: This design choice feels a bit risky, as it violates the POLS. Consider
+"      defaulting both ends to the same thing.
 " a:2  list of positions to adjust
 "      Note: As a convenience to caller, will be passed through s:concat_positions().
 " a:3  failsafe_override - unless this flag is set, function will not delete

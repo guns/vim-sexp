@@ -141,6 +141,12 @@ if !exists('g:sexp_indent_aligns_comments')
     let g:sexp_indent_aligns_comments = 0
 endif
 
+if !exists('g:sexp_auto_indent_range')
+    " Rationale: Larger (non-optimized) indent ranges are best when aligning comments.
+    " FIXME!
+    let g:sexp_auto_indent_range = !g:sexp_indent_aligns_comments
+endif
+
 if !exists('g:sexp_aligncom_maxshift')
     let g:sexp_aligncom_maxshift = -1
 endif

@@ -1296,94 +1296,6 @@ function! s:offset_char(pos, dir, ...)
     return pos
 endfunction
 
-" See s:super_range() for function description.
-function! s:super_range_legacy(start, end)
-    let cursor = getpos('.')
-    let [start, end] = [a:start[:], a:end[:]]
-    " Find matching pair of brackets (if one exists) that contains both start and end. Set
-    " shared_close to the close position, or null if no such pair exists.
-    " Note: In this context, a bracket "contains" itself.
-    call s:setcursor(start)
-    " Seed the loop position with an open containing start (possibly start itself).
-    let shared_open = s:is_list(start[1], start[2]) == 2 ? start : s:move_to_nearest_bracket(0)
-    while shared_open[1]
-        let shared_close = s:nearest_bracket(1)
-        " Note: Null shared close implies end at top level due to unbalanced open.
-        let cmp = !shared_close[1] ? 1 : s:compare_pos(shared_close, end)
-        if cmp >= 0
-            " Either we found shared close or we're not going to.
-            break
-        endif
-        " Haven't yet found shared close (and haven't hit top-level trying). Adjust
-        " start to current open bracket before looking higher.
-        let start = shared_open
-        let shared_open = s:move_to_nearest_bracket(0)
-    endwhile
-    " Assumptions:
-    " * Null shared_open implies null shared_close
-    " * shared_open == start implies end equal to a *non-null* shared_close.
-    " * shared_close == end implies start equal to a *non-null* shared_open.
-    " Enforce the associated constraints, with possibly redundant assignments.
-    if !shared_open[1]
-        " We hit top level looking for shared open containing end.
-        " Note: In case of unbalanced open, this assignment will be redundant.
-        let shared_close = [0, 0, 0, 0]
-    elseif shared_open == start
-        if shared_close[1]
-            let end = shared_close
-        endif
-    elseif shared_close == end
-        if shared_open[1]
-            let start = shared_open
-        endif
-    endif
-    " If on element, find its start.
-    " Rationale: Prefer start of macro chars to open bracket.
-    call s:setcursor(start)
-    let p = sexp#current_element_terminal(0)
-    if p[1]
-        let start = p
-    endif
-    " Is it possible we need to adjust end upward?
-    if end != shared_close
-        " Special Cases:
-        "   (shared_close == null)   => shared close is top-level
-        "       Don't look up any further; just find end terminal
-        "   (shared_close == a:end)    => end requires no adjustment
-        "       The next two loops will be skipped.
-        call s:setcursor(end)
-        " Note: compare_pos() < 0 could be simplified to p != shared_close.
-        " Rationale: Prior logic guarantees that p will eventually land *on* a non-null
-        " shared_close.
-        " Seed prev position var.
-        let p = end
-        " Treat null shared close like shared close past EOF.
-        while !shared_close[1] || s:compare_pos(p, shared_close) < 0
-            let end = p
-            let p = s:move_to_nearest_bracket(1)
-            if !p[1]
-                " Top level is common ancestor
-                break
-            endif
-        endwhile
-        " As long as we can assume a form always ends with a closing bracket (e.g., no macro
-        " chars following close), we can skip looking for terminal whenever the preceding loop
-        " has adjusted end to a closing bracket (i.e., end != a:end).
-        if end == a:end
-            call s:setcursor(end)
-            " Ensure end is a terminal.
-            let p = sexp#current_element_terminal(1)
-            if p[1]
-                let end = p
-            endif
-        endif
-    endif
-
-    " Restore saved position.
-    call s:setcursor(cursor)
-    return [start, end]
-endfunction
-
 " Return a superset range containing no unbalanced brackets by adjusting one or both sides
 " of the input range upward till both sides are at same level (i.e., have same parent) and
 " no elements are partially included in the range.
@@ -1500,6 +1412,106 @@ function! s:constrained_range(start, end, keep_end)
     endif
     call s:setcursor(cursor)
     return ret
+endfunction
+
+" Calculate *effective* auto-indent range calculation level, taking
+" g:sexp_auto_indent_range and any other relevant options into account.
+" Note: Levels 1 and 3 specify conditional fall forward or fall back as a function of
+" other options. Thus, this function returns a value from the following set: [0, 2, 4].
+function! s:get_effective_ai_range()
+    let val = get(g:, 'sexp_auto_indent_range', 1)
+    let [typ, ityp] = [type(val), type(0)]
+    if typ != ityp || val < 0 || val > 4
+        " If user set to something larger than 4, cap it at 4; otherwise, default to 1.
+        let bad = val
+        let val = typ == ityp && val > 4 ? 4 : 1
+        call sexp#warn#msg_once(
+            \ "Ignoring invalid g:sexp_auto_indent_range setting: "
+            \ . bad . ". Defaulting to " . string(val))
+        " Design Decision: Wouldn't need to set global here, since msg_once() ensures we
+        " won't keep warning; still, there's no harm in doing so, as user can override at
+        " any time.
+        let g:sexp_auto_indent_range = val
+    endif
+    if val == 1 || val == 3
+        " Increment 1 up or down
+        let val += g:sexp_indent_does_clean || g:sexp_indent_aligns_comments ? 1 : -1
+    endif
+    return val
+endfunction
+
+" TODO: Comment!!!
+" Return dict with the following keys:
+"   start
+"   end
+"   top
+"   cnt
+function! s:get_reindent_range(s, e)
+    let cursor = getpos('.')
+    let ai_range = s:get_effective_ai_range()
+    " Return range may be adjusted below.
+    let [s, e] = [a:s, a:e]
+    " These will be adjusted later if parent list is to be used in lieu of explicit range.
+    let [top, cnt] = [-1, 1]
+    try
+        " Position at start of first element of input range.
+        let [s, e] = s:super_range(s, e)
+        " If at top, just use [s,e].
+        if !s:at_top(s[1], s[2])
+            if !ai_range && s:is_list_terminal(s, 0)
+                " Changes to list head can propagate to the end of a list, so constrain to
+                " level >= 1.
+                let ai_range = max([1, ai_range])
+            endif
+            " Assumption: Containing if guard obviates need to validate bracket searches.
+            " Note: We're on tail end of input end element.
+            if ai_range == 4
+                " containing top-level form
+                let top = 1
+            elseif ai_range == 2
+                " containing form only
+                let top = 0
+                " If start is open bracket, use count of 2 to reindent that list's parent.
+                if s:is_list(s[1], s[2]) == 2
+                    let cnt = 2
+                endif
+            else
+                " Calculate impacted range.
+                " Logic: We know s is not list head, so as long as indentation was correct
+                " before the operation, we should be able to keep it so by indenting up to
+                " the first 'clean point' (i.e., line break between elements) after e.
+                call s:setcursor(e)
+                let [p, d] = s:last_colinear_sibling(1)
+                let e = d.brkt[1] ? d.brkt : p
+            endif
+        endif
+    finally
+        call s:setcursor(cursor)
+    endtry
+    return {'top': top, 'cnt': cnt, 'start': s, 'end': e}
+endfunction
+
+" TODO: Comment!!!
+function! s:post_op_reindent(s, e, ps)
+    let rng = s:get_reindent_range(a:s, a:e)
+    " Skip single-line, explicit range indents.
+    if rng.top >= 0 || rng.start[1] != rng.end[1]
+        if rng.top >= 0
+            " Indenting a parent (or ancestor) list rather than explicit range.
+            " Position cursor on start and let sexp#indent() find applicable parent.
+            let mode = 'n'
+            call s:setcursor(rng.start)
+        else
+            let mode = 'v'
+            " Re-indent explicit range.
+            call s:set_visual_marks([rng.start, rng.end])
+            " Note: Though we use visual marks, it's important that we be in normal mode.
+            call sexp#ensure_normal_mode()
+        endif
+        " sexp#indent() will use mode and top to determine operating mode.
+        " Caveat: Convert rng.top == -1 (explicit range) to 0.
+        call sexp#indent(mode, rng.top == 1, rng.cnt, -1, 1, a:ps)
+    endif
 endfunction
 
 """ PREDICATES AND COMPARATORS {{{1
@@ -2930,11 +2942,11 @@ endfunction
 "   ctx:  put context dict
 "   reg:  register characterization dict
 " Return Dict:
-"   near_sep:     text to put between target and register contents
-"   far_sep:      text to put between register contents and element that *was* adjacent to
-"                 target
-"   interior_sep: text to join the individual instances of register contents in case of a
-"                 [count]
+"   near_sep:      text to put between target and register contents
+"   far_sep:       text to put between register contents and element that *was* adjacent
+"                  to target
+"   interior_sep:  text to join the individual instances of register contents in case of a
+"                  [count]
 function! s:put__get_seps(tail, ctx, reg)
     let ret = {'near_sep': '', 'far_sep': '', 'interior_sep': ''}
     let [tail, ctx, reg] = [a:tail, a:ctx, a:reg]
@@ -3081,132 +3093,10 @@ function! s:last_colinear_sibling(tail)
     endtry
 endfunction
 
-" Reindent range affected by sexp#put.
-" Logic:
-" -- Put into empty list --
-"   Re-indent the list
-" -- Put into empty buffer --
-"   Re-indent the put text
-" -- Head --
-"   if put into list head context
-"     Re-indent parent
-"   else
-"     Adjacent element never requires reindent.
-"     Target element requires reindent iff not separated by NL from put text.
-"     Away element requires reindent iff target element requires reindent AND away element
-"     not separated by NL from target, and so on, recursively to close bracket.
-"     Question: Would it be better just to reindent parent in this case (or possibly just
-"     use close bracket), given that the traversal of siblings could end up taking longer
-"     than the time saved?
-" -- Tail --
-"   Assumption: Put into list head handled separately.
-"   Target and away elements never require reindent.
-"   Put text always requires reindent.
-"   Immediately adjacent element always requires reindent.
-"   Rationale: Even if it's separated by NL from put text and was properly indented before
-"   the put, NL may have replaced all its leading indent.
-"   Adjacent to adjacent requires reindent iff not separated from immediate adjacent, and
-"   so on, recursively to close bracket.
-"   Rationale: Head is not changing, so put text shouldn't be able to change indent
-"   context of subsequent, non-colinear forms.
-"   Assumption: Adjacent text was aligned correctly before the put!
-"   TODO: Should we assume this?
-" Important TODO!!! Create more generic (non-put-specific) function to subsume a lot of
-" this logic!!!
-function! s:put__reindent(tail, ctx, reg, sep, ps)
-    let [NL, SPC, EMPTY] = ["\n", " ", ""]
-    let [tail, ctx, reg, sep] = [a:tail, a:ctx, a:reg, a:sep]
-    let irange = [s:nullpos, s:nullpos]
-    let indent_parent = 0
-    if ctx.empty_list
-        let indent_parent = 1
-        let irange[0] = ctx.tgt
-    elseif ctx.empty_buffer
-        " TODO: Do we need to take this range as input arg, or is it safe to use marks?
-        let [irange[0], irange[1]] = [getpos("'["), getpos("']")]
-    elseif tail
-        " Put after
-        let irange[0] = getpos("'[")
-        " End of range will be last colinear sibling, else enclosing bracket, else end of
-        " put text.
-        let p = ctx.adj[1] ? ctx.adj : ctx.adj_bracket[1] ? ctx.adj_bracket : getpos("']")
-        if ctx.adj[1] && sep.far_sep != NL
-            " Start at near side of adjacent and find far side of last colinear sibling.
-            call s:setcursor(p)
-            let [p, d] = s:last_colinear_sibling(1)
-            if d.brkt[1]
-                " Use an enclosing bracket if no non-colinear sibling.
-                let p = d.brkt
-            endif
-        endif
-        let irange[1] = p
-    else
-        " Put before
-        if ctx.tgt_is_terminal
-            " Put into head context; re-indent parent
-            let indent_parent = 1
-            let irange[0] = ctx.tgt
-        else
-            " Head not changing; need NL between elements to establish 'clean point'.
-            let irange[0] = getpos("'[")
-            if sep.near_sep != NL
-                " At least target requires reindent, maybe more...
-                let p = ctx.tgt
-                call s:setcursor(p)
-                " TODO: Consider storing ranges rather than positions to obviate need for
-                " this here.
-                " Move to away side of target.
-                " TODO: The call to s:last_colinear_sibling() could be used to
-                " obviate the need for much of the logic in the if block below. It's done
-                " this way only to use information we already have whenever possible.
-                let p = s:move_to_current_element_terminal(1)
-                if !ctx.away[1]
-                    " No away element; use bracket if it exists.
-                    if ctx.away_bracket[1]
-                        let irange[1] = ctx.away_bracket
-                    else
-                        " Nothing on away side, not even bracket, so just use tgt.
-                        let irange[1] = p
-                    endif
-                elseif ctx.away[1] > ctx.tgt[1]
-                    " Safe to stop with away side of target since away is not colinear
-                    let irange[1] = p
-                else
-                    " Can't stop with near side of away because it's colinear with target.
-                    " Look for a line break between siblings (or end of list).
-                    call s:setcursor(ctx.away)
-                    call s:move_to_current_element_terminal(1)
-                    let [p, d] = s:last_colinear_sibling(1)
-                    let irange[1] = d.brkt[1] ? d.brkt : p
-                endif
-            else
-                " No need to go past away edge of target
-                " TODO: Consider storing both sides in a range in the context function.
-                call s:setcursor(ctx.tgt)
-                let irange[1] = sexp#current_element_terminal(1)
-            endif
-        endif
-    endif
-
-    " Skip single-line indents.
-    if indent_parent || irange[0][1] != irange[1][1]
-        if indent_parent
-            " Assumption: Cursor is positioned on parent list bracket.
-            let mode = 'n'
-        else
-            let mode = 'v'
-            " Range spans multiple lines, so re-indent.
-            call s:set_visual_marks(irange)
-            " Note: Though we use visual marks, it's important that we be in normal mode.
-            call sexp#ensure_normal_mode()
-        endif
-        call sexp#indent(mode, 0, 1, -1, 1, a:ps)
-    endif
-endfunction
-
 function! s:put__get_splice_info(count, tail, ctx, reg, sep, flags)
     let ret = { 'range': [s:nullpos, s:nullpos], 'text': '', 'inc': 0}
     let [ctx, reg, sep] = [a:ctx, a:reg, a:sep]
+    let [NL, SPC, EMPTY] = ["\n", " ", ""]
 
     " Set the target-side splice position.
     " Assumption: Currently, ctx.tgt is always set to something non-null.
@@ -3233,12 +3123,20 @@ function! s:put__get_splice_info(count, tail, ctx, reg, sep, flags)
             " There's something adjacent to target to anchor splice at other end.
             let ret.range[a:tail] = adj_pos
             let [near_sep, far_sep] = [sep.near_sep, sep.far_sep]
-            if far_sep == "\n"
+            " May be set to 2 (EOL-exclusive) later.
+            let exc_typ = 0
+            if far_sep == NL
                 " Determine number of newlines to prepend/append on far side of put text,
                 " as function of number of blank lines between target and adjacent (taking
                 " options into account).
                 let gap = ret.range[1][1] - ret.range[0][1]
                 let num_nl = min([gap, g:sexp_cleanup_keep_empty_lines + 1])
+                if a:tail
+                    " Keep the final NL to avoid clobbering leading indent.
+                    " Rationale: Permits earlier "clean point" for re-indent.
+                    let exc_typ = 2
+                    let num_nl -= 1
+                endif
                 let far_sep = repeat("\n", num_nl)
             endif
             " Build splice string.
@@ -3249,7 +3147,7 @@ function! s:put__get_splice_info(count, tail, ctx, reg, sep, flags)
             let t = join(t, sep.interior_sep)
             let t = a:tail ? near_sep . t . far_sep : far_sep . t . near_sep
             let ret.text = t
-            let ret.inc = [0, 0]
+            let ret.inc = [0, exc_typ]
         endif
     endif
     return ret
@@ -3263,9 +3161,8 @@ function! sexp#put(count, tail)
     let reg = s:put__get_reginfo()
     let ctx = s:put__get_context(count, a:tail)
     let sep = s:put__get_seps(a:tail, ctx, reg)
-    " TODO: Review the reindent range calculation logic.
-    "let irange = s:put__get_reindent_range(a:tail, ctx, reg, sep)
     let spl = s:put__get_splice_info(count, a:tail, ctx, reg, sep, {})
+    let ps = [vs, ve]
     if !spl.range[1][1]
         " TODO: Consider handling this with simple p/P: i.e., without yankdel_range().
         " Question: Do we need yankdel_range for position adjustments?
@@ -3292,8 +3189,9 @@ function! sexp#put(count, tail)
             call setpos("']", curpos)
         endif
     endif
-    " FIXME: Make sure all branches above set curpos!
-    call s:put__reindent(a:tail, ctx, reg, sep, [ps, curpos])
+    let [s, e] = [getpos("'["), getpos("']")]
+    " FIXME: Make sure all branches above set curpos.
+    call s:post_op_reindent(s, e, [ps, curpos])
     " !!!!! WIP !!!!!
     call s:setcursor(curpos)
     call s:set_visual_marks([vs, ve])
@@ -3474,8 +3372,7 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
     return ret
 endfunction
 
-" Build and return a dict with information required to adjust arbitrary buffer positions
-" after yank/splice/del has been performed.
+" Build and return a dict with information designed to facilitate requested yank/splice/del.
 " Return Dict:
 "   start:     start of inclusive range for operation (N/A for directed put)
 "   end:       end of inclusive range for operation (N/A for directed put)
@@ -3493,6 +3390,7 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
         " 'err' flag with msg?
         return {'err': 1, 'errmsg': 'Invalid (reversed) range'}
     endif
+    let [NL, SPC, EMPTY] = ["\n", " ", ""]
     " If here, range was sane.
     let start = s:yankdel_range__preadjust_range_start(a:start, a:inc[0])
     let end = s:yankdel_range__preadjust_range_end(a:end, a:inc[1])
@@ -3818,6 +3716,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
                 " always sets/gets '[ and '] (not `[ and `]).
                 " Solution: Use getpos('.') to obtain positions reached by `[ and `], then
                 " m[ and m] to set `[ and `] to those positions after the deletion.
+                " TODO: Decide whether ] should be backed up to end of preceding line.
                 execute 'normal! `[' | let smark = getpos('.')
                 execute 'normal! `]' | let emark = getpos('.')
                 " Cleanup the space that was appended to inhibit linewise put.

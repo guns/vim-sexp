@@ -1052,6 +1052,23 @@ For details, see section |sexp-auto-indent|.
         " Default
         let g:sexp_auto_indent = -1
 <
+                                                    *g:sexp_auto_indent_range*
+Determines how the range for an auto-indent is calculated. Smaller numbers
+prioritize performance; larger numbers prioritize correctness. The algorithm
+used for level 0 assumes the indentation was correct before the command that
+triggered the auto-indent, and may produce incorrect results if this
+pre-condition is not met.
+  0  re-indent only subset of elements determined by conservative algorithm
+  1  re-indent containing form if indent currently configured to align
+     comments or clean whitespace, else fall back to 0
+  2  re-indent containing form unconditionally
+  3  re-indent containing top-level form if indent currently configured to
+     align comments or clean whitespace, else fall back to 2
+  4  re-indent containing top-level form unconditionally
+>
+        " Default
+        let g:sexp_auto_indent_range = 1
+<
                                                     *g:sexp_clone_does_indent*
 Automatically re-indent the target(s) of a multi-line clone operation.
 See also |sexp-auto-indent|.
@@ -1198,7 +1215,6 @@ Align end-of-line comments automatically after performing an indent.
         " Default
         let g:sexp_indent_aligns_comments = 0
 <
-
                                                     *g:sexp_aligncom_maxshift*
 Maximum number of screen columns an end-of-line comment is allowed to shift
 rightward to align with other columns in an end-of-line comment block.

@@ -2924,25 +2924,19 @@ endfunction
 " value into account.
 "   0 = exclusive
 "   1 = inclusive (nop)
-"   2 = exclusive of whitespace up to and including newline at EOL
-"       Note: Equivalent to inc==0 if not in whitespace at EOL
+"   2 = exclusive of adjacent non-NL whitespace
+"       Note: Equivalent to inc==0 if no adjacent whitespace
 " Example:
-" foo)|<SPC>   ==>   foo)<SPC>
-" bar                |bar
+" foo|)   bar   ==>   foo)   |bar
 function! s:yankdel_range__preadjust_range_start(start, inc)
     let ret = a:start[:]
-    if a:inc == 2 && getline(ret[1])[ret[2] - 1:] =~ '^.\?\s*$'
-        " Move to start of next line (if it exists).
-        if ret[1] < line('$')
-            let ret[1] += 1
-            let ret[2] = 1
-        else
-            " EOF
-            " Question: Should we return start of nonexistent line past end (analogous to
-            " position before BOF returned by *_range_end())?
-            let ret = getpos([line('$'), '$'])
-        endif
-    elseif a:inc != 1 " 0 or 2
+    if a:inc == 2
+        " Get index of whatever (possibly NL) follows whitespace adjacent to start.
+        " This match produces results identical to normal-exclusive if no adjacent ws.
+        " Note: The dot in pattern must be optional to handle empty line case.
+        let eidx = match(getline(ret[1])[ret[2] - 1:], '\v^.?\s*\zs(.|$)')
+        let ret[2] = eidx + 1
+    elseif !a:inc " normal-exclusive
         " Move to next position, including newline.
         let ret = s:offset_char(ret, 1, 1)
     endif
@@ -2953,47 +2947,38 @@ endfunction
 " value into account.
 "   0 = exclusive
 "   1 = inclusive (nop)
-"   2 = exclusive of whitespace back to and including newline at BOL
-"       Note: Equivalent to inc==0 if not in whitespace at BOL
+"   2 = exclusive of whitespace back to but not including newline at BOL
+"       Note: Equivalent to inc==0 if no adjacent whitespace
 " Example:
-" foo)        ==>   foo)|
-" <SPC>|bar         <SPC>bar
+" foo)   |bar       ==>   foo|)   bar
 " Special Case: If end is BOF and adjustment is exclusive, return special
 " non-physical position [0, 1, -1, 0].
 " Caveat: Callers requiring physical positions will need to check for this.
+" TODO: Make this a script constant (like nullpos - eg, bofpos).
 function! s:yankdel_range__preadjust_range_end(end, inc)
     let ret = a:end[:]
-    if a:inc == 2 && getline(ret[1])[:ret[2] - 1] =~ '^\s*.\?$'
-        " Move to end of prev line, excluding newline.
-        if ret[1] > 1
-            let ret[1] -= 1
-            let ret[2] = col([ret[1], '$']) - 1
-            if !ret[2]
-                " Empty line is special.
-                let ret[2] = 1
-                if ret[1] > 1
-                    " Special Case: We want to exclude the newline preceding end, but
-                    " col==1 on an empty line would include it; thus, back up one
-                    " additional line, including its newline.
-                    let ret[1] -= 1
-                    let ret[2] = col([ret[1], '$'])
-                endif
+    " Adjust input position for non-inclusive inc.
+    if a:inc == 2
+        " adjacent whitespace-exclusive
+        " Caveat: Using strpart rather than [:] indexing to avoid problems with negative
+        " indices.
+        let sidx = match(strpart(getline(ret[1]), 0, ret[2] - 1), '\v\S\s*$')
+        if sidx < 0
+            " Adjacent whitespace extends back to BOL.
+            if ret[1] > 1
+                " Use previous line's NL.
+                let ret = [0, ret[1] - 1, col([ret[1] - 1, '$']), 0]
+            else
+                " BOF sentinel
+                let ret = [0, 1, -1, 0]
             endif
         else
-            " BOF
-            " As a special case, return sentinel (non-physical) position just
-            " before beginning of first line.
-            let ret[1:2] = [1, -1]
+            " Use position of found non-ws.
+            let ret[2] = sidx + 1
         endif
-    elseif a:inc != 1 " 0 or 2
+    elseif !a:inc " normal-exclusive
         " Move to prev position, including newline.
-        if ret[1:2] == [1, 1]
-            " Already at BOF, so return the special sentinel position just
-            " prior to first char.
-            let ret[2] = -1
-        else
-            let ret = s:offset_char(ret, 0, 1)
-        endif
+        let ret = s:offset_char(ret, 0, 1)
     endif
     return ret
 endfunction
@@ -3011,18 +2996,28 @@ endfunction
 "              Note: May or may not equal the actual Vim command used.
 "   err:       1 iff inputs are invalid
 "   errmsg:    error description iff err == 1, else ""
+" Args: See descriptions in s:yankdel_range() header comment.
 function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
     if s:compare_pos(a:start, a:end) > 0
         " Shouldn't happen! How to handle? Internal error?
         " 'err' flag with msg?
         return {'err': 1, 'errmsg': 'Invalid (reversed) range'}
+    elseif a:start == a:end
+        \ && ((a:inc[0] == 1 && a:inc[1] == 2)
+        \     || (a:inc[0] == 2 && a:inc[1] == 1))
+        " Ambiguous Intent: a:inc requests both inclusion and exclusion of common
+        " start/end position, but this is valid only for a directed put, which, by
+        " convention, uses normal-exclusive mode.
+        return {'err': 1, 'errmsg': 'Ambiguous intent'}
     endif
-    " If here, range was sane.
+    let [NL, SPC, EMPTY] = ["\n", " ", ""]
+    " If here, input range seems sane; make it inclusive.
     let start = s:yankdel_range__preadjust_range_start(a:start, a:inc[0])
     let end = s:yankdel_range__preadjust_range_end(a:end, a:inc[1])
-    " Note: Initial setting of 'cmd' flag will never indicate directed put.
     let [is_str, is_num] =
         \ [type(a:del_or_spl) == type(''), type(a:del_or_spl) == type(0)]
+    " Initialize return dict; positions and cmd may be adjusted below.
+    " Note: Initial setting of 'cmd' flag will never indicate directed put.
     let ret = {
         \ 'start': s:nullpos, 'end': s:nullpos, 'pos': s:nullpos,
         \ 'text': is_str ? a:del_or_spl : '',
@@ -3032,8 +3027,7 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
     " Is adjusted (inclusive) range empty?
     if s:compare_pos(start, end) > 0
         " Adjusted start/end are reversed, yielding empty target region.
-        " Treat *non-empty* splice as either a directed put or (EOL-exclusive case only)
-        " a splice, everything else as NO-OP.
+        " Treat *non-empty* splice as a directed put, everything else as NO-OP.
         if ret.cmd != 's' || len(ret.text) == 0
             " Empty range is NO-OP for all but non-empty splice!
             let ret.cmd = ''
@@ -3042,50 +3036,31 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
         " We have a non-empty splice.
         let [i0, i1] = a:inc
         if i0 == 1 || i1 == 1
-            if i0 == 2 || i1 == 2
-                " EOL-exclusive is disallowed when the other end is inclusive and range is
-                " reversed.
-                " Rationale: ambiguous intent
-                return {'err': 1, 'errmsg': 'invalid EOL-exclusive range'}
-            endif
-            " By convention, empty range with one side inclusive requests a directed put
-            " with direction given by the inclusive side.
-            let [ret.pos, ret.cmd] = i0 == 1 ? [start, 'P'] : [end, 'p']
-        else
-            " Both sides exclusive
-            " Convert pointless EOL-exclusive to (simpler) normal-exclusive.
-            let i0 = i0 == 0 || a:start[1] == start[1] ? 0 : 2
-            let i1 = i1 == 0 || a:end[1] == end[1] ? 0 : 2
-            " EOL-exclusive should never be used with colinear start/end.
-            " Design Decision: Defer validation till after simplifying pointless
-            " EOL-exclusive to normal-exclusive.
-            if (i0 == 2 || i1 == 2) && a:end[1] <= a:start[1]
-                " Invalid!
-                return {'err': 1, 'errmsg': 'Invalid EOL-exclusive range'}
-            endif
-            if i0 == 2 || i1 == 2
-                " At least one end is (still) EOL-exclusive, so we know a:start and a:end
-                " are separated by at least a NL, guaranteeing our ability to determine
-                " non-empty splice range (even if only a NL). Handle as a splice using
-                " corresponding normal-exclusive range, with NL's prepended/appended to
-                " the splice text as required.
-                let [pre_nl, post_nl] = ['', '']
-                if i0 == 2
-                    let start = s:yankdel_range__preadjust_range_start(a:start, 0)
-                    let pre_nl = "\n"
-                endif
-                if i1 == 2
-                    let end = s:yankdel_range__preadjust_range_end(a:end, 0)
-                    let post_nl = "\n"
-                endif
-                " Treat like splice, with adjusted splice text.
-                let [ret.start, ret.end] = [start, end]
-                let ret.text = pre_nl . ret.text . post_nl
+            " One side inclusive, the other side some form of exclusive
+            if i0 != 2 && i1 != 2
+                " By convention, empty range with one side inclusive and the other side
+                " normal-exclusive requests a directed put with direction given by the
+                " inclusive side.
+                let [ret.pos, ret.cmd] = i0 == 1 ? [start, 'P'] : [end, 'p']
             else
-                " Both ends normal-exclusive implies original a:start/a:end were adjacent.
-                " Directed put from unadjusted start
-                let [ret.pos, ret.cmd] = [a:start, 'p']
+                " One side inclusive, the other side adjacent whitespace-exclusive.
+                " Design Decision: Treat like splice over inclusive position.
+                " Rationale: Initial validation guarantees input start was *before* input
+                " end; thus, the fact that adjusted positions overlap implies that the
+                " inclusive end was *within* the whitespace excluded by the other end.
+                " There's probably no real use case for this, but safest and most natural
+                " thing is just to exclude only the whitespace in the open range
+                " determined by start..end: in other words, just splice over the inclusive
+                " position.
+                let [ret.start, ret.end] = i0 == 1 ? [a:start, a:start] : [a:end, a:end]
             endif
+        else
+            " Both sides some form of exclusive
+            " Handle as directed put from adjusted end.
+            " Rationale: Intended use cases of adjacent whitespace-exclusive are such that
+            " when a choice must be made (because adjacent start/end overlap), it's better to
+            " preserve all of the adjacent whitespace at end.
+            let [ret.pos, ret.cmd] = [end, 'p']
         endif
     else
         " Adjusted range non-empty; no need to adjust cmd, which is one of [yds]. (All

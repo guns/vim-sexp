@@ -411,59 +411,78 @@ function M.nearest_bracket(closing, open_re, close_re)
   -- Traverse nodes upwards looking for containing (or matching) bracket of desired type
   -- in indicated direction.
   -- Assumption: There will always be a top-level node representing the source file
-  -- itself: i.e., root node cannot represent the sort of list we seek.
+  -- itself, and this virtual root node cannot represent the sort of list we seek.
   -- Caveat: Failure to check for root here would result in our spuriously treating an
   -- open bracket at (0,0) as a *containing* bracket, even when we're at top level!
   while node and node ~= root do
     -- Check current node, skipping ignored regions, as we're interested only in
     -- "list-like" nodes.
     if not is_node_rgn_type(node, "str_com_chr") then
-      -- Get position of node terminal in desired direction.
-      -- TODO: Consider enhancing ApiPos to simplify the following.
+      -- Get position of node terminals, converting end pos to inclusive form...
+      ---@type ApiPos
+      local spos = ApiPos:new(node:start())
+      ---@type ApiPos
+      local epos = ApiPos:new(node:end_()):to_inclusive()
+      -- ...and cache row/col.
       ---@type integer
-      local r, c
-      if closing ~= 0 then
-        -- Convert exclusive end to inclusive, canonicalizing to avoid an end in col 0.
-        r, c = ApiPos:new(node:end_()):canonical_end():positions(true)
-      else
-        r, c = node:start()
-      end
-      -- We're interested only in brackets in desired (open/close) category, which are not
-      -- at cursor position.
-      if row ~= r or col ~= c then
-        -- Get the char at node terminal to see whether it's the desired bracket (or macro
-        -- chars preceding it).
+      local rs, cs = spos:positions()
+      ---@type integer
+      local re, ce = epos:positions()
+      -- FIXME: Need epos in non-exclusive form from here on - subsequent tests are
+      -- broken...
+      -- TODO: Consider providing a method to facilitate this...
+      --
+      -- Logic: If cursor is *on* desired bracket, we keep looking; however, it's fine for
+      -- cursor to be on the bracket *opposite* the desired one: e.g., with cursor on
+      -- open, closing == 1 should find the corresponding close, but closing == 0 requires
+      -- looking to parent.
+      -- Note: Macro char checks deferred till we have more information...
+      if pos ~= (closing == 0 and spos or epos) then
+        -- Get the char at node start to support macro char logic, which is necessary for
+        -- both search directions.
         -- TODO: Compare performance of nvim_buf_get_text() to getline().
         -- Note: nvim_buf_get_text() returns empty array on empty buffer, in which case the
         -- table index of 1 will extract nil.
         ---@type string
-        local ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
+        local ch = vim.api.nvim_buf_get_text(0, rs, cs, rs, cs + 1, {})[1]
         if not ch then
           -- TODO: This shouldn't happen. Can it even, given that node is non-nil?
           return nil
         end
-        -- Check for macro chars (if searching for open).
-        if closing == 0 and vim.fn['sexp#is_macro_char'](ch) ~= 0 then
+        -- Check for macro chars.
+        if vim.fn['sexp#is_macro_char'](ch) ~= 0 then
           -- Move to macro char for call to sexp#current_macro_character_terminal().
-          vim.fn.setpos('.', {0, r+1, c+1, 0})
+          vim.fn.setpos('.', {0, rs+1, cs+1, 0})
           -- FIXME: I don't like this approach: should just test macro chars directly
           -- without calling slow legacy method.
-          local macro_end = vim.fn['sexp#current_macro_character_terminal'](1)
-          -- Restore position.
-          vim.fn.setpos('.', pos:to_vim4())
           -- Get 0-based col index of char just *past* the end of the leading macro, which
           -- will be bracket if this is some sort of special form.
           -- Assumption: No multibyte macro chars
-          c = macro_end[3]
-          ch = vim.api.nvim_buf_get_text(0, r, c, r, c + 1, {})[1]
+          local macro_end = vim.fn['sexp#current_macro_character_terminal'](1)
+          cs = macro_end[3]
+          spos.c = cs
+          -- Set ch to candidate open bracket in case it's needed for subsequent matching.
+          ch = vim.api.nvim_buf_get_text(0, rs, cs, rs, cs + 1, {})[1]
+          -- Restore cursor position.
+          vim.fn.setpos('.', pos:to_vim4())
         end
-        --dbg:logf("Testing %s against %s", ch, bracket_re)
-        -- Caveat: If searching for open, need to be sure macro char logic above hasn't
-        -- positioned us on or even *past* the input cursor position.
-        if (closing ~= 0 or ApiPos:new(r, c) < pos)
-          and vim.fn.match(ch, bracket_re) >= 0 then
-          -- Found desired bracket! Return inclusive ApiPos as VimPos4.
-          return {0, r + 1, c + 1, 0}
+        -- Caveat: Regardless of search direction, make sure cursor is strictly inside
+        -- bracket in desired direction and not outside the bracket in other direction.
+        -- Note that because the outside bracket test is necessitated by the possibility
+        -- of macro chars, it's needed only at start. (No macro chars at end guarantees
+        -- cursor is not past epos.)
+        if spos <= pos and pos ~= (closing == 0 and spos or epos) then
+          if closing ~= 0 then
+            -- Get the end bracket candidate for matching.
+            -- Note: If looking for start, ch was set correctly above.
+            ch = vim.api.nvim_buf_get_text(0, re, ce, re, ce + 1, {})[1]
+          end
+          --dbg:logf("Testing %s against %s", ch, bracket_re)
+          if vim.fn.match(ch, bracket_re) >= 0 then
+            -- Found desired bracket! Return inclusive ApiPos as VimPos4.
+            return closing ~= 0 and {0, re + 1, ce + 1, 0} or {0, rs + 1, cs + 1, 0}
+            --return closing ~= 0 and epos:to_vim4() or spos:to_vim4()
+          end
         end
       end
     end

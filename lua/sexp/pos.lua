@@ -15,6 +15,16 @@ function ApiPos:new(r, c)
   return setmetatable(o, ApiPos)
 end
 
+-- Return new inclusive ApiPos based on the invocant, which is assumed to be an
+-- exclusive-end position, such as might be returned by TSNode:end_().
+-- Make the exlusive-end BOL to EOL adjustment if applicable.
+---@return ApiPos
+function ApiPos:to_inclusive()
+  local pos = self:canonical_end()
+  -- Note: The col adjustment returns end of multi-byte char (probably what is desired).
+  return ApiPos:new(pos.r, pos.c - 1)
+end
+
 function ApiPos.vim_to_api(r, c, is_end)
   -- Ensure inclusive->exclusive conversion is multi-byte safe.
   return r-1, is_end and c-1 + vim.fn['sexp#char_bytes']({0, r, c, 0}) or c-1

@@ -4863,9 +4863,17 @@ function! s:byte2pos(b)
     return [0, l, c, 0]
 endfunction
 
-" Return total # of bytes in file.
+" Return total # of bytes in buffer.
 function! s:total_bytes_in_file()
-    return line2byte('$') + col([line('$'), '$'])
+    " Compatibility Note: Vim 7.4 seem not to support use of '$' with line2byte(). It does
+    " seem to support use of line2byte(line('$') + 1) to get buffer length + 1, but this
+    " behavior is not documented in that version, so I'm choosing not to rely on it.
+    " Idiosyncrasy/Bug Note: When an empty file is first opened, line2byte(1) returns -1,
+    " though docs imply it should be 1. Adding (and subsequently removing) a line, or even
+    " a char that triggers a popup menu fixes the condition, such that 1 is returned.
+    " Workaround: To avoid issues, simply constrain the value returned by line2byte() to
+    " be >= 1.
+    return max([1, line2byte(line('$'))]) + col([line('$'), '$']) - 1
 endfunction
 
 " Modify ps in-place.

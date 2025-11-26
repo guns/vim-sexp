@@ -1413,38 +1413,37 @@ function! s:constrained_range(start, end, keep_end)
     return ret
 endfunction
 
-" Calculate *effective* auto-indent range calculation level, taking
-" g:sexp_auto_indent_range and any other relevant options into account.
-" Note: Levels 1 and 3 specify conditional fall forward or fall back as a function of
-" other options. Thus, this function returns a value from the following set: [0, 2, 4].
+" Return *effective* auto-indent range calculation method, taking g:sexp_auto_indent_range
+" and g:sexp_indent_aligns_comments into account.
 function! s:get_effective_ai_range()
-    let val = get(g:, 'sexp_auto_indent_range', 1)
-    let [typ, ityp] = [type(val), type(0)]
-    if typ != ityp || val < 0 || val > 4
-        " If user set to something larger than 4, cap it at 4; otherwise, default to 1.
-        let bad = val
-        let val = typ == ityp && val > 4 ? 4 : 1
+    " TODO: Better way to keep this in sync with plugin script (and docs)?
+    let def_ai = 'mp'
+    " Note: We normally assume existence of global options at this point (since they're
+    " created as necessary by plugin script), but as long as we're doing processing,
+    " re-creating if necessary doesn't hurt...
+    let ai = get(g:, 'sexp_auto_indent_range', def_ai)
+    if empty(ai)
+        " Accept empty string as natural way to request default explicitly.
+        let ai = def_ai
+    endif
+    if ai != def_ai && (type(ai) != type('') || ai !~ '\v^[mpt]{1,2}$')
         call sexp#warn#msg_once(
+            \ printf("sexp_auto_indent_range:invalid_format:%s", string(ai)),
             \ "Ignoring invalid g:sexp_auto_indent_range setting: "
-            \ . bad . ". Defaulting to " . string(val))
-        " Design Decision: Wouldn't need to set global here, since msg_once() ensures we
-        " won't keep warning; still, there's no harm in doing so, as user can override at
-        " any time.
-        let g:sexp_auto_indent_range = val
+            \ . string(ai) . ". Defaulting to '" . def_ai . "'")
+        let ai = def_ai
     endif
-    if val == 1 || val == 3
-        " Increment 1 up or down
-        let val += g:sexp_indent_does_clean || g:sexp_indent_aligns_comments ? 1 : -1
-    endif
-    return val
+    " If two-char form is used, let align comment enable status pick the char.
+    return len(ai) == 1 ? ai : ai[!!g:sexp_indent_aligns_comments]
 endfunction
 
-" TODO: Comment!!!
-" Return dict with the following keys:
-"   start
-"   end
-"   top
-"   cnt
+" Calculate and return a dict representing the re-indent required for the buffer
+" modification spanning start/end, taking g:sexp_auto_indent_range option into account.
+" Return Dict:
+"   start:  start of indent range in explicit range mode, else N/A
+"   end:    end of indent range in explicit range mode, else N/A
+"   top:    -1 to request explicit range mode, else argument for sexp#indent()
+"   cnt:    count argument for sexp#indent() (N/A in explicit range mode)
 function! s:get_reindent_range(s, e)
     let cursor = getpos('.')
     let ai_range = s:get_effective_ai_range()
@@ -1457,24 +1456,24 @@ function! s:get_reindent_range(s, e)
         let [s, e] = s:super_range(s, e)
         " If at top, just use [s,e].
         if !s:at_top(s[1], s[2])
-            if !ai_range && s:is_list_terminal(s, 0)
-                " Changes to list head can propagate to the end of a list, so constrain to
-                " level >= 1.
-                let ai_range = max([1, ai_range])
+            if ai_range == 'm' && s:is_list_terminal(s, 0)
+                " Changes to list head can propagate to the end of a list, so force
+                " parent.
+                let ai_range = 'p'
             endif
             " Assumption: Containing if guard obviates need to validate bracket searches.
             " Note: We're on tail end of input end element.
-            if ai_range == 4
+            if ai_range == 't'
                 " containing top-level form
                 let top = 1
-            elseif ai_range == 2
+            elseif ai_range == 'p'
                 " containing form only
                 let top = 0
                 " If start is open bracket, use count of 2 to reindent that list's parent.
                 if s:is_list(s[1], s[2]) == 2
                     let cnt = 2
                 endif
-            else
+            else " ai_range == 'm'
                 " Calculate impacted range.
                 " Logic: We know s is not list head, so as long as indentation was correct
                 " before the operation, we should be able to keep it so by indenting up to
@@ -1487,30 +1486,32 @@ function! s:get_reindent_range(s, e)
     finally
         call s:setcursor(cursor)
     endtry
+    " Note: top == -1 requests explicit range indent (rather than list mode).
     return {'top': top, 'cnt': cnt, 'start': s, 'end': e}
 endfunction
 
-" TODO: Comment!!!
+" Perform re-indent required for operation affecting lines from s to e, passing the
+" provided position list to sexp#indent() for adjustment.
+" TODO: Eventually, this should be used for commands other than register puts!
 function! s:post_op_reindent(s, e, ps)
     let rng = s:get_reindent_range(a:s, a:e)
-    " Skip single-line, explicit range indents.
-    if rng.top >= 0 || rng.start[1] != rng.end[1]
-        if rng.top >= 0
-            " Indenting a parent (or ancestor) list rather than explicit range.
-            " Position cursor on start and let sexp#indent() find applicable parent.
-            let mode = 'n'
-            call s:setcursor(rng.start)
-        else
-            let mode = 'v'
-            " Re-indent explicit range.
-            call s:set_visual_marks([rng.start, rng.end])
-            " Note: Though we use visual marks, it's important that we be in normal mode.
-            call sexp#ensure_normal_mode()
-        endif
-        " sexp#indent() will use mode and top to determine operating mode.
-        " Caveat: Convert rng.top == -1 (explicit range) to 0.
-        call sexp#indent(mode, rng.top == 1, rng.cnt, -1, 1, a:ps)
+    " Note: Initially, I skipped single-line indents; however, even a single line indent
+    " makes sense, as the preceding line is considered.
+    if rng.top >= 0
+        " Indenting a parent (or ancestor) list rather than explicit range.
+        " Position cursor on start and let sexp#indent() find applicable parent.
+        let mode = 'n'
+        call s:setcursor(rng.start)
+    else
+        let mode = 'v'
+        " Re-indent explicit range.
+        call s:set_visual_marks([rng.start, rng.end])
+        " Note: Though we use visual marks, it's important that we be in normal mode.
+        call sexp#ensure_normal_mode()
     endif
+    " sexp#indent() will use mode and top to determine operating mode.
+    " Caveat: Convert rng.top == -1 (explicit range) to 0.
+    call sexp#indent(mode, rng.top == 1, rng.cnt, -1, 1, a:ps)
 endfunction
 
 """ PREDICATES AND COMPARATORS {{{1
@@ -3102,24 +3103,32 @@ function! s:put__get_splice_info(count, tail, ctx, reg, sep, flags)
     else
         " There's something adjacent to target to anchor splice at other end.
         let ret.range[a:tail] = adj_pos
-        " May be set to 2 (EOL-exclusive) later.
-        let exc_typ = 0
         if far_sep == NL
-            " Determine number of newlines to prepend/append on far side of put text,
-            " as function of number of blank lines between target and adjacent (taking
-            " options into account).
+            " Determine number of newlines needed between put text and adjacent as a
+            " function of the number of blank lines *currently* between target and
+            " adjacent (taking options into account).
+            " Design Decision: Configuration-controlled preservation of existing line gap
+            " applies only on the far side of the put text.
+            " Question: Should we preserve trailing whitespace in colinear case too? (I'm
+            " thinking of trailing comments with lots of aligning space... OTOH, we have
+            " no way of knowing how much is right, so probably just rely on subsequent
+            " re-align (auto or explicitly-commanded)...
             let gap = ret.range[1][1] - ret.range[0][1]
-            " Note: Because far_sep has been determined to be NL, we must ensure a
+            " Note: Because relevant sep has been determined to be NL, we must ensure a
             " min gap of 1, even if tgt and adj are currently colinear.
+            " Question: Does num_nl need to take exc_typ into account?
             let num_nl = min([max([gap, 1]), g:sexp_cleanup_keep_empty_lines + 1])
-            if a:tail
-                " Use adjacent whitespace-exclusive mode at end to preserve any
-                " leading indent on line following the put.
-                " Rationale: Permits earlier "clean point" for re-indent; otherwise,
-                " we'd have to include at least one extra element at tail.
-                let exc_typ = 2
-            endif
             let far_sep = repeat("\n", num_nl)
+        endif
+        " If necessary, adjust exclusion type for range end.
+        let exc_typ = 0
+        " Logic: Always use adjacent whitespace-exclusive mode at end when adj and tgt are
+        " not *currently* colinear and we're inserting at least 1 NL.
+        " Rationale: Permits earlier "clean point" for re-indent; discarding the leading
+        " indent would require inclusion of one extra element at end (tgt if !a:tail, adj
+        " if a:tail).
+        if !ctx.adj_colinear && sep[a:tail ? 'far_sep' : 'near_sep'] == NL
+            let exc_typ = 2
         endif
         let ret.inc = [0, exc_typ]
     endif
@@ -3171,21 +3180,16 @@ function! sexp#put(count, tail)
     " Assumption: Indent logic always looks back to non-empty line preceding start, so
     " there's no need for start adjustment.
     let s = getpos("'[")
-    " Special Case: If sep following put text is NL but element following it was
-    " originally colinear with element on other side, include the element past the NL.
-    " Note: If adjacent was not colinear, adjustment is not needed because the splice will
-    " have used adjacent whitespace-exlusive mode to preserve leading indent.
-    " Note: What makes this tricky is that s:post_op_reindent() assumes a NL creates a
-    " 'clean point', but this is true only for *pre-existing* NLs, not ones inserted by
-    " the put!
-    " TODO: Consider putting in a separate function; also, consider whether to just make
-    " s:post_op_reindent always look to subsequent element, rather than trying to shave it
-    " this close.
-    " FIXME: I believe nearest_bracket_{legacy,ts}() are inconsistent! The ts version
-    " finds close bracket when on leading macro chars. Need to resolve this as it has
-    " implications for parent reindent: specifically, whether count should be 1 or 2 when
-    " on leading macro chars.
-    if ctx.adj_colinear && sep[a:tail ? 'far_sep' : 'near_sep'] == NL
+    " Special Case: If element following put text was originally colinear with element on
+    " other side, adjust reindent range to include the element past put text.
+    " Rationale: s:post_op_reindent() assumes a NL creates a 'clean point', but this is
+    " true only for *pre-existing* NLs, not ones inserted by the put! For non-colinear
+    " tgt/adj, logic in put__get_splice_info() ensures use of adjacent
+    " whitespace-exclusive mode to preserve leading indent for element past the put,
+    " thereby obviating the need to include that element in the reindent. In the colinear
+    " tgt/adj case, however, there can be no 'clean point' before the element past the
+    " put, so we must include it.
+    if ctx.adj_colinear
         let e = a:tail ? ctx.adj : ctx.tgt
     else
         let e = getpos("']")

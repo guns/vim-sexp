@@ -1053,21 +1053,42 @@ For details, see section |sexp-auto-indent|.
         let g:sexp_auto_indent = -1
 <
                                                     *g:sexp_auto_indent_range*
-Determines how the range for an auto-indent is calculated. Smaller numbers
-prioritize performance; larger numbers prioritize correctness. The algorithm
-used for level 0 assumes the indentation was correct before the command that
-triggered the auto-indent, and may produce incorrect results if this
-pre-condition is not met.
-  0  re-indent only subset of elements determined by conservative algorithm
-  1  re-indent containing form if indent currently configured to align
-     comments or clean whitespace, else fall back to 0
-  2  re-indent containing form unconditionally
-  3  re-indent containing top-level form if indent currently configured to
-     align comments or clean whitespace, else fall back to 2
-  4  re-indent containing top-level form unconditionally
+One or two character string indicating how the line range for an auto-indent
+should be calculated. The characters have the following meanings:
+
+  'm'  use algorithm to find the minimal region required to guarantee
+       correctness. (Assumes the indentation was correct before the operation
+       that triggered the re-indent.)
+  'p'  re-indent the parent list
+  't'  re-indent the toplevel list
+
+There is an inherent tradeoff between performance and speed, with 'm' yielding
+the best performance and 't' most likely to produce correct indentation. If
+neither |g:sexp_indent_aligns_comments| nor |g:sexp_indent_does_clean| is
+enabled, there's probably little advantage to re-indenting the parent or
+toplevel list. However, since comment alignment works best on non-trivial line
+ranges, some users may wish to accept the performance hit of 't' in order to
+keep comments aligned. Others may prefer keeping the re-indent small (and
+fast) with 'm', using `sexp_align_comments_top` (`<M-\>`) to re-align comments
+manually only after they've become unacceptably "ragged".
+
+2-character format:  ~
+So that you needn't remember to change this option every time you enable or
+disable comment alignment, this option also recognizes a 2-character format,
+in which the second character specifies the range to use when comment
+alignment is enabled.
+
+Examples:  ~
 >
+        " Re-indent parent list always.
+        let g:sexp_auto_indent_range = 'p'
+        " Re-indent toplevel if comment alignment enabled, else minimal
+        " region.
+        let g:sexp_auto_indent_range = 'mt'
+
         " Default
-        let g:sexp_auto_indent_range = 1
+        " Re-indent parent if comment alignment enabled, else minimal region
+        let g:sexp_auto_indent_range = 'mp'
 <
                                                     *g:sexp_clone_does_indent*
 Automatically re-indent the target(s) of a multi-line clone operation.

@@ -101,9 +101,12 @@ let s:use_setpos_for_visual_marks = 1
 " Return macro characters for current filetype. Defaults to Scheme's macro
 " characters if 'lisp' is set, invalid characters otherwise.
 function! s:macro_chars()
-    return get(g:sexp_filetype_macro_characters, &filetype,
-              \ get(s:filetype_macro_characters, &filetype,
-                    \ &lisp ? s:default_macro_characters : ''))
+    " Caveat: Allow for possibility that g:sexp_filetype_macro_characters does not exist.
+    return get(
+        \ get(g:, 'sexp_filetype_macro_characters', {}),
+        \ &filetype,
+        \ get(s:filetype_macro_characters, &filetype,
+        \   &lisp ? s:default_macro_characters : ''))
 endfunction
 
 " Make a 'very magic' character class from input characters.

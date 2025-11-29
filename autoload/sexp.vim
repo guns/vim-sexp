@@ -88,7 +88,8 @@ let s:aligncom_weights = {
 
 let s:nullpos = [0,0,0,0]
 let s:nullpos_pair = [s:nullpos, s:nullpos]
-let s:bof = [0, 1, -1, 0]
+let s:BOF = [0, 1, -1, 0]
+let [s:NL, s:SPC, s:EMPTY] = ["\n", " ", ""]
 
 " Since v:maxcol wasn't added till Vim9
 let s:MAXCOL = 2147483647
@@ -539,11 +540,21 @@ function! s:nearest_element_terminal(next, tail, ...)
 
         let [l, c] = s:findpos('\v\S', a:next)
         let adjacent = [0, l, c, 0]
+        if !a:next
+            " Note: The s:findpos() above will find only literal non-ws, but we need to
+            " treat ignored ws as non-ws.
+            " Assumption: Ignored ws can be found at end of element, but not beginning.
+            " TODO Should we skip this if not on ignored char or would that be slower?
+            call s:setcursor(adjacent)
+            let adjacent = s:move_to_current_element_terminal(1)
+        endif
 
         " We are at the beginning or end of file
         if adjacent[1] < 1 || s:compare_pos(pos, adjacent) == 0
             throw 'sexp-error'
         " Or we are at the head or tail of a list
+        " FIXME! This does not consider whether bracket is ignored!!! Thus, an open
+        " bracket at end of comment would be incorrectly treated as open.
         elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
             " TODO: Profile to measure the performance penalty for this. It's thrown a
             " lot...
@@ -1227,7 +1238,7 @@ function! s:offset_char(pos, dir, ...)
     let inc_nl = a:0 && !!a:1
     let eol = col([a:pos[1], '$'])
     try
-        if a:pos == s:bof
+        if a:pos == s:BOF
             " Input position is before BOF.
             let pos = [0, 1, 1, 0]
         elseif a:pos[2] >= eol
@@ -1254,7 +1265,7 @@ function! s:offset_char(pos, dir, ...)
                     " Empty line
                     if a:pos[1] == 1
                         " Special Case: before BOF
-                        let pos = s:bof
+                        let pos = s:BOF
                     else
                         " Need to consider inc_nl
                         let prev_eol = col([a:pos[1] - 1, '$'])
@@ -2835,9 +2846,12 @@ function! s:put__get_reginfo()
         let ret.text = ''
         return ret
     endif
-    let ret.is_ml = regstr =~ '\n'
+    " Caveat: Vim =~ operator treats rhs like a single line; thus, literal NL ("\n") (not
+    " '\n') must be used to match interior NLs. Also, ^ and $ work only at beginning/end
+    " of multiline string.
+    let ret.is_ml = regstr =~ "\n"
     let ret.s_is_com = regstr =~ '^\s*;'
-    let ret.e_is_com = regstr =~ ';\s*$'
+    let ret.e_is_com = regstr =~ ';.*$'
     " TODO: Come up with less simple patterns that at least attempt to differentiate
     " between string and non-string context.
     " Flag indicating whether register is *only* a (potentially multi-line) comment.
@@ -2849,6 +2863,8 @@ function! s:put__get_reginfo()
     " Design Decision: Putting this here ensures presence of NL in raw register text will
     " influence 'is_ml'.
     " Rationale: If user performs (eg) linewise yank on comment, respect that.
+    " FIXME: Needs to account for possibility of escaped whitespace; have this done by
+    " function that performs language-specific validation.
     let ret.text = substitute(regstr, '^\s\+\|\s\+$', '', 'g')
     return ret
 endfunction
@@ -2863,11 +2879,12 @@ endfunction
 "                    target, else nullpos
 "   empty_list:      putting into empty list
 "   empty_buffer:    putting into empty buffer
+"   tail:            possibly adjusted version of the input flag
+"                    Note: Adjustment performed only when cursor not on element
 "   -- Flags: The following flags are N/A if either of empty_{list,buffer} set.
 "   tgt_is_alone:    1 iff target is alone on its line, with possible exception of open or
 "                    close, but not both
-"   tgt_is_terminal: 1 iff target is head or tail of list in put direction
-"   adj_colinear:    1 iff element adjacent to target on put side is colinear with target
+"   adj_colinear:    1 iff target and adjacent are colinear elements (not brackets)
 "   force_nl:        1 iff subsequent processing should force 'near sep' of NL.
 "                    Used only when cursor is not on element.
 " Position Note: In the current approach, mutually-exclusive fields are maintained for
@@ -2904,170 +2921,155 @@ endfunction
 function! s:put__get_context(count, tail)
     " Bool flags all initialized to 0 and set subsequently as needed.
     let ret = {
-        \ 'tgt': s:nullpos, 'adj': s:nullpos, 'adj_bracket': s:nullpos,
-        \ 'away': s:nullpos, 'away_bracket': s:nullpos,
-        \ 'tgt_is_alone': 0, 'tgt_is_ml': 0, 'tgt_is_terminal': 0,
-        \ 'adj_colinear': 0, 'adj_is_ml': 0,
+        \ 'range': [[0,0,0,0],[0,0,0,0]],
+        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
+        \ 'tgt_is_alone': 0, 'adj_colinear': 0,
         \ 'empty_list': 0, 'empty_buffer': 0,
-        \ 'at_top': 0, 'force_nl': 0,
+        \ 'force_nl': 0,
         \ 'tail': a:tail
     \ }
     let curpos = getpos('.')
     " First, attempt to get natural target: i.e., side of current element in direction of
     " put. If no such element, special logic will determine a 'virtual' target.
-    let [ts, te] = [sexp#current_element_terminal(0), s:nullpos]
-    if ts[1]
-        " Get end of natural (real) target element.
-        let te = sexp#current_element_terminal(1)
-        " Set tgt to put side.
-        let ret.tgt = a:tail ? te : ts
-    endif
-    " Get some other useful positions relative to cursor.
-    let next = s:nearest_element_terminal(1, 0, 1, 1)
-    let prev = s:nearest_element_terminal(0, 1, 1, 1)
+    let ret.range[!a:tail] = sexp#current_element_terminal(a:tail)
+    let no_current = !ret.range[!a:tail][1]
+    " If either end of range is still nullpos, attempt to set it to adjacent or bracket.
     " Caveat: Must pre-position on correct side of element prior to nearest_bracket() call
-    " to properly handle case of list target.
-    " TODO: Consider skipping unnecessary s:setcursor() calls.
-    if !next[1] && ret.tgt[1] | call s:setcursor(te) | endif
-    let next_bracket = !next[1] ? s:nearest_bracket(1) : s:nullpos
-    if !prev[1] && ret.tgt[1] | call s:setcursor(ts) | endif
-    let prev_bracket = !prev[1] ? s:nearest_bracket(0) : s:nullpos
-    let ret.empty_list = !ret.tgt[1] && next_bracket[1] && prev_bracket[1]
-    let ret.empty_buffer = !ret.tgt[1] && !next[1] && !prev[1] && !ret.empty_list
-    " Use special logic to determine target in the 'no current element' scenario unless
-    " superseded by empty_{list,buffer} special logic.
-    " Note: This logic may set tgt to BOF/EOF sentinel position.
-    if !ret.empty_list && !ret.empty_buffer && !ret.tgt[1]
-        " No current element. Set tgt using special logic described in header and, if
-        " applicable, set flag to cause put__get_splice_info() to insert a NL at near
-        " side.
-        " TODO: Consider using effective positions at BOF/EOF in lieu of nullpos.
-        let eff_prev = prev[1] ? prev : prev_bracket[1]
-            \ ? prev_bracket : [0, 1, -1, 0]
-        let eff_next = next[1] ? next : next_bracket[1]
-            \ ? next_bracket : [0, line('$'), col([line('$'), '$']), 0]
-        if curpos[1] == eff_prev[1] && curpos[1] == eff_next[1]
-            let ret.tgt = a:tail ? eff_prev : eff_next
-        elseif curpos[1] == eff_prev[1] && curpos[1] != eff_next[1]
-            let ret.tgt = eff_prev
-            let [ret.force_nl, ret.tail] = [a:tail, 1]
-        elseif curpos[1] == eff_next[1] && curpos[1] != eff_prev[1]
-            let ret.tgt = eff_next
-            let [ret.force_nl, ret.tail] = [!a:tail, 0]
+    " to ensure we get parent bracket, not one of list element's own brackets.
+    for i in range(0, 1)
+        if !ret.range[i][1]
+            let ret.range[i] = s:nearest_element_terminal(i, !i, 1, 1)
+            if ret.range[i][1]
+                let ret.is_ele[i] = 1
+            else
+                if ret.range[!i][1] | call s:setcursor(ret.range[!i]) | endif
+                let ret.range[i] = s:nearest_bracket(i)
+                if ret.range[i][1]
+                    let ret.is_bra[i] = 1
+                endif
+            endif
         else
-            let ret.tgt = eff_prev
+            let ret.is_ele[i] = 1
+        endif
+    endfor
+    " At this point, range endpoints can still be nullpos, but is_ele[] and is_bra[] are
+    " set correctly.
+    let ret.empty_list = ret.is_bra[0] && ret.is_bra[1]
+    let ret.empty_buffer = !ret.is_ele[0] && !ret.is_ele[1] && !ret.empty_list
+    " Unless superseded by empty_{list,buffer} special logic, use special logic described
+    " in header to determine target if cursor was not *on* element.
+    " Note: This logic may set tgt to pre-BOF/post-EOF sentinel position.
+    if !ret.empty_list && !ret.empty_buffer && no_current
+        " The conditional blocks below can...
+        "   * reverse range
+        "   * set flag forcing insertion of NL at near side.
+        " Note: The fact that curpos cannot be null and prev/next can only be null if
+        " neither bracket nor element obviates need for explicit nullpos checks on
+        " prev/next.
+        " Design Decision: Never force NL around brackets.
+        let [prev, next] = [ret.range[0], ret.range[1]]
+        if curpos[1] != prev[1] && curpos[1] != next[1]
             let ret.tail = 1
+        elseif curpos[1] == prev[1] && curpos[1] != next[1]
+            let [ret.force_nl, ret.tail] = [a:tail && ret.is_ele[0], 1]
+        elseif curpos[1] == next[1] && curpos[1] != prev[1]
+            let [ret.force_nl, ret.tail] = [!a:tail && ret.is_ele[1], 0]
         endif
     endif
-    " Assign the generic next/prev vars to direction-dependent (e.g., tgt/adj/away) vars.
-    if ret.empty_list
-        " Assumption: Cursor position unchanged.
-        " Treat empty list as special case to avoid complicating the logic for nominal
-        " case.
-        let ret.tgt = a:tail ? prev_bracket : next_bracket
-        let ret.adj_bracket = a:tail ? next_bracket : prev_bracket
-    elseif ret.empty_buffer
-        " Don't bother setting tgt/adj/etc, as this will be handled as special case.
-        let ret.at_top = 1
-    else
+    " If either range endpoint is still null, set it to corresponding buffer extremity.
+    if !ret.range[0][1]
+        let ret.range[0] = s:BOF
+    endif
+    if !ret.range[1][1]
+        let ret.range[1] = [0, line('$'), col([line('$'), '$']), 0]
+    endif
+    " Set adj_colinear and tgt_is_alone
+    " Note: Flags are N/A for empty buffer/list special cases.
+    if !ret.empty_buffer && !ret.empty_list
         " Account for possibility direction has been adjusted by special logic.
         let tail = ret.tail
-        let [ret.adj, ret.adj_bracket] = tail
-            \ ? [next, next_bracket]
-            \ : [prev, prev_bracket]
-        " TODO: Consider not adding easily expressible flags like this.
-        let ret.adj_colinear = ret.tgt[1] == ret.adj[1]
-
-        " Move to target since we could be in whitespace.
-        call s:setcursor(ret.tgt)
-        " Check other (away) side of target, passing 'ignore_current' and
-        " 'nullpos_on_fail' to ensure nullpos returned if no adjacent.
+        let ret.adj_colinear = ret.is_ele == [1, 1] && ret.range[0][1] == ret.range[1][1]
+        " Position on target to look for away element.
+        call s:setcursor(ret.range[!tail])
         let away = s:nearest_element_terminal(!tail, tail, 1, 1)
-        " Find away bracket unconditionally (even if away is not nullpos) to obviate need
-        " for at_top() call; however, put nullpos in return dict if away is non-null.
-        " Note: Must position on far side of away element before looking for bracket.
-        " Rationale: If away element is a list, we want parent bracket, not the list's
-        " other terminal.
-        call s:move_to_current_element_terminal(!tail)
-        let away_bracket = s:nearest_bracket(!tail)
-        let ret.at_top = !away_bracket[1]
-        let [away, away_bracket] = [away, away[1] ? s:nullpos : away_bracket]
-        " Is tgt alone on its line, with possible exception of open or close (but not
-        " both)?
-        " Note: Both adj and away can be nullpos here.
-        let ret.tgt_is_alone =
-            \ !(ret.adj_bracket[1] && away_bracket[1] == ret.adj_bracket[1])
-            \ && ret.adj[1] != ret.tgt[1] && away[1] != ret.tgt[1]
-        " Is tgt head/tail of list (in direction of put)?
-        " Assumption: adj_bracket will be nullpos if adj is not. This is fine because the
-        " bracket is irrelevant if the intervening element exists.
-        let ret.tgt_is_terminal = !!ret.adj_bracket[1]
+        if !away[1]
+            " Pre-position on away side of tgt to ensure that if tgt is list,
+            " nearest_bracket doesn't find its other end.
+            call s:move_to_current_element_terminal(!tail)
+            let away_bra = s:nearest_bracket(!tail)
+        else
+            let away_bra = s:nullpos
+        endif
+        " Is (element) tgt alone on its line, with possible exception of containing open
+        " or close (but not both)?
+        " Note: Any of the positions can be nullpos here.
+        let [tgt_idx, adj_idx] = [!tail, tail]
+        let [tgt, adj] = [ret.range[tgt_idx], ret.range[adj_idx]]
+        let ret.tgt_is_alone = ret.is_ele[tgt_idx]
+            \ && (!ret.is_ele[adj_idx] || tgt[1] != adj[1])
+            \ && (!away[1] || away[1] != tgt[1])
+            \ && !(away_bra[1] && ret.is_bra[adj_idx] && away_bra[1] == adj[1])
     endif
     return ret
 endfunction
 
-" Return a dict containing 3 types of separators required for the put indicated by the
+" Return a list containing 3 types of separators required for the put indicated by the
 " inputs.
 " Args:
 "   ctx:  put context dict
 "   reg:  register characterization dict
-" Return Dict:
-"   near_sep:      text to put between target and register contents
-"   far_sep:       text to put between register contents and element that *was* adjacent
-"                  to target
-"   interior_sep:  text to join the individual instances of register contents in case of a
-"                  [count]
+" Return List:
+"   [0]:  separator needed before register contents
+"   [1]:  separator needed after register contents
+"   [2]:  separator used to join the individual instances of register contents in case of
+"         a [count]
 function! s:put__get_seps(ctx, reg)
-    let ret = {'near_sep': '', 'far_sep': '', 'interior_sep': ''}
+    " Default start/end sep to NL; overrides below.
     let [ctx, reg] = [a:ctx, a:reg]
     let tail = ctx.tail
-    let [NL, SPC, EMPTY] = ["\n", " ", ""]
-
-    " -- Near separator
-    " Logic: Default (else) to NL, with special cases requiring SPC/EMPTY in the
-    " if/elseifs.
-    " Rationale: Safer (and possibly simpler).
-    if ctx.empty_list
-        if reg.s_is_com
-            " TODO: Decide whether it should be NL or SPC.
-            let ret.near_sep = SPC
-        else
-            let ret.near_sep = EMPTY
-        endif
-    elseif ctx.empty_buffer
-        " Note: Separators are actually N/A for this case.
-        let ret.near_sep = EMPTY
-    " For the remaining cases, we have an actual target element.
-    elseif !ctx.tgt_is_alone && !ctx.force_nl && !reg.is_ml && (tail || !reg.e_is_com)
-        " Target isn't on line by itself and register is sl; additionally, we're not
-        " prepending a comment to the target. Note that it's ok to *append* a single line
-        " comment to target, since far separator logic will will insert NL *after* the
-        " comment if necessary.
-        let ret.near_sep = SPC
-    else
-        " Everything else defaults to NL.
-        " Rationale: Err on side of safety.
-        let ret.near_sep = NL
-    endif
-
-    " -- Far separator
-    " Logic: Default (else) to NL, with special cases requiring SPC/EMPTY in the
-    " if/elseifs.
+    let ret = [s:NL, s:NL, s:NL]
+    " TODO: Make global option for this?
+    let g:append_sl_comment = get(g:, 'append_sl_comment', 1)
+    " Override the NL separators as needed.
     if ctx.empty_buffer
-        \ || ((ctx.empty_list || ctx.tgt_is_terminal)
-        \     && !(tail && reg.e_is_com || !tail && reg.s_is_com))
-        " Safe to butt register up against bracket (or edge of buffer).
-        let ret.far_sep = EMPTY
-    elseif ctx.adj_colinear && !reg.is_ml
-        " Preserve colinearity unless pasted text is ml.
-        let ret.far_sep = SPC
-    elseif (ctx.empty_list || ctx.tgt_is_terminal) && !tail && reg.s_is_com
-        " Start of comment can be separated from terminal by single space.
-        let ret.far_sep = SPC
+        let ret[0:1] = [s:EMPTY, s:EMPTY]
     else
-        " Everything else defaults to NL.
-        " Rationale: Err on side of safety.
-        let ret.far_sep = NL
+        " Compute side-dependent flags used to determine SPC-insertion at both start/end.
+        " Note: These flags do not incorporate comment checks, which are applied below.
+        let near_side_spc =
+            \ ctx.is_ele[!tail] && !ctx.tgt_is_alone && !ctx.force_nl && !reg.is_ml
+        " Preserve colinearity at far side unless pasted text is ml.
+        let far_side_spc = ctx.adj_colinear && !reg.is_ml
+        "
+        " Override NL (if necessary) at start.
+        "
+        if ctx.is_bra[0]
+            let ret[0] = reg.s_is_com ? s:SPC : s:EMPTY
+        elseif !ctx.is_ele[0]
+            " No bracket or element requiring separation at start 
+            let ret[0] = s:EMPTY
+        elseif tail && near_side_spc && (g:append_sl_comment || !reg.s_is_com)
+            " TODO: Should we remove the s_is_com check to allow single-line comment to be
+            " appended, keeping in mind that far side logic will insert NL *after* the
+            " comment if necessary?
+            " Bottom Line: Make near and far-side cases consistent on this.
+            let ret[0] = s:SPC
+        elseif !tail && far_side_spc && (g:append_sl_comment || !reg.s_is_com)
+            let ret[0] = s:SPC
+        endif
+        "
+        " Override NL (if necessary) at end.
+        "
+        if ctx.is_bra[1]
+            if !reg.e_is_com | let ret[1] = s:EMPTY | endif
+        elseif !ctx.is_ele[1]
+            " No bracket or element requiring separation at end
+            let ret[1] = s:EMPTY
+        elseif !tail && near_side_spc && !reg.e_is_com
+            let ret[1] = s:SPC
+        elseif tail && far_side_spc && !reg.e_is_com
+            let ret[1] = s:SPC
+        endif
     endif
 
     " -- Interior separator
@@ -3077,12 +3079,13 @@ function! s:put__get_seps(ctx, reg)
     " * register contents multiline
     "   Rationale: Stacking many multiline forms horizontally could be problematic.
     " * register *contains* comment
-    "   Rationale: For multiline register, comments are irrelevant, but we definitely
-    "   don't want multiple single line placed on the same line.
+    "   Rationale: For multiline register, previous condition makes this one irrelevant,
+    "   but we definitely don't want multiple single line comments placed on the same
+    "   line.
     " * near sep is NL
     "   Rationale: The logic that determined a NL should separate tgt from put text would
     "   quite naturally extend to subsequent copies of the put text.
-    let ret.interior_sep = reg.is_ml || reg.has_com || ret.near_sep == NL ? NL : SPC
+    let ret[2] = reg.is_ml || reg.has_com || ret[!tail] == s:NL ? s:NL : s:SPC
     return ret
 endfunction
 
@@ -3125,46 +3128,18 @@ endfunction
 " Return a dict that characterizes the splice (or directed put) to be performed as the set
 " of arguments to s:yankdel_range().
 function! s:put__get_splice_info(count, ctx, reg, sep, flags)
-    let ret = { 'range': [s:nullpos, s:nullpos], 'text': '', 'inc': [0, 0]}
+    let ret = { 'range': a:ctx.range, 'text': '', 'inc': [0, 0]}
     let [ctx, reg, sep] = [a:ctx, a:reg, a:sep]
     let tail = ctx.tail
-    let [NL, SPC, EMPTY] = ["\n", " ", ""]
-    let [near_sep, interior_sep, far_sep] = [sep.near_sep, sep.interior_sep, sep.far_sep]
 
-    " Set the target-side splice position.
-    " Assumption: Currently, ctx.tgt is always set to something non-null.
-    " TODO: Decide whether put__get_context should allow nullpos tgt.
-    let ret.range[!tail] = ctx.tgt
-    " Determine the range.
-    " Nominal case: we have a target to put before/after.
-    " Note: Target could be element or open bracket.
-    " Note: This handles both nominal and empty_list cases.
-    let adj_pos = ctx.adj[1] ? ctx.adj : ctx.adj_bracket[1] ? ctx.adj_bracket : s:nullpos
-    if ctx.empty_buffer
-        " Replace entire buffer (possibly ws or maybe just NUL char at head).
-        let ret.range = [[0, 1, 1, 0], [0, line('$'), col([line('$'), '$']), 0]]
-        let ret.inc = [1, 1]
-    elseif !adj_pos[1]
-        " TODO: Consider eliminating this and handling in the else now that BOF/EOF
-        " positions can be handled like regular positions.
-        " No element or bracket in direction of put, so put to BOF or EOF.
-        " Note: Empty buffer case currently handled separately in if, but could be handled
-        " here if we wanted to replace only whitespace in direction of put.
-        let ret.range[tail] = tail
-            \ ? [0, line('$'), col([line('$'), '$']), 0]
-            \ : [0, 1, 1, 0]
-        " Note: The following resolves to a directed put towards BOF/EOF if no whitespace
-        " separates tgt position from BOF/EOF.
-        let ret.inc = tail ? [0, 1] : [1, 0]
-    else
-        " There's something adjacent to target to anchor splice at other end.
-        let ret.range[tail] = adj_pos
-        if far_sep == NL
+    " No range/inclusivity adjustments required in empty buffer case.
+    if !ctx.empty_buffer
+        if sep[tail] == s:NL
             " Determine number of newlines needed between put text and adjacent as a
             " function of the number of blank lines *currently* between target and
             " adjacent (taking options into account).
             " Design Decision: Configuration-controlled preservation of existing line gap
-            " applies only on the far side of the put text.
+            " applies only on the *far* side of the put text.
             " Question: Should we preserve trailing whitespace in colinear case too? (I'm
             " thinking of trailing comments with lots of aligning space... OTOH, we have
             " no way of knowing how much is right, so probably just rely on subsequent
@@ -3174,16 +3149,21 @@ function! s:put__get_splice_info(count, ctx, reg, sep, flags)
             " min gap of 1, even if tgt and adj are currently colinear.
             " Question: Does num_nl need to take exc_typ into account?
             let num_nl = min([max([gap, 1]), g:sexp_cleanup_keep_empty_lines + 1])
-            let far_sep = repeat("\n", num_nl)
+            let sep[tail] = repeat("\n", num_nl)
         endif
         " If necessary, adjust exclusion type for range end.
-        let exc_typ = 0
-        " Logic: Always use adjacent whitespace-exclusive mode at end when adj and tgt are
-        " not *currently* colinear and we're inserting at least 1 NL.
+        " Logic: Always use adjacent whitespace-exclusive mode at end of range when the
+        " range terminal is a bracket or element, which is not *currently* colinear with
+        " start (i.e., there's leading indent at end), and we're inserting at least 1 NL
+        " at end.
         " Rationale: Permits earlier "clean point" for re-indent; discarding the leading
         " indent would require inclusion of one extra element at end (tgt if !tail, adj if
         " tail).
-        if !ctx.adj_colinear && sep[tail ? 'far_sep' : 'near_sep'] == NL
+        " Note: Can't use adj_colinear flag because we care about colinearity of brackets
+        " too, and adj_colinear implies both tgt/adj are elements.
+        let exc_typ = 0
+        if (ctx.is_bra[1] || ctx.is_ele[1]) && ctx.range[0] != ctx.range[1]
+            \ && sep[1][0] == s:NL
             let exc_typ = 2
         endif
         let ret.inc = [0, exc_typ]
@@ -3191,8 +3171,8 @@ function! s:put__get_splice_info(count, ctx, reg, sep, flags)
     " Build splice string.
     " TODO: Refactor this into a function somehow, since something similar is used
     " elsewhere (for cloning, I think).
-    let t = join(repeat([reg.text], a:count), interior_sep)
-    let ret.text = tail ? near_sep . t . far_sep : far_sep . t . near_sep
+    let t = join(repeat([reg.text], a:count), sep[2])
+    let ret.text = sep[0] . t . sep[1]
     return ret
 endfunction
 
@@ -3200,7 +3180,6 @@ function! sexp#put(count, tail)
     " Save/adjust visual marks.
     let [vs, ve] = s:get_visual_marks()
     let count = a:count ? a:count : 1
-    let [NL, SPC, EMPTY] = ["\n", " ", ""]
     " Calculate the put.
     let reg = s:put__get_reginfo()
     if empty(reg.text)
@@ -3212,15 +3191,18 @@ function! sexp#put(count, tail)
     let spl = s:put__get_splice_info(count, ctx, reg, sep, {})
     let ps = [vs, ve]
     " TODO: Consider having put__get_context() build the position list.
-    let ps = s:concat_positions(vs, ve,
-        \ ctx.tgt, ctx.adj, ctx.away, ctx.adj_bracket, ctx.away_bracket)
+    let ps = s:concat_positions(vs, ve, ctx.range)
+    " Re-indent logic needs to know whether range was colinear.
+    let range_linespan = ctx.range[0][1] - ctx.range[1][1]
     " Note: Don't set 'failsafe override': a put should change only whitespace.
     call s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps)
     " Determine final cursor position.
     " Design Decision: Analogously to builtin p and P, always position at end;
     " however, unlike the builtins, always position on last non-ws at end.
     let curpos = getpos("']")
-    if sep[a:tail ? 'far_sep' : 'near_sep'] != ''
+    " FIXME: Might not want to position cursor on end of put text.
+    " TODO: User feedback...
+    if sep[1] != s:EMPTY
         " Need to back '] up to closest non-ws (i.e., final put element).
         " TODO: Consider trimming register context to obviate need for this.
         call s:setcursor(curpos)
@@ -3235,17 +3217,18 @@ function! sexp#put(count, tail)
     " Assumption: Indent logic always looks back to non-empty line preceding start, so
     " there's no need for start adjustment.
     let s = getpos("'[")
-    " Special Case: If element following put text was originally colinear with element on
-    " other side, adjust reindent range to include the element past put text.
+    " Special Case: If ele/bra following put text was originally colinear with ele/bra on
+    " other side, adjust reindent range to include ele/bra past put text.
     " Rationale: s:post_op_reindent() assumes a NL creates a 'clean point', but this is
     " true only for *pre-existing* NLs, not ones inserted by the put! For non-colinear
     " tgt/adj, logic in put__get_splice_info() ensures use of adjacent
     " whitespace-exclusive mode to preserve leading indent for element past the put,
     " thereby obviating the need to include that element in the reindent. In the colinear
-    " tgt/adj case, however, there can be no 'clean point' before the element past the
+    " tgt/adj case, however, there can be no 'clean point' before whatever follows the
     " put, so we must include it.
-    if ctx.adj_colinear
-        let e = a:tail ? ctx.adj : ctx.tgt
+    if range_linespan == 0
+        " Use adjusted range end.
+        let e = ctx.range[1]
     else
         let e = getpos("']")
     endif
@@ -3373,7 +3356,7 @@ function! s:yankdel_range__preadjust_range_start(start, inc)
         let ret[2] += eidx
     elseif !a:inc " normal-exclusive
         " Move to next position, including newline.
-        " Assumption: s:offset_char can handle s:bof.
+        " Assumption: s:offset_char can handle s:BOF.
         let ret = s:offset_char(ret, 1, 1)
     endif
     return ret
@@ -3407,7 +3390,7 @@ function! s:yankdel_range__preadjust_range_end(end, inc)
                 let ret = [0, ret[1] - 1, col([ret[1] - 1, '$']), 0]
             else
                 " pre-BOF virtual pos
-                let ret = s:bof
+                let ret = s:BOF
             endif
         else
             " Use position of found non-ws.
@@ -3446,7 +3429,6 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
         " convention, uses normal-exclusive mode.
         return {'err': 1, 'errmsg': 'Ambiguous intent'}
     endif
-    let [NL, SPC, EMPTY] = ["\n", " ", ""]
     " If here, input range seems sane; make it inclusive.
     let start = s:yankdel_range__preadjust_range_start(a:start, a:inc[0])
     let end = s:yankdel_range__preadjust_range_end(a:end, a:inc[1])

@@ -898,7 +898,8 @@ well as an optional [count] whose usage is documented with the corresponding
 command. Commands that replace existing elements have distinct `p` and `P`
 variants: by analogy with builtin `p` and `P`, the former updates the unnamed
 register (`@"`); the latter does not. Finally, all put (paste) commands
-automatically reindent the affected region.
+perform an automatic re-indent on a range whose size is determined by
+|g:sexp_auto_indent_range|.
 
 Put register before/after (normal)  ~
 
@@ -906,6 +907,11 @@ Put register before/after (normal)  ~
 ["x]p                                                 *<Plug>(sexp_put_after)*
         Put [count] copies of register x before (`P`) or after (`p`) the
         current element.
+        Note: If there is no current element, the register contents are put
+        before or after the cursor position and there is a subtle difference
+        between `p` and `P`: in particular, putting _away from_ an adjacent
+        element on the same line as the cursor forces insertion of NL between
+        the put text and the adjacent element.
 
 Replace element with register (normal)  ~
 

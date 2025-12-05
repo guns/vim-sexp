@@ -2,6 +2,21 @@ local M = {}
 local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
+---@alias VimPos4Range [VimPos4, VimPos4]
+
+-- This class is used to communicate the results of parsing text as current filetype.
+-- Intended Use Case: Characterize contents of register used as source of put.
+---@class ParseResult
+---@field err_count integer
+---@field elem_count integer
+---@field is_ml boolean
+---@field has_com boolean
+---@field s_is_com boolean
+---@field e_is_com boolean
+---@field error_ranges VimPos4Range[]
+---@field node_ranges VimPos4Range[]
+---@field text string
+
 --local dbg = require'dp':get('sexp', {enabled=true})
 
 local reltime = vim.fn.reltime
@@ -201,7 +216,8 @@ function M.current_region_terminal(rgn, dir)
     dbg:logf("current_region_terminal returning %s",
       dir == 1 and ApiPos:new(node:end_()) or ApiPos:new(node:start()))
       ]]
-    return dir == 1 and ApiPos:new(node:end_()):to_vim4(true) or ApiPos:new(node:start()):to_vim4()
+    return dir == 1 and ApiPos:new(node:end_()):to_vim4(true)
+      or ApiPos:new(node:start()):to_vim4()
   else
     -- Caller is responsible for ensuring this doesn't happen!
     -- Note: Return must permit caller to differentiate between nullpos and no Treesitter
@@ -492,6 +508,74 @@ function M.nearest_bracket(closing, open_re, close_re)
   -- Didn't find matching bracket.
   -- TODO: Decide whether to return nil to force fallback to legacy logic.
   return {0, 0, 0, 0}
+end
+
+---@param codestr string    # string representing lisp form(s) to validate
+---@param filetype string?  # lisp variant to use for validation
+---                         # TODO: Should be unnecessary, as it defaults to current buf
+---@return ParseResult
+function M.analyze_codestr(codestr, filetype)
+  ---@local ParseResult
+  local ret = {
+    err_count = 0,
+    elem_count = 0,
+    is_ml = false,
+    has_com = false, s_is_com = false, e_is_com = false,
+    node_ranges = {},
+    error_ranges = {},
+    -- Surrounding whitespace is always superseded by builtin separator logic.
+    text = vim.trim(codestr),
+  }
+  -- Construct query used to check text for errors.
+  ---@type string
+  local ft = filetype or vim.bo.ft
+  local query = vim.treesitter.query.parse(ft, [[
+    ((ERROR) @str
+      (#trim! @str 1 1 1 1))
+  ]])
+  local tree = vim.treesitter.get_string_parser(codestr, ft):parse()[1]
+  local root = tree:root()
+  -- Execute query for errors and save the location of each.
+  for _, node, _ in query:iter_captures(root, 0) do
+    table.insert(ret.error_ranges,
+      {ApiPos:new(node:start()):to_vim4(), ApiPos:new(node:end_()):to_vim4(true)})
+  end
+  ret.err_count = #ret.error_ranges
+  -- Accumulate ranges of all (named) top-level nodes and ensure 'has_com' is set
+  -- iff any of the nodes is a comment.
+  ---@type TSNode
+  for n in root:iter_children() do
+    if n:named() then
+      ret.has_com = ret.has_com or is_node_rgn_type(n, 'comment')
+      table.insert(ret.node_ranges,
+        {ApiPos:new(n:start()):to_vim4(), ApiPos:new(n:end_()):to_vim4(true)})
+    end
+  end
+  -- For convenience, also store the child count.
+  ret.elem_count = root:named_child_count()
+  if ret.elem_count > 0 then
+    -- Determine whether first/last children are comments.
+    -- Note: elem_count check precludes possibility of nil return from named_child().
+    local first = root:named_child(0) --[[@as TSNode --]]
+    local last = root:named_child(ret.elem_count - 1) --[[@as TSNode --]]
+    ret.s_is_com = is_node_rgn_type(first, 'comment')
+    ret.e_is_com = is_node_rgn_type(last, 'comment')
+    -- Design Decision: Err on side of caution by using all children for multiline check,
+    -- not just first and last named child.
+    -- Note: Intentionally using children rather than root to preclude possibility of
+    -- leading/trailing blanks affecting line count.
+    first = root:child(0) --[[@as TSNode --]]
+    last = root:child(ret.elem_count - 1) --[[@as TSNode --]]
+    local s, e = ApiPos:new(first:start()):to_vim4(),
+      ApiPos:new(last:end_()):to_vim4(true)
+    -- TODO: Consider storing line count rather than boolean.
+    ret.is_ml = s[2] ~= e[2]
+  end
+  -- Design Decision: Err on side of caution by using entire tree for multiline check, not
+  -- just first and last named child.
+  local s, e = ApiPos:new(root:start()):to_vim4(), ApiPos:new(root:end_()):to_vim4(true)
+  ret.is_ml = s[2] ~= e[2]
+  return ret
 end
 
 return M

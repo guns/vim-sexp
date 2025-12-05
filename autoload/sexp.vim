@@ -1428,22 +1428,6 @@ function! s:constrained_range(start, end, keep_end)
     return ret
 endfunction
 
-function! sexp#check_balance()
-    let lz_save = &lz
-    try
-        "set lz
-        new
-        a|one
-two
-.
-        redraw
-        sleep 1
-        q
-    finally
-        let &lz = lz_save
-    endtry
-endfunction
-
 " Return *effective* auto-indent range calculation method, taking g:sexp_auto_indent_range
 " and g:sexp_indent_aligns_comments into account.
 function! s:get_effective_ai_range()
@@ -2833,39 +2817,46 @@ function! s:is_multiline_put(loc, dir)
 
 endfunction
 
-" Build and return a dict characterizing the text in the put register and canonicalize the
-" register contents.
-function! s:put__get_reginfo()
+" TODO: Where to put this... Eventually, the legacy version will be more complex.
+function! s:analyze_codestr_legacy(codestr, filetype)
     " Note: Processed text added later.
     let ret = {
         \ 'reg_s_is_com': 0, 'reg_e_is_com': 0, 'reg_is_com': 0, 'reg_is_ml': 0,
     \ }
-    let regstr = getreg(v:register)
-    if regstr =~ '^\s*$'
-        " No-op!
-        let ret.text = ''
-        return ret
-    endif
     " Caveat: Vim =~ operator treats rhs like a single line; thus, literal NL ("\n") (not
     " '\n') must be used to match interior NLs. Also, ^ and $ work only at beginning/end
     " of multiline string.
-    let ret.is_ml = regstr =~ "\n"
-    let ret.s_is_com = regstr =~ '^\s*;'
-    let ret.e_is_com = regstr =~ ';.*$'
+    let ret.is_ml = codestr =~ "\n"
+    let ret.s_is_com = codestr =~ '^\s*;'
+    let ret.e_is_com = codestr =~ ';.*$'
     " TODO: Come up with less simple patterns that at least attempt to differentiate
     " between string and non-string context.
     " Flag indicating whether register is *only* a (potentially multi-line) comment.
-    let ret.has_com = regstr =~ ';'
+    let ret.has_com = codestr =~ ';'
     " TODO: Decide whether this should be single line only, given use case.
     " TODO: If this is not needed, remove!
-    let ret.is_com = regstr =~ '\(\_^\s*;.*\_$\)\+'
+    let ret.is_com = codestr =~ '\(\_^\s*;.*\_$\)\+'
     " Trim whitespace at both ends since we're adding deterministic amount.
     " Design Decision: Putting this here ensures presence of NL in raw register text will
     " influence 'is_ml'.
     " Rationale: If user performs (eg) linewise yank on comment, respect that.
     " FIXME: Needs to account for possibility of escaped whitespace; have this done by
     " function that performs language-specific validation.
-    let ret.text = substitute(regstr, '^\s\+\|\s\+$', '', 'g')
+    let ret.text = substitute(codestr, '^\s\+\|\s\+$', '', 'g')
+    return ret
+endfunction
+
+" Build and return a dict characterizing the text in the put register and canonicalize the
+" register contents.
+function! s:put__get_reginfo()
+    let regstr = getreg(v:register)
+    if regstr =~ '^\s*$'
+        " No-op!
+        let ret.text = ''
+        return ret
+    endif
+    let ret = s:invoke('analyze_codestr', regstr, &ft)
+    "echomsg string(ret)
     return ret
 endfunction
 
@@ -2914,7 +2905,8 @@ endfunction
 "   put before effective next
 "   force NL between effective next and put text iff op == 'P'
 " Else
-"   put after effective prev
+"   p = put after effective prev
+"   P = put before effective next
 " Design Decision: Although we could handle p and P the same way in the 2 ElseIf's above,
 " treating the one that puts *away from* the colinear target as a request for extra
 " separation seems intuitive and gives extra flexibility.
@@ -2969,7 +2961,10 @@ function! s:put__get_context(count, tail)
         " Design Decision: Never force NL around brackets.
         let [prev, next] = [ret.range[0], ret.range[1]]
         if curpos[1] != prev[1] && curpos[1] != next[1]
-            let ret.tail = 1
+            " Design Decision: The fact that we're not on the element (or even near it)
+            " implies direction change: intuitively, the direction of p or P in empty line
+            " selects the target element.
+            let ret.tail = !ret.tail
         elseif curpos[1] == prev[1] && curpos[1] != next[1]
             let [ret.force_nl, ret.tail] = [a:tail && ret.is_ele[0], 1]
         elseif curpos[1] == next[1] && curpos[1] != prev[1]
@@ -3013,6 +3008,77 @@ function! s:put__get_context(count, tail)
     return ret
 endfunction
 
+" TODO: Comment this!!!!!
+function! s:put__check_list_context(ctx, reg)
+    " Initialize return value to special list containing "don't care" values for sep at
+    " both ends. If list position logic applies, one or both of the values may be changed
+    " to NL or SPC.
+    let ret = ['', '']
+    let [ctx, reg] = [a:ctx, a:reg]
+    let [sidx, ps] = [0, []]
+    if !ctx.is_bra[0]
+        " Is start one of first two elements?
+        let sidx = 1
+        call s:setcursor(ctx.range[0])
+        cal add(ps, [sexp#current_element_terminal(0), ctx.range[0]])
+        while sidx <= 2
+            let prev_e = s:move_to_adjacent_element(0, 1, 0, 1)
+            if prev_e[1]
+                call add(ps, [sexp#current_element_terminal(0), prev_e])
+                let sidx += 1
+            else
+                break
+            endif
+        endwhile
+        if sidx > 2
+            " Start of range was not within 1st 2 elements of list (and possibly not even
+            " within list).
+            return ret
+        endif
+        " Since list was built moving backwards...
+        call reverse(ps)
+    endif
+    " Arrival here implies start within first two elements of list.
+    if !ctx.is_bra[1]
+        " Find last element of interest.
+        let eidx = sidx + 1
+        call s:setcursor(ctx.range[1])
+        call add(ps, [ctx.range[1], sexp#current_element_terminal(1)])
+        while eidx < 3
+            let next_s = s:move_to_adjacent_element(1, 0, 0, 1)
+            if next_s[1]
+                call add(ps, [next_s, sexp#current_element_terminal(1)])
+                let eidx += 1
+            else
+                break
+            endif
+        endwhile
+    else
+        let eidx = sidx
+    endif
+
+    " Cache some useful vars.
+    let [s1, e1] = eidx > 0 ? ps[0] : s:nullpos_pair
+    let [s2, e2] = eidx > 1 ? ps[1] : s:nullpos_pair
+    let [s3, e3] = eidx > 2 ? ps[2] : s:nullpos_pair
+    " Design Decision: No special case for multi-line head
+    let colinear12 = eidx > 1 && s1[1] == e1[1] && e1[1] == s2[1]
+    let colinear23 = eidx > 2 && e2[1] == s3[1]
+    " Note: The colinear12 condition will rule out scenarios with too few elements.
+    if colinear12 && !colinear23
+        if sidx == 0
+            " TODO: Decide whether to insert NL *after* range!!! Note that this would involve
+            " something more than near/far sep: a separate operation after the put.
+            echomsg "Would like forcible break after 2nd element!"
+        elseif sidx == 1
+            return [s:SPC, s:NL]
+        elseif sidx == 2
+            return [s:NL, '']
+        endif
+    endif
+    return ret
+endfunction
+
 " Return a list containing 3 types of separators required for the put indicated by the
 " inputs.
 " Args:
@@ -3034,12 +3100,27 @@ function! s:put__get_seps(ctx, reg)
     if ctx.empty_buffer
         let ret[0:1] = [s:EMPTY, s:EMPTY]
     else
+        " Give list position logic a chance to request separator override.
+        " Supersedence Logic: Non-N/A values in returned lpi dict supersede the normal
+        " flag logic. Since the default separator is NL, a NL in lpi clears the
+        " corresponding *_side_spc flag and a SPC sets it.
+        let lpi = s:put__check_list_context(ctx, reg)
+
         " Compute side-dependent flags used to determine SPC-insertion at both start/end.
         " Note: These flags do not incorporate comment checks, which are applied below.
-        let near_side_spc =
-            \ ctx.is_ele[!tail] && !ctx.tgt_is_alone && !ctx.force_nl && !reg.is_ml
+        let near_side_spc = !empty(lpi[!tail])
+            \ ? lpi[!tail] == s:SPC
+            \ : ctx.is_ele[!tail] && !ctx.tgt_is_alone && !ctx.force_nl && !reg.is_ml
         " Preserve colinearity at far side unless pasted text is ml.
-        let far_side_spc = ctx.adj_colinear && !reg.is_ml
+        " Note: The lack of symmetry between near/far cases is due to...
+        " 1. force_nl is inherently target-centric
+        " 2. tgt_is_alone/adj_colinear reflect unwillingness to make put text colinear
+        "    with adj unless adj was already colinear with target.
+        " Idea: Need way to parameterize this for case in which there is no fixed concept
+        " of tgt/adj: i.e., the put into command.
+        let far_side_spc = !empty(lpi[tail])
+            \ ? lpi[tail] == s:SPC
+            \ : ctx.is_ele[tail] && ctx.adj_colinear && !reg.is_ml
         "
         " Override NL (if necessary) at start.
         "

@@ -514,69 +514,74 @@ endfunction
 " Returns current element's terminal if no adjacent element exists, unless optional
 " 'ignore_current' argument is set, in which case, return unmodified current position,
 " unless 'nullpos_on_fail' (2nd optional arg) is also set, in which case, return nullpos.
+" TODO: Consider impact of combining 'ignore_current' and 'nullpos_on_fail' into a single
+" flag requesting nullpos on fail.
+" Rationale: I can't think of a scenario in which we'd want ignore_current but not
+" nullpos_on_fail, and there's at least one call site (s:move_to_adjacent_element) where
+" we simply repeat the provided ignore_current arg in the call to this function.
+" Implementation Note: Original version made liberal use of 'sexp-error' throws to handle
+" short-circuiting in non-error scenarios; although I never used profiling to determine
+" the performance implications of that approach, it tended to be distracting in a
+" debugger. Accordingly, I've converted the throws to bare return statements, with the
+" actual return value constructed in a finally block.
 " TODO: Convert the optional args to a (possibly optional) flags dict.
 function! s:nearest_element_terminal(next, tail, ...)
     let cursor = getpos('.')
-    let pos = cursor
-    " If optional flag is set, current element's terminal is not a valid target: return
-    " nullpos if no adjacent in desired direction.
+    let [pos, has_adj] = [cursor, 0]
+    " Cache optional flags.
     let ignore_current = a:0 && a:1
     let nullpos_on_fail = a:0 > 1 && a:1
     try
-        let terminal = sexp#current_element_terminal(a:next)
-
-        if terminal[1] > 0 && s:compare_pos(pos, terminal) != 0
-            if !ignore_current
-                let pos = terminal
-            endif
-            call s:setcursor(terminal)
+        " Attempt to find edge of current element (if applicable).
+        let pos = sexp#current_element_terminal(a:next)
+        if pos[1] > 0 && s:compare_pos(pos, cursor) != 0
+            " Cursor was on element and not already at edge in search direction.
+            " We may be done: i.e.,
             " b moves to the head of the current word if not already on the
             " head and e moves to the tail if not on the tail. However, ge
-            " does not!
-            if (!a:next || a:tail) && !(!a:next && a:tail)
-                throw 'sexp-error'
+            " will never result in updated position on starting element!
+            if !ignore_current && a:next == a:tail
+                return
             endif
-        endif
-
-        let [l, c] = s:findpos('\v\S', a:next)
-        let adjacent = [0, l, c, 0]
-        if !a:next
-            " Note: The s:findpos() above will find only literal non-ws, but we need to
-            " treat ignored ws as non-ws.
-            " Assumption: Ignored ws can be found at end of element, but not beginning.
-            " TODO Should we skip this if not on ignored char or would that be slower?
-            call s:setcursor(adjacent)
-            let adjacent = s:move_to_current_element_terminal(1)
-        endif
-
-        " We are at the beginning or end of file
-        if adjacent[1] < 1 || s:compare_pos(pos, adjacent) == 0
-            throw 'sexp-error'
-        " Or we are at the head or tail of a list
-        " FIXME! This does not consider whether bracket is ignored!!! Thus, an open
-        " bracket at end of comment would be incorrectly treated as open.
-        elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
-            " TODO: Profile to measure the performance penalty for this. It's thrown a
-            " lot...
-            throw 'sexp-error'
-        endif
-
-        let pos = adjacent
-
-        " We are at a head if moving forward or at a tail if moving backward
-        if (a:next && !a:tail) || (!a:next && a:tail)
-            throw 'sexp-error'
-        else
+            " Still need adjacent; move to found pos before searching for it.
             call s:setcursor(pos)
-            let final = sexp#current_element_terminal(a:tail)
-            if final[1] > 0
-                let pos = final
+        endif
+        " Look for adjacent.
+        let [l, c] = s:findpos('\v\S', a:next)
+        if !l
+            " We hit beginning or end of file without finding adjacent.
+            return
+        elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
+            \ && !s:is_rgn_type('str_com_chr', l, c)
+            " Already on head or tail of list
+            return
+        else
+            " Found near side of adjacent element.
+            let pos = [0, l, c, 0]
+            call s:setcursor(pos)
+            if !a:next
+                " Note: The s:findpos() above will find only literal non-ws, but we need
+                " to treat ignored ws (e.g., escaped space) as non-ws.
+                " Assumption: Ignored ws can be found at end of element, but not
+                " beginning. TODO Should we skip this if not on ignored char or would it
+                " be slower to check?
+                let pos = s:move_to_current_element_terminal(1)
             endif
         endif
-    catch /sexp-error/
+        " We're on near side of adjacent whose existence guarantees successful return,
+        " regardless of optional input flags.
+        " If movement is b or e (next == tail), move to far side of adjacent.
+        let has_adj = 1
+        if a:next == a:tail
+            let pos = sexp#current_element_terminal(a:tail)
+        endif
     finally
         call s:setcursor(cursor)
-        return ignore_current && pos == cursor ? s:nullpos : pos
+        " Note: The bare return statements above work like simple throws; the return value
+        " is constructed here.
+        return ignore_current && !has_adj
+            \ ? nullpos_on_fail ? s:nullpos : cursor
+            \ : pos
     endtry
 endfunction
 
@@ -1818,22 +1823,24 @@ endfunction
 function! s:move_to_adjacent_element(next, tail, top, ...)
     let cursor = getpos('.')
     let ignore_current = a:0 && a:1
-    if a:top
-        let top = s:move_to_top_bracket(a:next)
+    try
+        if a:top
+            let top = s:move_to_top_bracket(a:next)
 
-        " Stop at current top element head if moving backward and did not
-        " start on a top element head.
-        if !a:next && top[1] > 0 && s:compare_pos(top, cursor) != 0
-            let pos = top
-        else
-            let pos = s:nearest_element_terminal(a:next, a:tail, ignore_current)
+            " Stop at current top element head if moving backward and did not
+            " start on a top element head.
+            if !a:next && top[1] > 0 && s:compare_pos(top, cursor) != 0
+                let pos = top
+                return
+            endif
         endif
-    else
-        let pos = s:nearest_element_terminal(a:next, a:tail, ignore_current)
-    endif
-
-    if pos[1] > 0 | call s:setcursor(pos) | endif
-    return pos
+        " Note: We fall through here from top case iff not stopping at current top head.
+        let pos = s:nearest_element_terminal(
+            \ a:next, a:tail, ignore_current, ignore_current)
+    finally
+        call s:setcursor(pos[1] ? pos : cursor)
+        return pos
+    endtry
 endfunction
 
 " Move cursor to pos, and then to the next element if in whitespace.
@@ -3393,12 +3400,12 @@ function! s:swap_current_selection(mode, next, pairwise)
         call s:setcursor(amarks[0])
 
         let [sl, sc] = s:findpos(nr2char(0x02), 1)
-        call cursor(sl, sc)
+        keepjumps call cursor(sl, sc)
         normal! x
         let s = [0, sl, sc, 0]
 
         let [el, ec] = s:findpos(nr2char(0x03), 1)
-        call cursor(el, ec)
+        keepjumps call cursor(el, ec)
         normal! x
         let e = [0, el, ec - 1, 0]
 
@@ -5057,6 +5064,8 @@ endfunction
 "   a:start     start of range (a:0==1) or position of open bracket (a:0==0)
 "   a:ps        list of positions to be updated
 "   a:1 (end)   (optional) end of range
+" TODO: Update this function to take advantage of recently added 'ignore_current' and
+" 'nullpos_on_fail' arguments to nearest_element_terminal().
 function! s:cleanup_ws(start, ps, ...)
     let end = a:0 ? a:1 : [0, 0, 0, 0]
     let [open, close, prev] = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
@@ -5122,8 +5131,22 @@ function! s:cleanup_ws(start, ps, ...)
         endif
         let eff_next = next[1] ? next : close
         if !eff_next[1]
-            " Assumption: ve=onemore obviates need for eof flag.
-            let eff_next = getpos([line('$'), '$'])
+            " Caveat: We can get here before reaching EOF if an unbalanced close bracket
+            " prevents finding either next or close. In that case, safest thing to do is
+            " short-circuit with a warning that will help user locate the issue.
+            let [l, c] = s:findpos('\S', 1)
+            if l
+                " Design Decision: Don't try to prevent the re-indent that most likely
+                " follows the cleanup, even though it may invalidate the line numbers
+                " reported here.
+                call sexp#warn#msg(
+                    \ printf("cleanup_ws: Unexpected token (possibly unbalanced"
+                    \ . " close bracket) at or near (%d,%d).", l, c))
+                return
+            else
+                " Assumption: ve=onemore obviates need for eof flag.
+                let eff_next = getpos([line('$'), '$'])
+            endif
         endif
 
         " Do we want to remove *all* whitespace between eff_prev and eff_next?
@@ -5164,9 +5187,10 @@ function! s:cleanup_ws(start, ps, ...)
             " If next isn't comment and there are multiple whitespace chars between
             " eff_prev and eff_next, collapse to a single whitespace.
             " Rationale: Only before comment does extra (non-leading) ws make sense.
-            " FIXME: Refusing to collapse whitespace *immediately* preceding comment
-            " doesn't really solve anything, since collapsing ws earlier on the line will
-            " still break alignment. Really need to add the eol comment alignment logic...
+            " Note: Refusing to collapse whitespace *immediately* preceding comment
+            " isn't a complete solution, since collapsing ws earlier on the line will
+            " still break alignment. Now that we support auto comment alignment, we could
+            " make the comment test conditional...
             " Cursor Logic: If cursor is in whitespace to be contracted, but not on
             " *first* whitespace in the range, we want it to end up *past* the single
             " remaining space; otherwise, on it. FIXME: Currently, this can mean past end

@@ -2929,6 +2929,8 @@ endfunction
 "   tail:            Meaning varies slightly across put modes, but in some sense, this
 "                    value determines direction of put. Can be adjusted by special case
 "                    logic; hence, its inclusion here.
+"                    FIXME: I don't like setting this to 0/1 for a mode like 'replace',
+"                    for which it has no meaning: make sure it can be set to -1 safely.
 "   force_nl[]:      1 iff subsequent processing should force use of NL separator.
 "                    Currently, used only for a normal (targeted) put when cursor is not
 "                    on an element.
@@ -2987,40 +2989,46 @@ function! s:regput__get_context(tgt_info)
     " Set colinear[] and alone[] flag pairs.
     " Note: Flags are N/A for empty buffer/list special cases.
     if !ret.empty_buffer && !ret.empty_list
-        if ret.put_mode == 'replace'
-            " TODO - take inner range into account
-            " TODO: Consider cacheing either inner range ends or adj so that alone
-            " logic can be shared.
-        elseif ret.put_mode == 'replace_child'
-            " TODO!!!!
-        else " put_mode in ['put', 'put_child']
+        " Set side-specific 'alone' flags in loop.
+        for i in range(2)
+            if ret.put_mode == 'replace'
+                " TODO - take inner range into account
+                " TODO: Consider cacheing either inner range ends or adj so that alone
+                " logic can be shared.
+                let range = i
+                    \ ? [ret.inner_range[1], ret.range[1]]
+                    \ : [ret.range[0], ret.inner_range[0]]
+                let is_ele = i ? [1, ret.is_ele[1]] : [ret.is_ele[0], 1]
+                let is_bra = i ? [0, ret.is_bra[1]] : [ret.is_bra[0], 0]
+            elseif ret.put_mode == 'replace_child'
+                " TODO!!!!
+            else " put_mode in ['put', 'put_child']
+                let range = ret.range
+                let [is_ele, is_bra] = [ret.is_ele, ret.is_bra]
+            endif
             " Note: For non-replace modes, colinear[] is effectively a scalar.
-            let ret.colinear =
-                \ ret.is_ele == [1, 1] && ret.range[0][1] == ret.range[1][1]
-                \ ? [1, 1] : [0, 0]
-            " Set side-specific 'alone' flags in loop.
-            for i in range(2)
-                let [outer, outer_is_bra] = [s:nullpos, 0]
-                if !ret.is_bra[i]
-                    " Attempt to find outer adjacent.
-                    call s:setcursor(ret.range[i])
-                    let outer = s:nearest_element_terminal(i, !i, 1, 1)
-                    if !outer[1]
-                        " Pre-position on outside of element to ensure that if element is
-                        " list, nearest_bracket doesn't find its match.
-                        call s:move_to_current_element_terminal(i)
-                        let outer = s:nearest_bracket(i)
-                        if outer[1]
-                            let outer_is_bra = 1
-                        endif
+            let ret.colinear[i] = is_ele[i] && range[0][1] == range[1][1]
+
+            let [outer, outer_is_bra] = [s:nullpos, 0]
+            if !ret.is_bra[i]
+                " Attempt to find outer adjacent.
+                call s:setcursor(ret.range[i])
+                let outer = s:nearest_element_terminal(i, !i, 1, 1)
+                if !outer[1]
+                    " Pre-position on outside of element to ensure that if element is
+                    " list, nearest_bracket doesn't find its match.
+                    call s:move_to_current_element_terminal(i)
+                    let outer = s:nearest_bracket(i)
+                    if outer[1]
+                        let outer_is_bra = 1
                     endif
                 endif
-                let ret.alone[i] = ret.is_ele[i]
-                    \ && (!ret.is_ele[!i] || ret.range[0][1] != ret.range[1][1])
-                    \ && (outer_is_bra || !outer[1] || outer[1] != ret.range[i][1])
-                    \ && (!outer_is_bra || !ret.is_bra[!i] || outer[1] != ret.range[!i][1])
-            endfor
-        endif
+            endif
+            let ret.alone[i] = is_ele[i]
+                \ && (!is_ele[!i] || range[0][1] != range[1][1])
+                \ && (outer_is_bra || !outer[1] || outer[1] != range[i][1])
+                \ && (!outer_is_bra || !is_bra[!i] || outer[1] != range[!i][1])
+        endfor
     endif
     return ret
 endfunction
@@ -3298,8 +3306,9 @@ function! s:regput__impl(tgt, count, tail)
     let ps = s:concat_positions(vs, ve, ctx.range)
     " Re-indent logic needs to know whether range was colinear.
     let range_linespan = ctx.range[0][1] - ctx.range[1][1]
-    " Note: Don't set 'failsafe override': a put should change only whitespace.
-    call s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps)
+    " Note: Set 'failsafe override' for put modes that can change non-ws.
+    call s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps,
+        \ ctx.put_mode =~ 'replace')
     " Determine final cursor position.
     " Design Decision: Analogously to builtin p and P, always position at end;
     " however, unlike the builtins, always position on last non-ws at end.
@@ -3421,8 +3430,75 @@ function! sexp#put(count, tail)
     call s:regput__impl(tgt, count, a:tail)
 endfunction
 
-function! sexp#replace(mode, count, pvar)
-    " TODO!!!!!!!!!!!
+function! s:replace__get_tgt_visual(count)
+endfunction
+
+" Note: This mode is almost unnecessary, since the same effect could be achieved simply by
+" hitting v before the visual mapping.
+function! s:replace__get_tgt_normal(count)
+    let curpos = getpos('.')
+    " TODO: Make sure it's safe to set tail to -1; I don't like setting it to 0..1 if it's
+    " don't care...
+    let ret = {
+        \ 'error': '',
+        \ 'put_mode': 'replace',
+        \ 'range': [s:nullpos, s:nullpos],
+        \ 'inner_range': [s:nullpos, s:nullpos],
+        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
+        \ 'tail': -1, 'force_nl': [0, 0]}
+    try
+        " Look for element under cursor.
+        let p = sexp#current_element_terminal(0)
+        if !p[1]
+            " Refuse to do anything if no element under cursor!
+            " TODO: Need a way to communicate noop/error back to caller.
+            throw "sexp-warning: 'Replace with register' requires element under cursor!"
+        endif
+        " We have a current element to replace.
+        let ret.inner_range = [p, sexp#current_element_terminal(1)]
+    finally
+        call s:setcursor(curpos)
+        return ret
+    endtry
+endfunction
+
+function! s:replace__get_tgt(mode, count)
+    let tgt = a:mode == 'v'
+        \ ? s:replace__get_tgt_visual(a:count)
+        \ : s:replace__get_tgt_normal(a:count)
+    " Determine the range that contains inner_range.
+    for i in range(2)
+        call s:setcursor(tgt.inner_range[i])
+        let p = s:nearest_element_terminal(i, !i, 1, 1)
+        if p[1]
+            let tgt.is_ele[i] = 1
+        else
+            let p = s:nearest_bracket(i)
+            if p[1]
+                let tgt.is_bra[i] = 1
+            else
+                " Default to buffer extremity.
+                let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
+            endif
+        endif
+        let tgt.range[i] = p
+    endfor
+    return tgt
+endfunction
+
+" Note: tail == 1 ==> 'P'
+function! sexp#replace(mode, count, tail)
+    try
+        let count = a:count ? a:count : 1
+        " Target determination is mode-specific.
+        let tgt = s:replace__get_tgt(a:mode, count)
+
+        " Design Decision: Let tail==1 represent put with P.
+        call s:regput__impl(tgt, count, a:tail)
+    catch
+        " FIXME!!!!!
+        call sexp#warn#msg(v:exception)
+    endtry
 endfunction
 
 " Calculate and return the tgt_info dict needed by s:regput__get_context() for the case of
@@ -3495,7 +3571,7 @@ function! sexp#put_child(count, tail)
     call s:regput__impl(tgt, 1, a:tail)
 endfunction
 
-function! sexp#replace_child(count, dir, pvar)
+function! sexp#replace_child(count, dir, tail)
 endfunction
 
 " Swap current visual selection with adjacent element. If pairwise is true,

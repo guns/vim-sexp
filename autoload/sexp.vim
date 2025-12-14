@@ -2868,8 +2868,14 @@ endfunction
 " buffer to have it parsed by legacy syntax engine.
 function! s:analyze_codestr_legacy(codestr, filetype)
     " Note: Processed text added later.
+    " TODO: Some of these fields won't be set properly until we're creating a hidden
+    " buffer in which to perform the analysis.
     let ret = {
-        \ 'reg_s_is_com': 0, 'reg_e_is_com': 0, 'reg_is_com': 0, 'reg_is_ml': 0,
+        \ 'err_count': 0, 'elem_count': 1, 'is_ml': 0,
+        \ 'has_com': 0, 's_is_com': 0, 'e_is_com': 0,
+        \ 'node_ranges': [],
+        \ 'error_ranges': [],
+        \ 'text': ''
     \ }
     " Caveat: Vim =~ operator treats rhs like a single line; thus, literal NL ("\n") (not
     " '\n') must be used to match interior NLs. Also, ^ and $ work only at beginning/end
@@ -2901,8 +2907,7 @@ function! s:regput__get_reginfo()
     let regstr = getreg(v:register)
     if regstr =~ '^\s*$'
         " No-op!
-        let ret.text = ''
-        return ret
+        return {}
     endif
     let ret = s:invoke('analyze_codestr', regstr, &ft)
     "echomsg string(ret)
@@ -2933,7 +2938,7 @@ endfunction
 "                    for which it has no meaning: make sure it can be set to -1 safely.
 "   force_nl[]:      1 iff subsequent processing should force use of NL separator.
 "                    Currently, used only for a normal (targeted) put when cursor is not
-"                    on an element.
+"                    *on* an element, but just before or after it.
 "   --]] End of merged-in tgt_info Dict
 "   empty_list:      putting into empty list
 "   empty_buffer:    putting into empty buffer
@@ -2941,40 +2946,14 @@ endfunction
 "   alone[]:         1 iff element at corresponding range endpoint is alone on its line,
 "                    with possible exception of open or close, but not both
 "   colinear[]:      1 iff element at corresponding range endpoint is colinear with its
-"                    adjacent (in the direction of the other range endpoint)
-"                    Implication: For non-replacement put modes, both values in the pair
-"                    will be identical, since the same 2 elements are used for both
-"                    comparisons; for replacement put modes, the values can differ because
-"                    opposite sides of the form(s) being replaced are used for the
-"                    comparisons.
+"                    adjacent element (in the direction of the other range endpoint). For
+"                    non-replacement put modes, both values in the pair will be identical,
+"                    since the same 2 elements are used for both comparisons; for
+"                    replacement put modes, however, the values can differ because each
+"                    comparison involves a range endpoint and its nearest inner range
+"                    endpoint.
+"                    Design Decision: Only elements (not brackets) can be colinear.
 " Cursor Preservation: Caller handles.
-" Special Logic: There are 3 distinct scenarios in which cursor is not *on* an element:
-"   1. cursor inside (not on brackets of) empty list
-"   2. cursor in empty (apart from whitespace) buffer
-"   3. cursor in whitespace adjacent to one or more elements
-" In the interest of simplifying downstream logic, we attempt to make the special cases
-" look somewhat like the nominal case (e.g., by allowing tgt to be a bracket or a special
-" BOF/EOF sentinel), but we also set flags (e.g., empty_{list,buffer}, force_nl[]) that
-" allow downstream logic to discriminate when necessary.
-" The handling of case 3 depends on the colinearity of cursor pos with whatever comes
-" before/after (i.e., effective prev/next, which can be either element or bracket, or even
-" BOF/EOF) and is outlined below:
-"
-" If cursor colinear with both effective prev/next
-"   p = put after effective prev
-"   P = put before effective next
-" ElseIf cursor colinear with effective prev
-"   put after effective prev
-"   force NL between effective prev and put text iff op == 'p'
-" ElseIf cursor colinear with effective next
-"   put before effective next
-"   force NL between effective next and put text iff op == 'P'
-" Else
-"   p = put after effective prev
-"   P = put before effective next
-" Design Decision: Although we could handle p and P the same way in the 2 ElseIf's above,
-" treating the one that puts *away from* the colinear target as a request for extra
-" separation seems intuitive and gives extra flexibility.
 function! s:regput__get_context(tgt_info)
     " Merge target information into return dict.
     let ret = extend({
@@ -2991,10 +2970,10 @@ function! s:regput__get_context(tgt_info)
     if !ret.empty_buffer && !ret.empty_list
         " Set side-specific 'alone' flags in loop.
         for i in range(2)
+
             if ret.put_mode == 'replace'
-                " TODO - take inner range into account
-                " TODO: Consider cacheing either inner range ends or adj so that alone
-                " logic can be shared.
+                " Cache range comprising the current outer range endpoint and the inner
+                " range endpoint closest to it.
                 let range = i
                     \ ? [ret.inner_range[1], ret.range[1]]
                     \ : [ret.range[0], ret.inner_range[0]]
@@ -3006,9 +2985,13 @@ function! s:regput__get_context(tgt_info)
                 let range = ret.range
                 let [is_ele, is_bra] = [ret.is_ele, ret.is_bra]
             endif
-            " Note: For non-replace modes, colinear[] is effectively a scalar.
-            let ret.colinear[i] = is_ele[i] && range[0][1] == range[1][1]
+            " Note: For non-replace modes, colinear[] is effectively a scalar, but this
+            " assignment is kept within the loop because in the 'replace' modes, is_ele[]
+            " can change from one iteration to the next.
+            let ret.colinear[i] = is_ele[0] && is_ele[1] && range[0][1] == range[1][1]
 
+            " 'outer' refers to the element or bracket just outside the range on current
+            " side. May be nullpos if current range endpoint is at buffer extremity.
             let [outer, outer_is_bra] = [s:nullpos, 0]
             if !ret.is_bra[i]
                 " Attempt to find outer adjacent.
@@ -3033,12 +3016,19 @@ function! s:regput__get_context(tgt_info)
     return ret
 endfunction
 
-" TODO: Comment this!!!!!
+" If context indicates a put into first, second or third position of a list satisfying all
+" of the conditions required for the list position special case (see below), return index
+" indicating the 1-based insert position, else return 0.
+" List Position Special Case Conditions: (all must be met)
+" * First element is single-line (most likely name of function).
+" * First and second element are colinear.
+" * Third element is either nonexistent or non-colinear with second element.
+" * (optional) List is not a 'let' form.
+"   TODO: The 'reg' parameter, currently unused, was added to support this.
+" Rationale: This function is used to determine whether calculated separators may require
+" modification to ensure we don't destroy the following pattern at the start of a function
+" call: '(' <func-name> <arg1> '\n'
 function! s:regput__check_list_context(ctx, reg)
-    " Initialize return value to special list containing "don't care" values for sep at
-    " both ends. If list position logic applies, one or both of the values may be changed
-    " to NL or SPC.
-    let ret = ['', '']
     let [ctx, reg] = [a:ctx, a:reg]
     let [sidx, ps] = [0, []]
     if !ctx.is_bra[0]
@@ -3066,7 +3056,7 @@ function! s:regput__check_list_context(ctx, reg)
         if sidx > 2
             " Start of range was not within 1st 2 elements of list (and possibly not even
             " within list).
-            return ret
+            return 0
         endif
         " Since list was built moving backwards...
         call reverse(ps)
@@ -3107,30 +3097,34 @@ function! s:regput__check_list_context(ctx, reg)
             " head element, which can't be accomplished with separators around the put
             " text. Keep it simple. Users don't often paste the name of a function
             " anyways...
+            return 1
         elseif sidx == 1
-            return [s:SPC, s:NL]
+            return 2
         elseif sidx == 2
-            return [s:NL, '']
+            return 3
         endif
     endif
-    return ret
+    " Nothing special.
+    return 0
 endfunction
 
-" Return a list containing 3 types of separators required for the put indicated by the
+" Return a list containing 4 types of separators required for the put indicated by the
 " inputs.
 " Args:
 "   ctx:  put context dict
 "   reg:  register characterization dict
 " Return List:
-"   [0]:  separator needed before register contents
-"   [1]:  separator needed after register contents
-"   [2]:  separator used to join the individual instances of register contents in case of
-"         a [count]
+"   [0]:  separator needed before put text
+"   [1]:  separator needed after put text
+"   [2]:  separator used to join the individual instances of register contents when
+"         [count] > 1 is used.
+"   [3]:  1st interior separator, left as empty string if all separators should be the
+"         same
 function! s:regput__get_seps(ctx, reg)
     " Default start/end sep to NL; overrides below.
     let [ctx, reg] = [a:ctx, a:reg]
     let tail = ctx.tail
-    let ret = [s:NL, s:NL, s:NL]
+    let ret = [s:NL, s:NL, s:NL, '']
     " TODO: Make global option for this?
     let g:append_sl_comment = get(g:, 'append_sl_comment', 1)
     " Override the NL separators as needed.
@@ -3151,15 +3145,14 @@ function! s:regput__get_seps(ctx, reg)
         " 'force_nl' flag is set only on the target side, and the colinearity check
         " reflects our unwillingness to make put text colinear with adj unless adj was
         " already colinear with target.
-        let has_tgt = ctx.put_mode == 'put'
+        " Build want_spc array to support interior sep computation after loop.
         for i in range(2)
             " Note: The ternary's first branch either inhibits SPC (ensuring default to
             " NL) or requests SPC explicitly (subject to comment constraints).
-            let want_spc = !empty(lpi[i])
-                \ ? lpi[i] == s:SPC
+            let want_spc = lpi
+                \ ? lpi == 2 && !i
                 \ : ctx.is_ele[i] && !ctx.alone[i] && !ctx.force_nl[i] && !reg.is_ml
-                \   && (!has_tgt || i != tail || ctx.colinear[i])
-
+                \   && (tail == -1 || i != tail || ctx.colinear[i])
             " Override NL (if necessary).
             " TODO: Change {e,s}_is_com to is_com[] to obviate need for this.
             let is_com = i ? reg.e_is_com : reg.s_is_com
@@ -3174,6 +3167,15 @@ function! s:regput__get_seps(ctx, reg)
             elseif want_spc && (i == 0 && g:append_sl_comment || !is_com)
                 let ret[i] = s:SPC
             endif
+            if ctx.put_mode =~ 'replace'
+                " Replace Mode Separator Adjustment: Inhibit separator unless it's a NL
+                " and we're currently colinear at this end.
+                if ret[i] != s:NL
+                    let ret[i] = s:EMPTY
+                elseif ctx.range[i] != ctx.inner_range[i]
+                    let ret[i] = s:EMPTY
+                endif
+            endif
         endfor
     endif
 
@@ -3187,10 +3189,23 @@ function! s:regput__get_seps(ctx, reg)
     "   Rationale: For multiline register, previous condition makes this one irrelevant,
     "   but we definitely don't want multiple single line comments placed on the same
     "   line.
-    " * near sep is NL
-    "   Rationale: The logic that determined a NL should separate tgt from put text would
-    "   quite naturally extend to subsequent copies of the put text.
-    let ret[2] = reg.is_ml || reg.has_com || ret[!tail] == s:NL ? s:NL : s:SPC
+    " * register contains multiple toplevel forms
+    " * put is targeted and near side sep is NL
+    "   Rationale: Testing has shown that failing to separate the clones from each other
+    "   when the entire put was separated from the target violates POLS: i.e., extending
+    "   the NL insertion down through the clones just feels right.
+    " * (optional) register contains single toplevel form whose length (or possibly length
+    "   x count) exceeds configurable threshold.
+    " TODO: Add the textwidth condition after working out the details and adding option.
+    " Hmmm: This condition doesn't make quite as much sense now that I've re-added the
+    " previous one, with which it would be redundant when near side sep is NL. I suppose
+    " it would still make sense to keep it for the case in which we're putting onto the
+    " same line as target.
+    let ret[2] = reg.is_ml || reg.has_com || reg.elem_count > 1
+        \ || (tail != -1 && ret[!tail] == s:NL) ? s:NL : s:SPC
+    " Provide distinct separator for 1st interior separator if applicable.
+    " Note: This element will be N/A if [count] == 1
+    let ret[3] = lpi == 2 ? s:NL : ''
     return ret
 endfunction
 
@@ -3231,18 +3246,38 @@ function! s:last_colinear_sibling(tail)
     endtry
 endfunction
 
+" Build and return string consisting of count copies of text, wrapped and joined with the
+" separators in the provided list (whose layout is documented in header of
+" put__get_seps().
+function! s:build_splice_string(text, count, sep)
+    let ret = a:text
+    if a:count > 1
+        " Append first interior separator, which *may* be different from the rest.
+        let ret .= !empty(a:sep[3]) ? a:sep[3] : a:sep[2]
+        " Append any remaining copies with the normal interior separator.
+        " Note: Sep won't be used if a:count - 1 == 1.
+        let ret .= join(repeat([a:text], a:count - 1), a:sep[2])
+    endif
+    " Apply outer separators.
+    return a:sep[0] . ret . a:sep[1]
+endfunction
+
 " Return a dict that characterizes the splice (or directed put) to be performed as the set
 " of arguments to s:yankdel_range().
 function! s:regput__get_splice_info(count, ctx, reg, sep, flags)
-    let ret = { 'range': a:ctx.range, 'text': '', 'inc': [0, 0]}
+    let ret = {
+        \ 'range': a:ctx.put_mode =~ 'repl' ? a:ctx.inner_range : a:ctx.range,
+        \ 'text': '', 'inc': [0, 0]
+    \ }
     let [ctx, reg, sep] = [a:ctx, a:reg, a:sep]
     let tail = ctx.tail
-    let has_tgt = ctx.put_mode == 'put'
+    " TODO: Perhaps these flags should be added to ctx for convenience.
+    let [is_repl, has_tgt] = [ctx.put_mode =~ 'repl', ctx.put_mode == 'put']
 
     " No range/inclusivity adjustments required in empty buffer case.
     if !ctx.empty_buffer
         " TODO: Decide whether/how tail matters for replace/child put modes.
-        if has_tgt && sep[tail] == s:NL
+        if !is_repl && tail != -1 && sep[tail] == s:NL
             " Determine number of newlines needed between put text and adjacent as a
             " function of the number of blank lines *currently* between target and
             " adjacent (taking options into account).
@@ -3259,28 +3294,29 @@ function! s:regput__get_splice_info(count, ctx, reg, sep, flags)
             let num_nl = min([max([gap, 1]), g:sexp_cleanup_keep_empty_lines + 1])
             let sep[tail] = repeat("\n", num_nl)
         endif
-        " If necessary, adjust exclusion type for range end.
-        " Logic: Always use adjacent whitespace-exclusive mode at end of range when the
-        " range terminal is a bracket or element, which is not *currently* colinear with
-        " start (i.e., there's leading indent at end), and we're inserting at least 1 NL
-        " at end.
-        " Rationale: Permits earlier "clean point" for re-indent; discarding the leading
-        " indent would require inclusion of one extra element at end (tgt if !tail, adj if
-        " tail).
-        " Note: Can't use adj_colinear flag because we care about colinearity of brackets
-        " too, and adj_colinear implies both tgt/adj are elements.
-        let exc_typ = 0
-        if (ctx.is_bra[1] || ctx.is_ele[1]) && ctx.range[0] != ctx.range[1]
-            \ && sep[1][0] == s:NL
-            let exc_typ = 2
+        if is_repl
+            " For replacements, ctx.inner_range is inclusive.
+            let ret.inc = [1, 1]
+        else
+            " If necessary, adjust exclusion type for range end.
+            " Logic: Always use adjacent whitespace-exclusive mode at end of range when the
+            " range terminal is a bracket or element, which is not *currently* colinear with
+            " start (i.e., there's leading indent at end), and we're inserting at least 1 NL
+            " at end.
+            " Rationale: Permits earlier "clean point" for re-indent; discarding the leading
+            " indent would require inclusion of one extra element at end (tgt if !tail, adj if
+            " tail).
+            " Note: Can't use adj_colinear flag because we care about colinearity of brackets
+            " too, and adj_colinear implies both tgt/adj are elements.
+            let exc_typ = 0
+            if (ctx.is_bra[1] || ctx.is_ele[1]) && ctx.range[0] != ctx.range[1]
+                \ && sep[1][0] == s:NL
+                let exc_typ = 2
+            endif
+            let ret.inc = [0, exc_typ]
         endif
-        let ret.inc = [0, exc_typ]
     endif
-    " Build splice string.
-    " TODO: Refactor this into a function somehow, since something similar is used
-    " elsewhere (for cloning, I think).
-    let t = join(repeat([reg.text], a:count), sep[2])
-    let ret.text = sep[0] . t . sep[1]
+    let ret.text = s:build_splice_string(reg.text, a:count, sep)
     return ret
 endfunction
 
@@ -3294,7 +3330,7 @@ function! s:regput__impl(tgt, count, tail)
 
     " Calculate the put.
     let reg = s:regput__get_reginfo()
-    if empty(reg.text)
+    if empty(reg) || empty(reg.text)
         " Treat empty text like NOOP!
         return
     endif
@@ -3351,9 +3387,38 @@ function! s:regput__impl(tgt, count, tail)
     call s:set_visual_marks([vs, ve])
 endfunction
 
-" Calculate and return the tgt_info dict needed by s:regput__get_context() for the case of
-" a 'put' command.
+" Calculate and return the tgt_info dict needed by s:regput__get_context() for a 'put'
+" command.
 " Note: For details, see header of s:regput__get_context().
+" -- Logic --
+" Nominal Case: If cursor is *on* element, use that element as the target, and let
+" direction be determined by put command (p/P).
+" Special Case: There are 3 distinct scenarios in which cursor is not *on* an element:
+"   1. cursor inside (not on brackets of) empty list
+"   2. cursor in empty (apart from whitespace) buffer
+"   3. cursor in whitespace adjacent to one or more elements
+" In the interest of simplifying downstream logic, we attempt to make the special cases
+" look somewhat like the nominal case (e.g., by allowing tgt to be a bracket or a special
+" BOF/EOF sentinel), but we also set flags (e.g., empty_{list,buffer}, force_nl[]) that
+" allow downstream logic to discriminate when necessary.
+" The handling of case 3 depends on the colinearity of cursor pos with whatever comes
+" before/after (i.e., effective prev/next, which can be either element or bracket, or even
+" BOF/EOF) and is outlined below:
+"
+" If cursor colinear with both effective prev/next
+"   p = put after effective prev
+"   P = put before effective next
+" ElseIf cursor colinear with effective prev
+"   put after effective prev
+"   force NL between effective prev and put text iff op == 'p'
+" ElseIf cursor colinear with effective next
+"   put before effective next
+"   force NL between effective next and put text iff op == 'P'
+" Else
+"   non-directional put
+" Design Decision: Although we could handle p and P the same way in the 2 ElseIf's above,
+" treating the one that puts *away from* the colinear target as a request for extra
+" separation seems intuitive and gives extra flexibility.
 function! s:put__get_tgt(count, tail)
     let curpos = getpos('.')
     let ret = {
@@ -3404,7 +3469,10 @@ function! s:put__get_tgt(count, tail)
                 " Design Decision: The fact that we're not on the element (or even near it)
                 " implies direction change: intuitively, the direction of p or P in empty line
                 " selects the target element.
-                let ret.tail = !ret.tail
+                " FIXME: Hmm... Maybe not so intuitive. Consider changing to
+                " non-directional (tail == -1).
+                "let ret.tail = !ret.tail
+                let ret.tail = -1
             elseif curpos[1] == prev[1] && curpos[1] != next[1]
                 let [ret.force_nl[0], ret.tail] = [a:tail && ret.is_ele[0], 1]
             elseif curpos[1] == next[1] && curpos[1] != prev[1]

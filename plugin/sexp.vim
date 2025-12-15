@@ -214,6 +214,10 @@ if !exists('g:sexp_aligncom_optlevel')
     let g:sexp_aligncom_optlevel = 2
 endif
 
+if !exists('g:sexp_put_treats_list_as_element')
+    let g:sexp_put_treats_list_as_element = 0
+endif
+
 " Expert options
 if !exists('g:sexp_inhibit_failsafe')
     let g:sexp_inhibit_failsafe = 0
@@ -800,18 +804,18 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, '
 DefplugN nnoremap sexp_put_before  sexp#put(v:count, 0)
 DefplugN nnoremap sexp_put_after   sexp#put(v:count, 1)
 " Replace element/selection with register
-DefplugN nnoremap sexp_replace   sexp#replace('n', v:count, 'p')
-DefplugN nnoremap sexp_replace_P sexp#replace('n', v:count, 'P')
-DefplugN xnoremap sexp_replace   sexp#replace('v', v:prevcount, 'p')
-DefplugN xnoremap sexp_replace_P sexp#replace('v', v:prevcount, 'P')
+DefplugN nnoremap sexp_replace   sexp#replace('n', v:count, 0)
+DefplugN nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
+DefplugN xnoremap sexp_replace   sexp#replace('v', v:prevcount, 0)
+DefplugN xnoremap sexp_replace_P sexp#replace('v', v:prevcount, 1)
 " Put register into list
 DefplugN nnoremap sexp_put_at_head sexp#put_child(v:count, 0)
 DefplugN nnoremap sexp_put_at_tail sexp#put_child(v:count, 1)
 " Replace child with register
-DefplugN nnoremap sexp_replace_at_head   sexp#replace_child(v:count, 0, 'p')
-DefplugN nnoremap sexp_replace_at_head_P sexp#replace_child(v:count, 0, 'P')
-DefplugN nnoremap sexp_replace_at_tail   sexp#replace_child(v:count, 1, 'p')
-DefplugN nnoremap sexp_replace_at_tail_P sexp#replace_child(v:count, 1, 'P')
+DefplugN nnoremap sexp_replace_at_head   sexp#replace_child(v:count, 0, 0)
+DefplugN nnoremap sexp_replace_at_head_P sexp#replace_child(v:count, 0, 1)
+DefplugN nnoremap sexp_replace_at_tail   sexp#replace_child(v:count, 1, 0)
+DefplugN nnoremap sexp_replace_at_tail_P sexp#replace_child(v:count, 1, 1)
 
 """ Insert mode mappings {{{1
 

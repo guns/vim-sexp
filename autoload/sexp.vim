@@ -2925,6 +2925,7 @@ endfunction
 " Return Dict:
 "   Note: List keys are pairs whose indices correspond to the elements of range[].
 "   --[[ Beginning of merged-in tgt_info dict
+"   count:           [count] associated with the operation
 "   put_mode:        one of 'put', 'put_child', 'replace', 'replace_child'
 "   tail:            possibly adjusted version of the input flag
 "                    Note: Adjustment performed only when cursor not on element
@@ -3023,6 +3024,7 @@ endfunction
 " * First element is single-line (most likely name of function).
 " * First and second element are colinear.
 " * Third element is either nonexistent or non-colinear with second element.
+"   TODO: Consider requiring third element to exist.
 " * (optional) List is not a 'let' form.
 "   TODO: The 'reg' parameter, currently unused, was added to support this.
 " Rationale: This function is used to determine whether calculated separators may require
@@ -3131,29 +3133,41 @@ function! s:regput__get_seps(ctx, reg)
     if ctx.empty_buffer
         let ret[0:1] = [s:EMPTY, s:EMPTY]
     else
-        " Give list position logic a chance to request separator override.
-        " Supersedence Logic: Non-N/A values in returned lpi dict supersede the normal
-        " flag logic. Since the default separator is NL, a NL in lpi clears the
-        " corresponding *_side_spc flag and a SPC sets it.
-        let lpi = s:regput__check_list_context(ctx, reg)
+        " Determine whether put is into one of the special slots in a 'shaped' list.
+        " Note: Inhibit this special case logic if more than one toplevel element in
+        " register.
+        " Rationale: For the special logic to be meaningful in the multiple toplevel
+        " element case, we'd need not only to parse the register text (already doing so),
+        " but also potentially *modify* the whitespace between elements, which is
+        " analogous to the 'interior separators' used for [count] > 1.
+        let lpi = reg.elem_count > 1 ? 0 : s:regput__check_list_context(ctx, reg)
 
-        " Compute side-dependent flags used to determine SPC-insertion at both start/end.
-        " Note: These flags do not incorporate comment checks, which are applied below.
-        " Preserve colinearity at far side unless pasted text is ml.
-        " Note: There's a slight asymmetry between near/far side of range, but only for
-        " put modes that differentiate between tgt and adjacent. In these modes, the
-        " 'force_nl' flag is set only on the target side, and the colinearity check
-        " reflects our unwillingness to make put text colinear with adj unless adj was
-        " already colinear with target.
-        " Build want_spc array to support interior sep computation after loop.
         for i in range(2)
-            " Note: The ternary's first branch either inhibits SPC (ensuring default to
-            " NL) or requests SPC explicitly (subject to comment constraints).
-            let want_spc = lpi
-                \ ? lpi == 2 && !i
-                \ : ctx.is_ele[i] && !ctx.alone[i] && !ctx.force_nl[i] && !reg.is_ml
-                \   && (tail == -1 || i != tail || ctx.colinear[i])
+            " Compute side-dependent 'want_spc' flag used to determine SPC-insertion at both
+            " start/end.
+            " Note: These flags do not incorporate comment checks, which are applied in
+            " separate step.
+            " Note: There's a slight asymmetry between near/far side of range, but only for
+            " put modes that differentiate between tgt and adjacent (i.e., directional puts).
+            " In these modes, the 'force_nl' flag is set only on the target side, and the
+            " side-dependent colinearity check reflects our unwillingness to make put text
+            " colinear with adj unless adj was already colinear with target.
+            " Note: Interior sep(s) are handled by separate logic after the loop.
+            if lpi == 2
+                " Slot 2 needs a leading SPC and a trailing NL (the latter of which is
+                " requested implicitly by clearing this flag).
+                let want_spc = !i
+            elseif lpi == 3 && !i
+                " Slot 3 needs a NL at the leading side. The !i guard condition ensures
+                " that normal logic will apply to trailing side.
+                let want_spc = 0
+            else
+                let want_spc =
+                    \ ctx.is_ele[i] && !ctx.alone[i] && !ctx.force_nl[i] && !reg.is_ml
+                    \ && (tail != -1 && (i != tail || ctx.colinear[i]))
+            endif
             " Override NL (if necessary).
+            " Note: Special logic for replace mode puts may subsequently override this.
             " TODO: Change {e,s}_is_com to is_com[] to obviate need for this.
             let is_com = i ? reg.e_is_com : reg.s_is_com
             if ctx.is_bra[i]
@@ -3170,9 +3184,12 @@ function! s:regput__get_seps(ctx, reg)
             if ctx.put_mode =~ 'replace'
                 " Replace Mode Separator Adjustment: Inhibit separator unless it's a NL
                 " and we're currently colinear at this end.
-                if ret[i] != s:NL
-                    let ret[i] = s:EMPTY
-                elseif ctx.range[i] != ctx.inner_range[i]
+                " Rationale: Ideally, the put text would *exactly* replace the existing
+                " text (delineated by ctx.inner_range[]), thereby minimizing visual
+                " disturbance; however, if NL sep has been requested on a side whose range
+                " endpoint is currently colinear with its nearest innner_range endpoint,
+                " we need to leave the NL request intact to ensure separation.
+                if ret[i] != s:NL || ctx.range[i] != ctx.inner_range[i]
                     let ret[i] = s:EMPTY
                 endif
             endif
@@ -3190,10 +3207,12 @@ function! s:regput__get_seps(ctx, reg)
     "   but we definitely don't want multiple single line comments placed on the same
     "   line.
     " * register contains multiple toplevel forms
-    " * put is targeted and near side sep is NL
+    " * put is directional (tail != -1) and near side sep is NL
+    "   *OR* putting forward into slot 2 and 
     "   Rationale: Testing has shown that failing to separate the clones from each other
     "   when the entire put was separated from the target violates POLS: i.e., extending
-    "   the NL insertion down through the clones just feels right.
+    "   the NL insertion down through the clones just feels right, especially when putting
+    "   forward from head.
     " * (optional) register contains single toplevel form whose length (or possibly length
     "   x count) exceeds configurable threshold.
     " TODO: Add the textwidth condition after working out the details and adding option.
@@ -3202,7 +3221,7 @@ function! s:regput__get_seps(ctx, reg)
     " it would still make sense to keep it for the case in which we're putting onto the
     " same line as target.
     let ret[2] = reg.is_ml || reg.has_com || reg.elem_count > 1
-        \ || (tail != -1 && ret[!tail] == s:NL) ? s:NL : s:SPC
+        \ || (tail != -1 && (lpi == 2 && tail || ret[!tail] == s:NL)) ? s:NL : s:SPC
     " Provide distinct separator for 1st interior separator if applicable.
     " Note: This element will be N/A if [count] == 1
     let ret[3] = lpi == 2 ? s:NL : ''
@@ -3422,7 +3441,7 @@ endfunction
 function! s:put__get_tgt(count, tail)
     let curpos = getpos('.')
     let ret = {
-        \ 'put_mode': 'put',
+        \ 'put_mode': 'put', 'count': a:count,
         \ 'range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': a:tail, 'force_nl': [0, 0]}
@@ -3492,10 +3511,35 @@ function! s:put__get_tgt(count, tail)
     endtry
 endfunction
 
+function! s:regput__handle_as_put_child_maybe(count, tail)
+    if g:sexp_put_treats_list_as_element
+        " Feature disabled by user config
+        return 0
+    endif
+    let isl = s:is_list(line('.'), col('.'))
+    if !isl
+        " Not *on* list
+        return 0
+    endif
+    " We're on list bracket or macro chars. Short-circuit if put is away from list
+    " interior.
+    if !a:tail && isl != 3 || a:tail && isl == 3
+        return 0
+    endif
+    " All conditions met for converting put to put_child!
+    " Caveat: Toggle tail due to change in meaning: e.g.,
+    "   put from open bracket (tail == 1) ==> put at head (tail == 0)
+    call sexp#put_child(a:count, !a:tail)
+    " Let caller know it's been handled.
+    return 1
+endfunction
+
 function! sexp#put(count, tail)
-    let count = a:count ? a:count : 1
-    let tgt = s:put__get_tgt(count, a:tail)
-    call s:regput__impl(tgt, count, a:tail)
+    if !s:regput__handle_as_put_child_maybe(a:count, a:tail)
+        let count = a:count ? a:count : 1
+        let tgt = s:put__get_tgt(count, a:tail)
+        call s:regput__impl(tgt, count, a:tail)
+    endif
 endfunction
 
 function! s:replace__get_tgt_visual(count)
@@ -3509,7 +3553,7 @@ function! s:replace__get_tgt_normal(count)
     " don't care...
     let ret = {
         \ 'error': '',
-        \ 'put_mode': 'replace',
+        \ 'put_mode': 'replace', 'count': a:count,
         \ 'range': [s:nullpos, s:nullpos],
         \ 'inner_range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
@@ -3571,14 +3615,33 @@ endfunction
 
 " Calculate and return the tgt_info dict needed by s:regput__get_context() for the case of
 " a 'put_child' command.
-" Note: For details, see header of s:regput__get_context().
+" Note: For details on this dict, see header of s:regput__get_context().
+" Tail Logic: For a non-child put, 'tail' indicates the *direction* of the put; for child
+" put mode, however, 'tail' indicates the side of the list at which the insert occurs (or
+" from which the insert position is offset by [count]). Although we could treat a child
+" put as a non-directional put, doing so would lead to the following ambiguity: in the
+" absence of a target, how do we decide which existing element to append/prepend to when
+" our contextual logic indicates appending/prepending makes sense. OTOH, if we make the
+" put directional, which direction makese sense? I.e., which element should server as the
+" target? Any answer to this question is bound to be somewhat arbitrary, but here's what
+" I'm thinking makes sense: when the put is *between* elements, the target is the element
+" furthest from the reference bracket (i.e., the bracket on the side from which put
+" occurs). As long as we take this approach, it's not necessary to toggle 'flag' in the
+" nominal case (put between child elements):
+" return dict: consider...
+"   put at head (a:tail == 0) <==> P (tail == 0)
+"   put at tail (a:tail == 1) <==> p (tail == 1)
+" However, when the [count] is so large that the desired element doesn't exist, we put
+" between terminal child and list bracket, treating the terminal child as the target.
+" Since the put in this case is in the opposite direction relative to the target, we
+" toggle 'tail' in the return dict to reflect the reversal.
 function! s:put_child__get_tgt(count, tail)
     let cursor = getpos('.')
     let ret = {
-        \ 'put_mode': 'put_child',
+        \ 'put_mode': 'put_child', 'count': a:count,
         \ 'range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': a:tail, 'force_nl': 0}
+        \ 'tail': a:tail, 'force_nl': [0, 0]}
     try
         let li = s:list_info(a:tail) 
         if li.terminal_range[0][1]
@@ -3596,6 +3659,8 @@ function! s:put_child__get_tgt(count, tail)
                     let r[!a:tail] = li.brackets[!a:tail]
                     let ret.is_bra[!a:tail] = 1
                     let ret.is_ele[a:tail] = 1
+                    " See notes in header for rationale behind this toggle.
+                    let ret.tail = !ret.tail
                 else
                     " Requested child exists; use it and adjacent on near side.
                     let r[!a:tail] = c.range[a:tail]
@@ -3614,7 +3679,7 @@ function! s:put_child__get_tgt(count, tail)
                 endif
             else
                 " Terminal element requested.
-                " Use bracket and terminal element.
+                " Use bracket and terminal element, treating terminal element as target.
                 let r[!a:tail] = li.terminal_range[a:tail]
                 let r[a:tail] = li.brackets[a:tail]
                 let ret.is_bra[a:tail] = 1

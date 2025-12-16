@@ -2971,7 +2971,6 @@ function! s:regput__get_context(tgt_info)
     if !ret.empty_buffer && !ret.empty_list
         " Set side-specific 'alone' flags in loop.
         for i in range(2)
-
             if ret.put_mode == 'replace'
                 " Cache range comprising the current outer range endpoint and the inner
                 " range endpoint closest to it.
@@ -3023,8 +3022,7 @@ endfunction
 " List Position Special Case Conditions: (all must be met)
 " * First element is single-line (most likely name of function).
 " * First and second element are colinear.
-" * Third element is either nonexistent or non-colinear with second element.
-"   TODO: Consider requiring third element to exist.
+" * Third element *not* colinear with second element.
 " * (optional) List is not a 'let' form.
 "   TODO: The 'reg' parameter, currently unused, was added to support this.
 " Rationale: This function is used to determine whether calculated separators may require
@@ -3083,27 +3081,32 @@ function! s:regput__check_list_context(ctx, reg)
         let eidx = sidx
     endif
 
-    " Cache some useful vars pertaining to the first 3 elements of list.
-    let [s1, e1] = eidx > 0 ? ps[0] : s:nullpos_pair
-    let [s2, e2] = eidx > 1 ? ps[1] : s:nullpos_pair
-    let [s3, e3] = eidx > 2 ? ps[2] : s:nullpos_pair
-    " Design Decision: Special case applies only to single-line head elements.
-    let colinear12 = eidx > 1 && s1[1] == e1[1] && e1[1] == s2[1]
-    let colinear23 = eidx > 2 && e2[1] == s3[1]
-    " Note: The colinear12 condition will rule out scenarios with too few elements.
-    if colinear12 && !colinear23
-        if sidx == 0
-            " Inserting to head position.
-            " Design Decision: Don't treat as special case.
-            " Rationale: Handling would entail inserting a line break after the current
-            " head element, which can't be accomplished with separators around the put
-            " text. Keep it simple. Users don't often paste the name of a function
-            " anyways...
-            return 1
-        elseif sidx == 1
-            return 2
-        elseif sidx == 2
-            return 3
+    " Special case requires at least 3 elements.
+    " Rationale: We're looking for a list "shape" defined by 3 elements:
+    "   (func arg1 arg2 NL arg3 ...)
+    if eidx >= 3
+        " TODO: Use s:is_list() and regex to test for (let* [ ...) here...
+        " Cache some useful vars pertaining to the first 3 elements of list.
+        let [s1, e1] = ps[0]
+        let [s2, e2] = ps[1]
+        let [s3, e3] = ps[2]
+        " Design Decision: Special case applies only to single-line head elements.
+        let colinear12 = s1[1] == e1[1] && e1[1] == s2[1]
+        let colinear23 = e2[1] == s3[1]
+        if colinear12 && !colinear23
+            if sidx == 0
+                " Inserting to head position.
+                " Design Decision: Don't treat as special case.
+                " Rationale: Handling would entail inserting a line break after the
+                " current head element, which can't be accomplished with separators around
+                " the put text. Keep it simple. Users don't often paste the name of a
+                " function anyways...
+                return 1
+            elseif sidx == 1
+                return 2
+            elseif sidx == 2
+                return 3
+            endif
         endif
     endif
     " Nothing special.
@@ -3542,22 +3545,34 @@ function! sexp#put(count, tail)
     endif
 endfunction
 
-function! s:replace__get_tgt_visual(count)
+" Set inner_range of the input tgt dict.
+function! s:replace__get_tgt_visual(count, tgt)
+    let curpos = getpos('.')
+    try
+        let [vs, ve] = s:get_visual_marks()
+        let [s, e] = s:super_range(vs, ve)
+        " Preceding call to s:super_range() obviates need for ignored region checking.
+        if !s:range_has_non_ws(s, e, 0)
+            " Nothing to replace.
+            " Design Decision Needed: Should we a) throw and warn user or b) convert to
+            " normal put. (And if (b), should we try to ensure the put is non-directional,
+            " given that this might not happen naturally?)
+            throw "sexp-warning: "
+                \ . "visual mode 'replace with register' requires selection of"
+                \ . " something other than whitespace!"
+        endif
+        " We have a non-empty set of elements to replace.
+        let a:tgt.inner_range = [s, e]
+    finally
+        call s:setcursor(curpos)
+    endtry
 endfunction
 
+" Set inner_range of the input tgt dict.
 " Note: This mode is almost unnecessary, since the same effect could be achieved simply by
 " hitting v before the visual mapping.
-function! s:replace__get_tgt_normal(count)
+function! s:replace__get_tgt_normal(count, tgt)
     let curpos = getpos('.')
-    " TODO: Make sure it's safe to set tail to -1; I don't like setting it to 0..1 if it's
-    " don't care...
-    let ret = {
-        \ 'error': '',
-        \ 'put_mode': 'replace', 'count': a:count,
-        \ 'range': [s:nullpos, s:nullpos],
-        \ 'inner_range': [s:nullpos, s:nullpos],
-        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': -1, 'force_nl': [0, 0]}
     try
         " Look for element under cursor.
         let p = sexp#current_element_terminal(0)
@@ -3567,38 +3582,47 @@ function! s:replace__get_tgt_normal(count)
             throw "sexp-warning: 'Replace with register' requires element under cursor!"
         endif
         " We have a current element to replace.
-        let ret.inner_range = [p, sexp#current_element_terminal(1)]
+        let a:tgt.inner_range = [p, sexp#current_element_terminal(1)]
     finally
         call s:setcursor(curpos)
-        return ret
     endtry
 endfunction
 
 function! s:replace__get_tgt(mode, count)
-    let tgt = a:mode == 'v'
-        \ ? s:replace__get_tgt_visual(a:count)
-        \ : s:replace__get_tgt_normal(a:count)
+    let ret = {
+        \ 'put_mode': 'replace', 'count': a:count,
+        \ 'range': [s:nullpos, s:nullpos],
+        \ 'inner_range': [s:nullpos, s:nullpos],
+        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
+        \ 'tail': -1, 'force_nl': [0, 0]}
+    " Allow mode-specific function to augment dict with the inner_range.
+    if a:mode == 'v'
+        call s:replace__get_tgt_visual(a:count, ret)
+    else
+        call s:replace__get_tgt_normal(a:count, ret)
+    endif
     " Determine the range that contains inner_range.
     for i in range(2)
-        call s:setcursor(tgt.inner_range[i])
+        call s:setcursor(ret.inner_range[i])
         let p = s:nearest_element_terminal(i, !i, 1, 1)
         if p[1]
-            let tgt.is_ele[i] = 1
+            let ret.is_ele[i] = 1
         else
             let p = s:nearest_bracket(i)
             if p[1]
-                let tgt.is_bra[i] = 1
+                let ret.is_bra[i] = 1
             else
                 " Default to buffer extremity.
                 let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
             endif
         endif
-        let tgt.range[i] = p
+        let ret.range[i] = p
     endfor
-    return tgt
+    return ret
 endfunction
 
-" Note: tail == 1 ==> 'P'
+" Note: For replace mode puts, tail indicates which p command was used:
+"   0 == 'p', 1 == 'P'
 function! sexp#replace(mode, count, tail)
     try
         let count = a:count ? a:count : 1
@@ -3607,9 +3631,11 @@ function! sexp#replace(mode, count, tail)
 
         " Design Decision: Let tail==1 represent put with P.
         call s:regput__impl(tgt, count, a:tail)
-    catch
-        " FIXME!!!!!
+    catch /sexp-warning:/
         call sexp#warn#msg(v:exception)
+    catch
+        " Show throwpoint only for non-warning errors.
+        call sexp#warn#msg(v:exception . " at " . v:throwpoint)
     endtry
 endfunction
 
@@ -5427,6 +5453,7 @@ endfunction
 " duplication as it is now.
 " Partial Solution: child_range() accepts this function's return as optional arg, thereby
 " avoiding most of the duplication.
+" TODO: Consider having this accept a position.
 function! s:list_info(tail)
     let cursor = getpos('.')
     let ret = {

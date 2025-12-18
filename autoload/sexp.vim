@@ -2436,6 +2436,10 @@ endfunction
 " -- Optional Dict --
 " top_is_list      Treat toplevel as list if cursor at toplevel
 " list_info        If not empty or omitted, use to skip call to s:list_info()
+" exact_count      If the requested child does not exist, return nullpos pair: i.e., don't
+"                  simply return the terminal element.
+" TODO: Add option that won't consider a list whose brackets/macros we're on.
+" TODO: Probably accept position other than curpos.
 function! s:child_range(count, tail, inner, ...)
     let cursor = getpos('.')
     let ret = {'range': [s:nullpos, s:nullpos], 'missing': a:count}
@@ -2443,21 +2447,25 @@ function! s:child_range(count, tail, inner, ...)
         if a:0
             let top_is_list = get(a:1, 'top_is_list', 0)
             let li = get(a:1, 'list_info', {})
+            let exact_count = get(a:1, 'exact_count', 0)
         endif
         " Get relevant info about current list, including desired terminal.
         let li = empty(li) ? s:list_info(a:tail) : li
-        let ret.range = li.terminal_range
-        if !ret.range[0][1] && !li.brackets[0][1] && top_is_list
+        " Attempt to get non-null terminal range as starting point for search.
+        " Caveat: Don't update return dict till desired child is found.
+        let range = li.terminal_range
+        if !range[0][1] && !li.brackets[0][1] && top_is_list
             " Check for buffer head/tail.
-            let ret = s:buffer_terminal(a:tail)
+            let range = s:buffer_terminal(a:tail)
         endif
-        if ret.range[0][1]
+        " Do we have a starting point?
+        if range[0][1]
             " Assumption: We're sitting on head/tail element.
             " If count > 1, find count-1'th adjacent element.
             let cnt = a:count ? a:count - 1 : 0
             if cnt
                 " Start on outside of terminal element and search inward.
-                let p = ret.range[a:tail]
+                let p = range[a:tail]
                 call s:setcursor(p)
                 while cnt
                     " Land on outside of elements.
@@ -2469,17 +2477,20 @@ function! s:child_range(count, tail, inner, ...)
                     let cnt -= 1
                 endwhile
                 " We're positioned on outside of desired element (or if count was too
-                " high, the final element in list in desired direction).
-                let ret.range[a:tail] = getpos('.')
-                let ret.range[!a:tail] = sexp#current_element_terminal(!a:tail)
+                " high, the terminal element in desired direction).
+                if !cnt || !exact_count
+                    " Assign to return dict.
+                    let ret.range[a:tail] = getpos('.')
+                    let ret.range[!a:tail] = sexp#current_element_terminal(!a:tail)
+                endif
                 let ret.missing = cnt
             else
                 " Terminal is sought child.
-                let ret.missing = 0
+                let [ret.range, ret.missing] = [range, 0]
             endif
             if !a:inner
                 " Perform whitespace cleanup.
-                let ret.range = s:terminals_with_whitespace(ret[0], ret[1])
+                let ret.range = s:terminals_with_whitespace(ret.range[0], ret.range[1])
             endif
         endif
     finally
@@ -2783,7 +2794,7 @@ endfunction
 " count backwards from tail, 1 to count forwards from head. If no such child element
 " exists, selects closest one (i.e., last in the specified direction).
 function! sexp#select_child(mode, count, next, inner)
-    let [s, e] = s:child_range(a:count, a:next, a:inner)
+    let [s, e] = s:child_range(a:count, a:next, a:inner, {'exact_child': 0})
     if s[1]
         " Note: Although we may be called from visual mode, child selection ignores
         " current selection by definition.
@@ -2971,7 +2982,7 @@ function! s:regput__get_context(tgt_info)
     if !ret.empty_buffer && !ret.empty_list
         " Set side-specific 'alone' flags in loop.
         for i in range(2)
-            if ret.put_mode == 'replace'
+            if ret.put_mode =~ 'replace'
                 " Cache range comprising the current outer range endpoint and the inner
                 " range endpoint closest to it.
                 let range = i
@@ -2979,8 +2990,6 @@ function! s:regput__get_context(tgt_info)
                     \ : [ret.range[0], ret.inner_range[0]]
                 let is_ele = i ? [1, ret.is_ele[1]] : [ret.is_ele[0], 1]
                 let is_bra = i ? [0, ret.is_bra[1]] : [ret.is_bra[0], 0]
-            elseif ret.put_mode == 'replace_child'
-                " TODO!!!!
             else " put_mode in ['put', 'put_child']
                 let range = ret.range
                 let [is_ele, is_bra] = [ret.is_ele, ret.is_bra]
@@ -3130,21 +3139,20 @@ function! s:regput__get_seps(ctx, reg)
     let [ctx, reg] = [a:ctx, a:reg]
     let tail = ctx.tail
     let ret = [s:NL, s:NL, s:NL, '']
+    " Determine whether put is into one of the special slots in a 'shaped' list.
+    " Note: Inhibit this special case logic if more than one toplevel element in register.
+    " Rationale: For the special logic to be meaningful in the multiple toplevel element
+    " case, we'd need not only to parse the register text (already doing so), but also
+    " potentially *modify* the whitespace between elements, which is analogous to the
+    " 'interior separators' used for [count] > 1.
+    let lpi = reg.elem_count > 1 || ctx.empty_buffer || ctx.empty_list
+        \ ? 0 : s:regput__check_list_context(ctx, reg)
     " TODO: Make global option for this?
     let g:append_sl_comment = get(g:, 'append_sl_comment', 1)
     " Override the NL separators as needed.
     if ctx.empty_buffer
         let ret[0:1] = [s:EMPTY, s:EMPTY]
     else
-        " Determine whether put is into one of the special slots in a 'shaped' list.
-        " Note: Inhibit this special case logic if more than one toplevel element in
-        " register.
-        " Rationale: For the special logic to be meaningful in the multiple toplevel
-        " element case, we'd need not only to parse the register text (already doing so),
-        " but also potentially *modify* the whitespace between elements, which is
-        " analogous to the 'interior separators' used for [count] > 1.
-        let lpi = reg.elem_count > 1 ? 0 : s:regput__check_list_context(ctx, reg)
-
         for i in range(2)
             " Compute side-dependent 'want_spc' flag used to determine SPC-insertion at both
             " start/end.
@@ -3572,63 +3580,76 @@ endfunction
 " Note: This mode is almost unnecessary, since the same effect could be achieved simply by
 " hitting v before the visual mapping.
 function! s:replace__get_tgt_normal(count, tgt)
-    let curpos = getpos('.')
-    try
-        " Look for element under cursor.
-        let p = sexp#current_element_terminal(0)
-        if !p[1]
-            " Refuse to do anything if no element under cursor!
-            " TODO: Need a way to communicate noop/error back to caller.
-            throw "sexp-warning: 'Replace with register' requires element under cursor!"
-        endif
-        " We have a current element to replace.
-        let a:tgt.inner_range = [p, sexp#current_element_terminal(1)]
-    finally
-        call s:setcursor(curpos)
-    endtry
+    " Look for element under cursor.
+    let p = sexp#current_element_terminal(0)
+    if !p[1]
+        " Refuse to do anything if no element under cursor!
+        " TODO: Need a way to communicate noop/error back to caller.
+        throw "sexp-warning: 'Replace with register' requires element under cursor!"
+    endif
+    " We have a current element to replace.
+    let a:tgt.inner_range = [p, sexp#current_element_terminal(1)]
 endfunction
 
-function! s:replace__get_tgt(mode, count)
+" Note: To avoid duplication, both replace and replace_child are handled by this function.
+" TODO: Decide about arg P, which is needed only for replace_child, and probably needs to
+" make it into the dict, since it will be needed downstream.
+function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
     let ret = {
-        \ 'put_mode': 'replace', 'count': a:count,
+        \ 'put_mode': a:put_mode, 'count': a:count,
         \ 'range': [s:nullpos, s:nullpos],
         \ 'inner_range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': -1, 'force_nl': [0, 0]}
-    " Allow mode-specific function to augment dict with the inner_range.
-    if a:mode == 'v'
-        call s:replace__get_tgt_visual(a:count, ret)
-    else
-        call s:replace__get_tgt_normal(a:count, ret)
-    endif
-    " Determine the range that contains inner_range.
-    for i in range(2)
-        call s:setcursor(ret.inner_range[i])
-        let p = s:nearest_element_terminal(i, !i, 1, 1)
-        if p[1]
-            let ret.is_ele[i] = 1
-        else
-            let p = s:nearest_bracket(i)
-            if p[1]
-                let ret.is_bra[i] = 1
+    let curpos = getpos('.')
+    try
+        if a:put_mode == 'replace'
+            " Allow mode-specific function to augment dict with the inner_range.
+            if a:mode == 'v'
+                call s:replace__get_tgt_visual(a:count, ret)
             else
-                " Default to buffer extremity.
-                let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
+                call s:replace__get_tgt_normal(a:count, ret)
             endif
+        else " 'replace_child'
+            let ret.tail = a:tail
+            let cr = s:child_range(a:count, a:tail, 1, {'exact_count': 1})
+            if cr.missing
+                " Requested child doesn't exist!
+                throw "sexp-warning: 'replace_child': the requested child does not exist!"
+            endif
+            let ret.inner_range = cr.range
         endif
-        let ret.range[i] = p
-    endfor
-    return ret
+        " Determine the range that *contains* inner_range.
+        for i in range(2)
+            call s:setcursor(ret.inner_range[i])
+            let p = s:nearest_element_terminal(i, !i, 1, 1)
+            if p[1]
+                let ret.is_ele[i] = 1
+            else
+                let p = s:nearest_bracket(i)
+                if p[1]
+                    let ret.is_bra[i] = 1
+                else
+                    " Default to buffer extremity.
+                    let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
+                endif
+            endif
+            let ret.range[i] = p
+        endfor
+    finally
+        call s:setcursor(curpos)
+        return ret
+    endtry
 endfunction
 
-" Note: For replace mode puts, tail indicates which p command was used:
-"   0 == 'p', 1 == 'P'
+" Note: For replace modes, tail indicates which p command was used: 0 == 'p', 1 == 'P'.
+" Although it doesn't affect the result of the put, it does determine whether the unnamed
+" register is updated.
 function! sexp#replace(mode, count, tail)
     try
         let count = a:count ? a:count : 1
         " Target determination is mode-specific.
-        let tgt = s:replace__get_tgt(a:mode, count)
-
+        let tgt = s:replace_mode__get_tgt('replace', a:mode, count, -1, -1)
         " Design Decision: Let tail==1 represent put with P.
         call s:regput__impl(tgt, count, a:tail)
     catch /sexp-warning:/
@@ -3676,7 +3697,8 @@ function! s:put_child__get_tgt(count, tail)
             if a:count > 1
                 " Child other than terminal element requested.
                 " Find element before/after which to insert.
-                let c = s:child_range(a:count, a:tail, 0, {'list_info': li})
+                let c = s:child_range(a:count, a:tail, 0,
+                    \ {'list_info': li, 'exact_count': 0})
                 if c.missing
                     " Requested child doesn't exist, so use limiting list bracket and
                     " bracket end of terminal child.
@@ -3730,7 +3752,42 @@ function! sexp#put_child(count, tail)
     call s:regput__impl(tgt, 1, a:tail)
 endfunction
 
-function! sexp#replace_child(count, dir, tail)
+" Calculate and return the tgt_info dict needed by s:regput__get_context() for the case of
+" a 'replace_child' command.
+" Note: For details on this dict, see header of s:regput__get_context().
+" Note: For details on the meaning of 'tail', see header of put_child__get_tgt().
+function! s:replace_child__get_tgt(count, tail, P)
+    let cursor = getpos('.')
+    let ret = {
+        \ 'put_mode': 'put_child', 'count': a:count,
+        \ 'range': [s:nullpos, s:nullpos],
+        \ 'inner_range': [s:nullpos, s:nullpos],
+        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
+        \ 'tail': a:tail, 'force_nl': [0, 0]}
+    try
+        let ret.inner_range = s:child_range(a:count, a:tail, 0, {'exact_count': 1})
+        if !ret.inner_range[0][1]
+            " Requested child doesn't exist!
+            throw "sexp-warning: 'replace_child': the requested child does not exist!"
+        endif
+    finally
+        call s:setcursor(cursor)
+        return ret
+    endtry
+endfunction
+
+function! sexp#replace_child(count, tail, P)
+    try
+        let count = a:count ? a:count : 1
+        let tgt = s:replace_mode__get_tgt('replace_child', 'n', count, a:tail, a:P)
+        " Note: [count] is used only for child location, so hardcode to 1.
+        call s:regput__impl(tgt, 1, a:tail)
+    catch /sexp-warning:/
+        call sexp#warn#msg(v:exception)
+    catch
+        " Show throwpoint only for non-warning errors.
+        call sexp#warn#msg(v:exception . " at " . v:throwpoint)
+    endtry
 endfunction
 
 " Swap current visual selection with adjacent element. If pairwise is true,

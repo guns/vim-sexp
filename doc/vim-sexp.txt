@@ -890,7 +890,7 @@ LIST MANIPULATION (normal, visual) ~
         ((|)) () foo bar
         (|) () () foo bar
 <
-REGISTER PUT (PASTE) COMMANDS (normal, visual) ~
+REGISTER PUT ("SMART PASTE") COMMANDS (normal, visual) ~
 
 All of the register put (paste) commands accept an optional register name via
 the standard Vim mechanism (e.g., `"ap` to put from the `"a` register), as
@@ -902,16 +902,31 @@ perform an automatic re-indent on a range whose size is determined by
 |g:sexp_auto_indent_range|.
 
 Put register before/after (normal)  ~
+                                                                    *sexp_put*
 
 ["x]P                                                *<Plug>(sexp_put_before)*
 ["x]p                                                 *<Plug>(sexp_put_after)*
         Put [count] copies of register x before (`P`) or after (`p`) the
-        current element.
+        current element; alternatively, works like "put register into list"
+        when the conditions in the following paragraph are met.
+
+        Special Behavior on List Brackets  ~
+        By default, if this command is executed with the cursor on a list
+        bracket (or the macro chars preceding an open), and the put direction
+        is towards the list interior, it will be handled as the corresponding
+        "put register into list" command:
+                p ==> |<Plug>(sexp_put_at_head)|
+                P ==> |<Plug>(sexp_put_at_tail)|
+        I.e., the register text will be inserted into the head or tail of the
+        list at an offset determined by [count]. If you do not like this
+        behavior, and want this command to treat lists just like regular
+        elements, simply set option *g:sexp_regput_bracket_is_target* to 0.
+
         Note: If there is no current element, the register contents are put
-        before or after the cursor position and there is a subtle difference
-        between `p` and `P`: in particular, putting _away from_ an adjacent
-        element on the same line as the cursor forces insertion of NL between
-        the put text and the adjacent element.
+        before or after the cursor position; moreover, there is a subtle
+        difference between `p` and `P` in this case: in particular, putting
+        _away from_ an adjacent element on the same line as the cursor forces
+        a line break between the put text and the adjacent element.
 
 Replace element with register (normal)  ~
 
@@ -934,6 +949,8 @@ Put register into list (normal)  ~
         Put register x into the current list, making it the [count]th child
         from head (`<M-p>`) or tail (`<M-P>`).
 
+        See also |sexp-regput-definition-of-current-list|.
+
 Replace child with register (normal)  ~
 
 ["x]<LocalLeader>p                               *<Plug>(sexp_replace_at_head)*
@@ -941,6 +958,124 @@ Replace child with register (normal)  ~
         Replace the [count]th child from head (`<LocalLeader>p`) or tail
         (`<LocalLeader>P>`) with register x. With `<LocalLeader>P`, the
         unnamed register (`@"`) is not updated.
+
+        See also |sexp-regput-definition-of-current-list|.
+
+                                       *sexp-regput-definition-of-current-list*
+Definition of "current list"  ~
+By default, the preceding two commands treat a list whose bracket or macro
+char is under the cursor as the current list. Some users may prefer that a
+list be treated as a simple child element when the cursor is positioned on one
+of its terminals. The advantage of such an approach is consistency: as long as
+the cursor is positioned on element terminals, the result of the put will not
+depend on whether the element is a list or atom; in either case, the
+containing list is the target of the put. If you wish to enable this approach,
+set |g:sexp_regput_bracket_is_child| to 1.
+Note: Since a toplevel list has no parent, this option does not apply when the
+cursor is on the terminals of a toplevel list.
+
+                                             *sexp-regput-single-vs-multiline*
+Single vs Multi-line  ~
+Vim-sexp contains a significant amount of logic for deciding how to separate
+the put register contents from the surrounding forms. The goal of this logic
+is to minimize (and where possible, eliminate) the need for manual whitespace
+adjustments after the put has completed.
+
+To decide whether the put text should be separated from what precedes and
+follows it by newline(s), space or even nothing at all (at list head/tail),
+the put logic considers factors such as the following:
+
+        * Is the element adjacent to the put target currently alone?
+        * Does the register contain multiple toplevel forms?
+        * Does the register contain multiple lines?
+        * Does the register begin or end with a comment?
+        * Will the put text come immediately before or after a comment?
+        * Is the register "linewise" (taking option
+          |g:sexp_regput_untrimmed_is_linewise| into account)?
+
+As with the "Outer Element" whitespace selection logic, the put logic attempts
+to produce results that obey Ruby's "Principle of Least Surprise" and Perl's
+"Do What I Mean" philosophy. If you discover areas in which you feel it could
+do a better job of this, please open an issue. Suggestions for improvement are
+always welcome.
+
+                                               *sexp-regput-register-linewise*
+Register "Linewise" Status  ~
+Since vim-sexp's put logic determines appropriate whitespace separators for
+both ends of the put text, any leading or trailing whitespace in the register
+is stripped before buffer insertion. Before it is stripped, however, vim-sexp
+uses it to determine whether the register should be considered "linewise". A
+register's linewise status can affect the results of a put in
+option-dependent ways: for examples, see |sexp-regput-single-vs-multiline|
+and |sexp-regput-comment-logic|. By default, vim-sexp's definition of a
+"linewise" register is the same as Vim's: a register ending in newline is
+linewise. However, you may prefer to relax this requirement to treat a put
+register with _any_ leading or trailing whitespace as "linewise". The
+advantage of this definition is that it makes it easier to use the type of
+yank performed to influence the type of put.
+
+As an example, consider the following:
+>
+        (foo (bar 42) baz)
+<
+Suppose you want to yank the form `(bar 42)` and paste it on its own line
+(i.e., not appended or prepended to an existing line). An easy way to
+guarantee this result is to make the yank register "linewise", but because the
+form is surrounded by other forms, it cannot be yanked in a way that will make
+it "linewise" in the Vim sense. But with the expanded definition of
+"linewise", you could yank with `yae` to include surrounding whitespace,
+thereby making the register "linewise" in the vim-sexp sense and ensuring it
+will be put to its own line. To enable this expanded definition, set option
+|g:sexp_regput_untrimmed_is_linewise| to 1.
+
+
+"Directionality" of Put Commands  ~
+Put commands that have a "target" element (e.g., the element under the cursor
+for |<Plug>(sexp_put_before)| or |<Plug>(sexp_put_after)|) are considered
+directional and treat the target element differently from an adjacent element.
+In particular, the put text may be made colinear with the target (i.e.,
+separated from it by only a <Space> character), but will never be joined to an
+adjacent element that was not already colinear with the target. Commands that
+put into a list are also directional; the target, in this case, is the
+`[count]`th element in the list, which serves as the insert/append location for
+the register contents. Put commands that replace elements are non-directional.
+They attempt, as much as possible, to preserve the separation of the replaced
+form(s) from surrounding forms on both sides.
+
+                                         *sexp-regput-list-shape-preservation*
+List "Shape" Preservation Logic  ~
+By default, when a register containing a single toplevel element is put into
+the second or third position of a list that has the following canonical shape
+(ignoring alignment), the put logic will choose the whitespace separators
+surrounding the put text in an effort to preserve the shape.
+>
+        (func ARG1
+              ARG2
+              .
+              .)
+<
+
+If you don't like this behavior, you can disable it by setting option
+|sexp_regput_ignore_list_shape| to 1.
+
+
+                                                   *sexp-regput-comment-logic*
+Constraints on Comments  ~
+Vim-sexp examines the put register to determine whether it contains leading or
+trailing comments, and will always ensure that a trailing comment is separated
+from what follows by at least a newline. Leading comments are not as
+inherently problematic as trailing comments. However, though appending a
+comment to a form is always syntactically valid, it may not always make sense.
+Because vim-sexp has no way of knowing what the comment modifies, it defaults
+to ensuring a leading comment is never appended to an existing form. If you
+wish to allow leading comments to be appended in certain cases, you can set
+|g:sexp_regput_allow_comment_append| to a nonzero value: 1 to allow an append
+only when the register is not "linewise"; 2 to allow an append
+unconditionally.
+Note: This option does not _force_ leading comments to be appended; it merely
+requests that comments be treated the same as other elements for the purposes
+of determining single/multi-line put.
+
 
 INSERT MODE MAPPINGS (insert, optional) ~
 
@@ -1400,15 +1535,84 @@ full (level 2) optimization.
         " Default
         let g:sexp_aligncom_density_weight = 5
 <
+                                             *g:sexp_regput_bracket_is_target*
+When this is set, |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| are
+silently converted to |<Plug>(sexp_put_at_head)| and |<Plug>(sexp_put_at_tail)|,
+respectively, when the cursor is on a list's bracket or macro chars and the
+put direction is towards the list interior.
+Note: This option does not apply when the put command puts "away from" the
+list (i.e., `P` from head or `p` from tail).
+>
+        " Default
+        let g:sexp_regput_bracket_is_target = 1
+<
+
+                                              *g:sexp_regput_bracket_is_child*
+When this is set, the register put commands that put into a list will not
+treat a non-toplevel list whose brackets/macro chars are under the cursor as
+the target list, but will instead target its parent.
+Motivation: To understand why you might wish to set this, see
+|sexp-regput-definition-of-current-list|.
+>
+        " Default
+        let g:sexp_regput_bracket_is_child = 0
+<
+
+                                          *g:sexp_regput_allow_comment_append*
+Determines the conditions under which register put commands are permitted to
+append a comment to an existing form:
+  0  Never append
+  1  Allow append unless put register is linewise (taking option
+     |g:sexp_regput_untrimmed_is_linewise| into account)
+  2  Always allow append
+For details, see |sexp-regput-comment-logic|.
+>
+        " Default
+        let g:sexp_regput_allow_comment_append = 0
+<
+
+                                         *g:sexp_regput_untrimmed_is_linewise*
+If set, a put register containing _any_ leading or trailing whitespace will be
+considered "linewise".
+Note: A register's "linewise" status has implications for the following
+options:
+        |g:sexp_regput_linewise_forces_multiline|
+        |g:sexp_regput_allow_comment_append|
+
+For details, see |sexp-regput-register-linewise-status|.
+>
+        " Default
+        let g:sexp_regput_untrimmed_is_linewise = 1
+<
+
+                                     *g:sexp_regput_linewise_forces_multiline*
+If set, a put is always multiline when the put register is "linewise" in the
+vim-sexp sense (see |g:sexp_regput_untrimmed_is_linewise|).
+For additional details, see |sexp-regput-register-linewise-status|.
+>
+        " Default
+        let g:sexp_regput_linewise_forces_multiline = 1
+<
+
+                                             *g:sexp_regput_ignore_list_shape*
+Set to 1 to inhibit the special logic that attempts to preserve canonical list
+shape when a register put targets the second or third slot of a list.
+For additional details, see |sexp-regput-list-shape-preservation|.
+>
+        " Default
+        let g:sexp_regput_ignore_list_shape = 0
+<
+
 Expert options ~
 
                                                      *g:sexp_inhibit_failsafe*
-In the absence of bugs, this plugin should never modify non-whitespace text
-(though it may occasionally **relocate** brackets). In the real world,
-however, bugs happen; thus, the function responsible for modifying text
-contains redundant logic to ensure that if a bug results in a request to
-delete non-whitespace, the request will be refused with a warning. The regex
-search used by this logic is fairly inexpensive and unlikely to be a
+In the absence of bugs, very few of the commands provided by this plugin
+modify non-whitespace text (though a few may occasionally _relocate_
+brackets). In the real world, however, bugs happen; accordingly, the function
+primarily responsible for buffer modifications contains redundant logic to
+detect and refuse (with a warning) any attempt to delete non-whitespace by
+commands not expected to do so (e.g., |<Plug>(sexp_align_comments)|). The
+regex search used by this logic is fairly inexpensive and unlikely to be a
 performance concern; however, for users who prioritize performance and trust
 the developer, their version control system, Vim's undo engine, or some
 combination of the above, an option is provided to inhibit this "failsafe"

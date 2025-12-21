@@ -214,8 +214,28 @@ if !exists('g:sexp_aligncom_optlevel')
     let g:sexp_aligncom_optlevel = 2
 endif
 
-if !exists('g:sexp_put_treats_list_as_element')
-    let g:sexp_put_treats_list_as_element = 0
+if !exists('g:sexp_regput_bracket_is_target')
+    let g:sexp_regput_bracket_is_target = 1
+endif
+
+if !exists('g:sexp_regput_bracket_is_child')
+    let g:sexp_regput_bracket_is_child = 0
+endif
+
+if !exists('g:sexp_regput_allow_comment_append')
+    let g:sexp_regput_allow_comment_append = 0
+endif
+
+if !exists('g:sexp_regput_untrimmed_is_linewise')
+    let g:sexp_regput_untrimmed_is_linewise = 0
+endif
+
+if !exists('g:sexp_regput_linewise_forces_multiline')
+    let g:sexp_regput_linewise_forces_multiline = 0
+endif
+
+if !exists('g:sexp_regput_ignore_list_shape')
+    let g:sexp_regput_ignore_list_shape = 0
 endif
 
 " Expert options

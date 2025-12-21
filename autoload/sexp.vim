@@ -2882,16 +2882,17 @@ function! s:analyze_codestr_legacy(codestr, filetype)
     " TODO: Some of these fields won't be set properly until we're creating a hidden
     " buffer in which to perform the analysis.
     let ret = {
-        \ 'err_count': 0, 'elem_count': 1, 'is_ml': 0,
+        \ 'err_count': 0, 'elem_count': 1, 'is_ml': 0, 'linewise': 0,
         \ 'has_com': 0, 's_is_com': 0, 'e_is_com': 0,
         \ 'node_ranges': [],
         \ 'error_ranges': [],
         \ 'text': ''
     \ }
-    " Caveat: Vim =~ operator treats rhs like a single line; thus, literal NL ("\n") (not
-    " '\n') must be used to match interior NLs. Also, ^ and $ work only at beginning/end
-    " of multiline string.
-    let ret.is_ml = codestr =~ "\n"
+    " TODO: This should really be handled by a parser to ensure we don't treat *ignored*
+    " whitespace at the end of the register as whitespace.
+    let ret.linewise = g:sexp_regput_untrimmed_is_linewise
+        \ ? ret.text =~ '^\s\|\s$' ? 1 : 0
+        \ : ret.text =~ '\n$' ? 1 : 0
     let ret.s_is_com = codestr =~ '^\s*;'
     let ret.e_is_com = codestr =~ ';.*$'
     " TODO: Come up with less simple patterns that at least attempt to differentiate
@@ -2901,13 +2902,16 @@ function! s:analyze_codestr_legacy(codestr, filetype)
     " TODO: Decide whether this should be single line only, given use case.
     " TODO: If this is not needed, remove!
     let ret.is_com = codestr =~ '\(\_^\s*;.*\_$\)\+'
-    " Trim whitespace at both ends since we're adding deterministic amount.
-    " Design Decision: Putting this here ensures presence of NL in raw register text will
-    " influence 'is_ml'.
-    " Rationale: If user performs (eg) linewise yank on comment, respect that.
+    " Trim *all* whitespace at both ends since we're adding deterministic amount.
     " FIXME: Needs to account for possibility of escaped whitespace; have this done by
     " function that performs language-specific validation.
-    let ret.text = substitute(codestr, '^\s\+\|\s\+$', '', 'g')
+    let ret.text = substitute(codestr, '^\_s\+\|\_s\+$', '', 'g')
+    " Design Decision: Stripped leading/trailing whitespace should not influence
+    " multline test.
+    " Caveat: Vim =~ operator treats rhs like a single line; thus, literal NL ("\n") (not
+    " '\n') must be used to match interior NLs. Also, ^ and $ work only at beginning/end
+    " of multiline string.
+    let ret.is_ml = ret.text =~ "\n"
     return ret
 endfunction
 
@@ -2921,7 +2925,6 @@ function! s:regput__get_reginfo()
         return {}
     endif
     let ret = s:invoke('analyze_codestr', regstr, &ft)
-    "echomsg string(ret)
     return ret
 endfunction
 
@@ -3139,13 +3142,18 @@ function! s:regput__get_seps(ctx, reg)
     let [ctx, reg] = [a:ctx, a:reg]
     let tail = ctx.tail
     let ret = [s:NL, s:NL, s:NL, '']
+    if g:sexp_regput_linewise_forces_multiline && reg.linewise
+        " Force multi-line due to linewise register.
+        return ret
+    endif
     " Determine whether put is into one of the special slots in a 'shaped' list.
     " Note: Inhibit this special case logic if more than one toplevel element in register.
     " Rationale: For the special logic to be meaningful in the multiple toplevel element
     " case, we'd need not only to parse the register text (already doing so), but also
     " potentially *modify* the whitespace between elements, which is analogous to the
     " 'interior separators' used for [count] > 1.
-    let lpi = reg.elem_count > 1 || ctx.empty_buffer || ctx.empty_list
+    let lpi = g:sexp_regput_ignore_list_shape
+        \ || reg.elem_count > 1 || ctx.empty_buffer || ctx.empty_list
         \ ? 0 : s:regput__check_list_context(ctx, reg)
     " TODO: Make global option for this?
     let g:append_sl_comment = get(g:, 'append_sl_comment', 1)
@@ -3173,14 +3181,18 @@ function! s:regput__get_seps(ctx, reg)
                 " that normal logic will apply to trailing side.
                 let want_spc = 0
             else
+                " TODO: Decide on elem_count criterion.
                 let want_spc =
-                    \ ctx.is_ele[i] && !ctx.alone[i] && !ctx.force_nl[i] && !reg.is_ml
+                    \ ctx.is_ele[i] && !ctx.alone[i] && !ctx.force_nl[i]
+                    \ && !reg.is_ml && reg.elem_count <= 1
                     \ && (tail != -1 && (i != tail || ctx.colinear[i]))
             endif
             " Override NL (if necessary).
             " Note: Special logic for replace mode puts may subsequently override this.
             " TODO: Change {e,s}_is_com to is_com[] to obviate need for this.
             let is_com = i ? reg.e_is_com : reg.s_is_com
+            let allow_com_append = g:sexp_regput_allow_comment_append == 2
+                \ || g:sexp_regput_allow_comment_append == 1 && !reg.linewise
             if ctx.is_bra[i]
                 " No override for post sep if reg ends in comment.
                 if !is_com || !i
@@ -3189,7 +3201,7 @@ function! s:regput__get_seps(ctx, reg)
             elseif !ctx.is_ele[i]
                 " No bracket or element requiring separation on this side
                 let ret[i] = s:EMPTY
-            elseif want_spc && (i == 0 && g:append_sl_comment || !is_com)
+            elseif want_spc && (i == 0 && allow_com_append || !is_com)
                 let ret[i] = s:SPC
             endif
             if ctx.put_mode =~ 'replace'
@@ -3522,8 +3534,10 @@ function! s:put__get_tgt(count, tail)
     endtry
 endfunction
 
+" If all conditions are met, convert a put before/after to the corresponding put child,
+" returning 1 let caller know the command was handled.
 function! s:regput__handle_as_put_child_maybe(count, tail)
-    if g:sexp_put_treats_list_as_element
+    if !g:sexp_regput_bracket_is_target
         " Feature disabled by user config
         return 0
     endif

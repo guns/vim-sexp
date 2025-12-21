@@ -10,6 +10,7 @@ local ApiRange = require'sexp.range'
 ---@field err_count integer
 ---@field elem_count integer
 ---@field is_ml boolean
+---@field linewise boolean
 ---@field has_com boolean
 ---@field s_is_com boolean
 ---@field e_is_com boolean
@@ -19,9 +20,9 @@ local ApiRange = require'sexp.range'
 
 --local dbg = require'dp':get('sexp', {enabled=true})
 
-local reltime = vim.fn.reltime
-local reltimefloat = vim.fn.reltimefloat
-local reltimestr = vim.fn.reltimestr
+--local reltime = vim.fn.reltime
+--local reltimefloat = vim.fn.reltimefloat
+--local reltimestr = vim.fn.reltimestr
 
 local bracket = [[\v\(|\)|\[|\]|\{|\}]]
 local delimiter = bracket .. [[|\s]]
@@ -516,6 +517,7 @@ end
 ---@return ParseResult
 function M.analyze_codestr(codestr, filetype)
   ---@local ParseResult
+  -- Note: Table structure matches corresponding dict in legacy Vim implementation.
   local ret = {
     err_count = 0,
     elem_count = 0,
@@ -533,6 +535,7 @@ function M.analyze_codestr(codestr, filetype)
     ((ERROR) @str
       (#trim! @str 1 1 1 1))
   ]])
+  -- Note: Intentionally parsing raw (unstripped) input string.
   local tree = vim.treesitter.get_string_parser(codestr, ft):parse()[1]
   local root = tree:root()
   -- Execute query for errors and save the location of each.
@@ -563,7 +566,8 @@ function M.analyze_codestr(codestr, filetype)
     -- Design Decision: Err on side of caution by using all children for multiline check,
     -- not just first and last named child.
     -- Note: Intentionally using children rather than root to preclude possibility of
-    -- leading/trailing blanks affecting line count.
+    -- leading/trailing whitespace (which should show up only in root) affecting line
+    -- count.
     first = root:child(0) --[[@as TSNode --]]
     last = root:child(ret.elem_count - 1) --[[@as TSNode --]]
     local s, e = ApiPos:new(first:start()):to_vim4(),
@@ -575,6 +579,25 @@ function M.analyze_codestr(codestr, filetype)
   -- just first and last named child.
   local s, e = ApiPos:new(root:start()):to_vim4(), ApiPos:new(root:end_()):to_vim4(true)
   ret.is_ml = s[2] ~= e[2]
+  -- Perform 'linewise' check that takes option into account.
+  -- If trailing newline, no need to check further.
+  ret.linewise = codestr:sub(-1) == "\n"
+  if not ret.linewise and vim.g.sexp_regput_untrimmed_is_linewise ~= 0 then
+    -- One more chance...
+    local s_is_ws, e_is_ws = codestr:sub(1):match("%s"), codestr:sub(-1):match("%s")
+    if s_is_ws or e_is_ws then
+      -- Found leading/trailing whitespace but need to ensure it's not ignored.
+      local erow, ecol = vim.fn.line('$') - 1, vim.fn.col({vim.fn.line('$'), '$'}) - 1
+      local snode = root:named_descendant_for_range(0, 0, 0, 1)
+      local enode = root:named_descendant_for_range(erow, ecol, erow, ecol+1)
+      ret.linewise =
+        s_is_ws and snode and not is_node_rgn_type(snode, "str_com_chr")
+        or e_is_ws and enode and not is_node_rgn_type(enode, "str_com_chr")
+    end
+  else
+    ret.linewise = 0
+  end
+  print("linewise=" .. tostring(ret.linewise))
   return ret
 end
 

@@ -162,7 +162,7 @@ ie                                                *<Plug>(sexp_inner_element)*
 
         If the cursor is on whitespace that is not in a string or between line
         comments, the motion targets the subsequent element, if it exists.
-        
+
         An element is defined as:
 
             * Current string if cursor is in a string
@@ -247,7 +247,7 @@ ic                                             *<Plug>(sexp_inner_child_head)*
         toplevel element from beginning or end of file).
 
         The meaning of the terms "inner" and "outer" are as defined for the ie
-        and ae text objects. 
+        and ae text objects.
 
                                              *sexp-child-objects-vs-[e-and-]e*
         There is overlap between the use cases for child objects and the
@@ -327,7 +327,7 @@ categories:
    Land only on brackets. There are 4 variants, differentiated by both the
    direction moved in the buffer, and the type of bracket landed on (open or
    close).
-   
+
 2. Leaf
    Land only on leaf (non-list) elements (atoms, strings, comments)
 
@@ -552,7 +552,7 @@ COMMENT ALIGNMENT COMMANDS (normal, visual)  ~
         *Note:* Trailing comment alignment makes the most sense on ranges
         spanning more than a few lines; thus, the |sexp_align_comments_top|
         (`<LocalLeader>A`) command is probably the most useful.
-        
+
         In visual mode, the selection is first expanded to cover all partially
         selected lists and elements.
         Note: Visual mappings are not created for the "top" variants of align
@@ -849,7 +849,7 @@ LIST MANIPULATION (normal, visual) ~
         (either because the bracket is passing over it (emit) or because the
         cursor started out on the bracket (capture)), it will move with the
         bracket.
-        
+
         Visual Selection  ~
         In visual mode, the list doing the capturing or emitting will be
         selected after the operation. Note that selecting the list effectively

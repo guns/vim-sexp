@@ -49,6 +49,8 @@ function! s:deprecate_options(optnames, obsolete, helphint)
     endif
 endfunction
 
+call sexp#feat#record_user_awareness()
+
 " Note: The following options were introduced by PR #34 and removed in PR #51. Hopefully,
 " not many users have overridden them, but just in case...
 " TODO: Remove this after a few releases.
@@ -214,6 +216,10 @@ if !exists('g:sexp_aligncom_optlevel')
     let g:sexp_aligncom_optlevel = 2
 endif
 
+if !exists('g:sexp_regput_override_builtins')
+    let g:sexp_regput_override_builtins = 0
+endif
+
 if !exists('g:sexp_regput_bracket_is_target')
     let g:sexp_regput_bracket_is_target = 1
 endif
@@ -246,6 +252,29 @@ endif
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
+
+" Keymap Presets
+" Motivation: Give user an easy way to enable a (usually feature-specific) set of mappings
+" we don't dare create without permission (usually because they override builtin maps). A
+" keymap preset is selected by a user option: e.g.,
+"   let g:sexp_regput_override_builtins = 1
+" From all such options, logic in sexp_create_mappings() determines a list of enabled
+" presets, each of which causes a dict by the name of s:sexp_mapping_preset__{feat-name},
+" with the same format as s:sexp_mappings, to be searched for overrides.
+" Constraint: A given plug rhs should never belong to multiple presets, as this would give
+" rise to ambiguity when both presets were enabled.
+let s:sexp_mapping_preset__regput = {
+    \ 'sexp_put_before':                   {'n': 'P'},
+    \ 'sexp_put_after':                    {'n': 'p'},
+    \ 'sexp_replace':                      {'n': '<M-p>', 'x': 'p'},
+    \ 'sexp_replace_P':                    {'n': '<M-P>', 'x': 'P'},
+    \ 'sexp_put_at_head':                  {'n': '<p'},
+    \ 'sexp_put_at_tail':                  {'n': '>p'},
+    \ 'sexp_replace_at_head':              {'n': '[p'},
+    \ 'sexp_replace_at_tail':              {'n': ']p'},
+    \ 'sexp_replace_at_head_P':            {'n': '[P'},
+    \ 'sexp_replace_at_tail_P':            {'n': ']P'},
+\ }
 
 let s:sexp_mappings = {
     \ 'sexp_outer_list':                   {'xo': 'af'},
@@ -316,14 +345,16 @@ let s:sexp_mappings = {
     \ 'sexp_emit_tail_element':            {'nx': '<M-S-k>'},
     \ 'sexp_capture_prev_element':         {'nx': '<M-S-h>'},
     \ 'sexp_capture_next_element':         {'nx': '<M-S-l>'},
-    \ 'sexp_put_before':                   {'n': 'P'},
-    \ 'sexp_put_after':                    {'n': 'p'},
-    \ 'sexp_replace':                      {'n': 'gp', 'x': 'p'},
-    \ 'sexp_replace_P':                    {'n': 'gP', 'x': 'P'},
-    \ 'sexp_put_at_head':                  {'n': '<M-p>'},
-    \ 'sexp_put_at_tail':                  {'n': '<M-P>'},
-    \ 'sexp_replace_at_head':              {'n': '<LocalLeader>p'},
-    \ 'sexp_replace_at_tail':              {'n': '<LocalLeader>P'},
+    \ 'sexp_put_before':                   {'n': '<LocalLeader>P'},
+    \ 'sexp_put_after':                    {'n': '<LocalLeader>p'},
+    \ 'sexp_replace':                      {'nx': '<M-p>'},
+    \ 'sexp_replace_P':                    {'nx': '<M-P>'},
+    \ 'sexp_put_at_head':                  {'n': '<LocalLeader><p'},
+    \ 'sexp_put_at_tail':                  {'n': '<LocalLeader>>p'},
+    \ 'sexp_replace_at_head':              {'n': '<LocalLeader>[p'},
+    \ 'sexp_replace_at_tail':              {'n': '<LocalLeader>]p'},
+    \ 'sexp_replace_at_head_P':            {'n': '<LocalLeader>[P'},
+    \ 'sexp_replace_at_tail_P':            {'n': '<LocalLeader>]P'},
     \ }
 
 if !empty(g:sexp_filetypes)
@@ -539,11 +570,37 @@ function! s:parse_map_entry(plug, entry, valid_modes)
     return maps
 endfunction
 
+" Return preset mapping override for specified plug, else {}.
+" See note on Keymap Presets.
+function! s:check_for_mapping_preset(plug)
+    " TODO: Add more preset groups as necessary.
+    let feats = {'regput': g:sexp_regput_override_builtins}
+    for [feat, enable] in items(feats)
+        if enable
+            " Get preset dict whose format is same as s:sexp_mappings[].
+            let o = s:sexp_mapping_preset__{feat}
+            " Does this preset group define an override for this plug?
+            if has_key(o, a:plug)
+                " Replace the default with the enabled override.
+                " Note: A plug should never be represented in 2 distinct feature sets.
+                return o[a:plug]
+            endif
+        endif
+    endfor
+    return {}
+endfunction
+
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 function! s:sexp_create_mappings()
+    call sexp#feat#create_notifications()
     " Note: {s,g}entry stand for {s,g}:sexp_mappings entry, respectively.
     for [plug, sentry] in items(s:sexp_mappings)
+        " Check for preset override.
+        let override = s:check_for_mapping_preset(plug)
+        if !empty(override)
+            let sentry = override
+        endif
         " Get corresponding user override if it exists.
         let gentry = get(g:sexp_mappings, plug, {})
         " Parse entry into a flat dict of modechar => lhs: e.g.,

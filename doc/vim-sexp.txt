@@ -891,6 +891,7 @@ LIST MANIPULATION (normal, visual) ~
         (|) () () foo bar
 <
 REGISTER PUT ("SMART PASTE") COMMANDS (normal, visual) ~
+                                        *sexp-smart-paste* *sexp-register-put*
 
 All of the register put (paste) commands accept an optional register name via
 the standard Vim mechanism (e.g., `"ap` to put from the `"a` register), as
@@ -904,65 +905,64 @@ perform an automatic re-indent on a range whose size is determined by
 Put register before/after (normal)  ~
                                                                     *sexp_put*
 
-["x]P                                                *<Plug>(sexp_put_before)*
-["x]p                                                 *<Plug>(sexp_put_after)*
-        Put [count] copies of register x before (`P`) or after (`p`) the
-        current element; alternatively, works like "put register into list"
-        when the conditions in the following paragraph are met.
+["x]<LocalLeader>P                                   *<Plug>(sexp_put_before)*
+["x]<LocalLeader>p                                    *<Plug>(sexp_put_after)*
+        Put [count] copies of register x before (`<LocalLeader>P`) or after
+        (`<LocalLeader>p`) the current element; alternatively, works like "put
+        register into list" when the conditions in the following paragraph are
+        met.
 
         Special Behavior on List Brackets  ~
         By default, if this command is executed with the cursor on a list
         bracket (or the macro chars preceding an open), and the put direction
         is towards the list interior, it will be handled as the corresponding
         "put register into list" command:
-                p ==> |<Plug>(sexp_put_at_head)|
-                P ==> |<Plug>(sexp_put_at_tail)|
+                <LocalLeader>p ==> |<Plug>(sexp_put_at_head)|
+                <LocalLeader>P ==> |<Plug>(sexp_put_at_tail)|
         I.e., the register text will be inserted into the head or tail of the
-        list at an offset determined by [count]. If you do not like this
-        behavior, and want this command to treat lists just like regular
-        elements, simply set option *g:sexp_regput_bracket_is_target* to 0.
+        list at an offset determined by [count]. If you would prefer that this
+        command treat lists just like regular elements, simply set option
+        *g:sexp_regput_bracket_is_target* to 0.
 
         Note: If there is no current element, the register contents are put
         before or after the cursor position; moreover, there is a subtle
-        difference between `p` and `P` in this case: in particular, putting
-        _away from_ an adjacent element on the same line as the cursor forces
-        a line break between the put text and the adjacent element.
+        difference between `<LocalLeader>p` and `<LocalLeader>P` in this case:
+        in particular, putting _away from_ an adjacent element on the same
+        line as the cursor forces a line break between the put text and the
+        adjacent element.
 
-Replace element with register (normal)  ~
+Replace element/selection with register (normal, visual)  ~
 
-["x]gP                                                *<Plug>(sexp_replace_P)*
-["x]gp                                                  *<Plug>(sexp_replace)*
-        Replace the current element with [count] copies of register x. With
-        `gP`, the unnamed register (`@"`) is not updated.
-
-Replace selection with register (visual)  ~
-
-["x]P                                                 *<Plug>(sexp_replace_P)*
-["x]p                                                   *<Plug>(sexp_replace)*
-        Replace the current visual selection with [count] copies of register
-        x. With `P`, the unnamed register (`@"`) is not updated.
+["x]<M-P>                                             *<Plug>(sexp_replace_P)*
+["x]<M-p>                                               *<Plug>(sexp_replace)*
+        Replace the current element or visual selection with [count] copies of
+        register x, first expanding the visual selection to include all of any
+        partially selected elements. With `<M-P>`, the unnamed register (`@"`)
+        is not updated.
 
 Put register into list (normal)  ~
 
-["x]<M-p>                                           *<Plug>(sexp_put_at_head)*
-["x]<M-P>                                           *<Plug>(sexp_put_at_tail)*
+["x]<LocalLeader><p                                 *<Plug>(sexp_put_at_head)*
+["x]<LocalLeader>>p                                 *<Plug>(sexp_put_at_tail)*
         Put register x into the current list, making it the [count]th child
-        from head (`<M-p>`) or tail (`<M-P>`).
+        from head (`<LocalLeader><p`) or tail (`<LocalLeader>>p`).
 
         See also |sexp-regput-definition-of-current-list|.
 
 Replace child with register (normal)  ~
 
-["x]<LocalLeader>p                               *<Plug>(sexp_replace_at_head)*
-["x]<LocalLeader>P                               *<Plug>(sexp_replace_at_tail)*
-        Replace the [count]th child from head (`<LocalLeader>p`) or tail
-        (`<LocalLeader>P>`) with register x. With `<LocalLeader>P`, the
-        unnamed register (`@"`) is not updated.
+["x]<LocalLeader>[p                              *<Plug>(sexp_replace_at_head)*
+["x]<LocalLeader>]p                              *<Plug>(sexp_replace_at_tail)*
+["x]<LocalLeader>[P                            *<Plug>(sexp_replace_at_head_P)*
+["x]<LocalLeader>]P                            *<Plug>(sexp_replace_at_tail_P)*
+        Replace the [count]th child from head (`<LocalLeader>[p`) or tail
+        (`<LocalLeader>]p`) with register x. With the versions ending in `P`,
+        the unnamed register (`@"`) is not updated.
 
         See also |sexp-regput-definition-of-current-list|.
 
                                        *sexp-regput-definition-of-current-list*
-Definition of "current list"  ~
+Definition of "Current List"  ~
 By default, the preceding two commands treat a list whose bracket or macro
 char is under the cursor as the current list. Some users may prefer that a
 list be treated as a simple child element when the cursor is positioned on one
@@ -973,6 +973,33 @@ containing list is the target of the put. If you wish to enable this approach,
 set |g:sexp_regput_bracket_is_child| to 1.
 Note: Since a toplevel list has no parent, this option does not apply when the
 cursor is on the terminals of a toplevel list.
+
+IMPORTANT NOTE: |g:sexp_regput_bracket_is_child| is not yet supported.
+
+                                                *sexp-regput-builtin-overrides*
+Overriding Builtin Put Commands  ~
+You may not have much need for Vim's builtin put operators once you become
+comfortable with vim-sexp's "smart paste" commands. Since the default mappings
+are not as convenient as builtins, you may wish to remap Vim's builtin put
+operators to vim-sexp smart paste commands. The following snippet is provided
+to facilitate this. Either copy it into your |g:sexp_mappings| list to serve
+as a basis for further customization or set |g:sexp_regput_override_builtins|
+to use it as-is.
+>
+    \ 'sexp_put_before':                   {'n': 'P'},
+    \ 'sexp_put_after':                    {'n': 'p'},
+    \ 'sexp_replace':                      {'n': '<M-p>', 'x': 'p'},
+    \ 'sexp_replace_P':                    {'n': '<M-P>', 'x': 'P'},
+    \ 'sexp_put_at_head':                  {'n': '<p'},
+    \ 'sexp_put_at_tail':                  {'n': '>p'},
+    \ 'sexp_replace_at_head':              {'n': '[p'},
+    \ 'sexp_replace_at_tail':              {'n': ']p'},
+    \ 'sexp_replace_at_head_P':            {'n': '[P'},
+    \ 'sexp_replace_at_tail_P':            {'n': ']P'},
+<
+Note: Because the put before/after commands are unavailable in visual mode,
+`p` and `P` are also used for visual mode `sexp_replace`, making `vp` and `vP`
+effectively aliases to `<M-p>` and `<M-P>`.
 
                                              *sexp-regput-single-vs-multiline*
 Single vs Multi-line  ~
@@ -1057,7 +1084,6 @@ surrounding the put text in an effort to preserve the shape.
 
 If you don't like this behavior, you can disable it by setting option
 |sexp_regput_ignore_list_shape| to 1.
-
 
                                                    *sexp-regput-comment-logic*
 Constraints on Comments  ~
@@ -1534,6 +1560,14 @@ full (level 2) optimization.
 >
         " Default
         let g:sexp_aligncom_density_weight = 5
+<
+                                             *g:sexp_regput_override_builtins*
+When this is set, several of Vim's builtin put operators are remapped to
+vim-sexp's "smart paste" commands.
+For details, see |sexp-regput-builtin-overrides|.
+>
+        " Default
+        let g:sexp_regput_override_builtins = 1
 <
                                              *g:sexp_regput_bracket_is_target*
 When this is set, |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| are

@@ -898,9 +898,15 @@ the standard Vim mechanism (e.g., `"ap` to put from the `"a` register), as
 well as an optional [count] whose usage is documented with the corresponding
 command. Commands that replace existing elements have distinct `p` and `P`
 variants: by analogy with builtin `p` and `P`, the former updates the unnamed
-register (`@"`); the latter does not. Finally, all put (paste) commands
-perform an automatic re-indent on a range whose size is determined by
-|g:sexp_auto_indent_range|.
+register (`@"`); the latter does not. By default, the cursor will be left at
+the head of the put text, but this can be changed with option
+|g:sexp_regput_curpos|. All put (paste) commands perform an automatic
+re-indent on a range whose size is determined by |g:sexp_auto_indent_range|.
+
+Note: Although most users will probably wish to remap the builtin put
+operators to vim-sexp's smarter, Lisp-aware counterparts, the builtin put
+operators will not be overridden without an explicit request via one of the
+methods discussed in |sexp-overriding-builtins|.
 
 Put register before/after (normal)  ~
                                                                     *sexp_put*
@@ -976,7 +982,7 @@ cursor is on the terminals of a toplevel list.
 
 IMPORTANT NOTE: |g:sexp_regput_bracket_is_child| is not yet supported.
 
-                                                *sexp-regput-builtin-overrides*
+                                             *sexp-regput-overriding-builtins*
 Overriding Builtin Put Commands  ~
 You may not have much need for Vim's builtin put operators once you become
 comfortable with vim-sexp's "smart paste" commands. Since the default mappings
@@ -1000,6 +1006,14 @@ to use it as-is.
 Note: Because the put before/after commands are unavailable in visual mode,
 `p` and `P` are also used for visual mode `sexp_replace`, making `vp` and `vP`
 effectively aliases to `<M-p>` and `<M-P>`.
+
+                                              *sexp-regput-cursor-positioning*
+Cursor Positioning  ~
+By default, the cursor is positioned at the start of the pasted form(s), but
+if you prefer that the cursor be left at the end (as it is for Vim's builtin
+`p` operator), simply set |g:sexp_regput_curpos| to 1. Alternatively, for a
+more "telescopic" (put at-a-distance) feel, set the option to 2 to preserve
+the original (pre-paste) cursor position.
 
                                              *sexp-regput-single-vs-multiline*
 Single vs Multi-line  ~
@@ -1564,10 +1578,22 @@ full (level 2) optimization.
                                              *g:sexp_regput_override_builtins*
 When this is set, several of Vim's builtin put operators are remapped to
 vim-sexp's "smart paste" commands.
-For details, see |sexp-regput-builtin-overrides|.
+For details, see |sexp-regput-overriding-builtins|.
 >
         " Default
         let g:sexp_regput_override_builtins = 1
+<
+                                                        *g:sexp_regput_curpos*
+Determines where cursor is placed after a register put ("smart paste")
+command:
+  0  head of put form(s)
+  1  tail of put form(s)
+  2  preserve original cursor position (as closely as possible)
+  
+For details, see |sexp-regput-cursor-positioning|.
+>
+        " Default
+        let g:sexp_regput_curpos = 0
 <
                                              *g:sexp_regput_bracket_is_target*
 When this is set, |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| are
@@ -1582,9 +1608,12 @@ list (i.e., `P` from head or `p` from tail).
 <
 
                                               *g:sexp_regput_bracket_is_child*
-When this is set, the register put commands that put into a list will not
-treat a non-toplevel list whose brackets/macro chars are under the cursor as
-the target list, but will instead target its parent.
+When this is set, the register put commands that put into a list (or replace a
+child element) will not treat a non-toplevel list whose brackets/macro chars
+are under the cursor as the target list, but will instead target its parent.
+In other words, setting this option ensures a list is not considered current
+unless the cursor is completely inside it (or there are no more containing
+lists).
 Motivation: To understand why you might wish to set this, see
 |sexp-regput-definition-of-current-list|.
 >

@@ -26,6 +26,7 @@ let s:feat_notify = {
             \ 'regput_untrimmed_is_linewise',
             \ 'regput_linewise_forces_multiline',
             \ 'regput_ignore_list_shape',
+            \ 'regput_curpos',
         \ ],
         \ 'msg':
             \   "Vim-sexp now provides smarter, Lisp-aware versions of `register put'"

@@ -2941,9 +2941,18 @@ endfunction
 "   --[[ Beginning of merged-in tgt_info dict
 "   count:           [count] associated with the operation
 "   put_mode:        one of 'put', 'put_child', 'replace', 'replace_child'
-"   tail:            possibly adjusted version of the input flag
-"                    Note: Adjustment performed only when cursor not on element
-"   range[]:         position pair specifying exclusive range for the put
+"   tail:            At the time of command invocation, 'tail' indicates either the put
+"                    *direction* (non-child put) or the *side* of the list from which the
+"                    insert location is calculated (child put). At this point, however,
+"                    this flag has roughly the same meaning for both put classes, since in
+"                    the child put modes, we've already used the "side" to determine range.
+"   P:               (replace modes only) 1 iff command variant inhibits update of unnamed
+"                    register
+"   vrange[]:        position pair specifying pre-op visual range (used for restore)
+"   range[]:         for non-replace modes, a position pair specifying exclusive range for
+"                    the put; for replace modes, this range is used by positioning logic,
+"                    but the replacement splice itself uses the inclusive inner_range[].
+"   inner_range[]:   (replace modes only) inclusive range for the replacement splice
 "   is_bra[]:        1 iff corresponding end of range is bracket
 "   is_ele[]:        1 iff coreesponding end of range is element
 "   tail:            Meaning varies slightly across put modes, but in some sense, this
@@ -3362,52 +3371,40 @@ function! s:regput__get_splice_info(count, ctx, reg, sep, flags)
     return ret
 endfunction
 
-" Perform register put for all 4 command types: put, put_child, replace, replace_child.
-function! s:regput__impl(tgt, count, tail)
-    let curpos = getpos('.')
-    " Save/adjust visual marks.
-    " Question: Does this really need to be done? Don't worker functions do it? If it's
-    " still necessary, it's needed at higher level (possibly even in pre_op()).
-    let [vs, ve] = s:get_visual_marks()
-
-    " Calculate the put.
-    let reg = s:regput__get_reginfo()
-    if empty(reg) || empty(reg.text)
-        " Treat empty text like NOOP!
-        return
+" Calculate and return a dict indicating the following (assuming regput operation has just
+" completed):
+"   curpos:   desired cursor position (applies only to non-visual commands)
+"   orange:   the operated on range: '[ to '] minus any surrounding whitespace
+"   irange:   the re-indent range (i.e., range provided to s:post_op_reindent())
+" Pre Condition: '[ and '] delineate the put text (including any whitespace separators).
+function! s:regput__postop(ctx, sep, orig_range)
+    " Initialize return dict to values that may subsequently be overridden.
+    let ret = {
+        \ 'curpos': a:ctx.curpos,
+        \ 'orange': [getpos("'["), getpos("']")],
+        \ 'irange': [getpos("'["), getpos("']")]}
+    " Adjust both ends of operated-on range to exclude non-ignored whitespace.
+    " Assumption: Upstream short-circuit precludes possibility of empty or whitespace-only
+    " put, thereby guaranteeing success of subsequent searches for non-ws.
+    for i in range(2)
+        " Move past any surrounding whitespace separators to non-ws.
+        if a:sep[i] != s:EMPTY
+            call s:setcursor(ret.orange[i])
+            " Note: Upstream logic guarantees this will succeed.
+            call searchpos('\S', (i ? 'b' : '') . 'cW')
+            " Make sure we're not on ignored whitespace.
+            let ret.orange[i] = sexp#current_element_terminal(i)
+        endif
+    endfor
+    " If option requests curpos target of head or tail, make adjustment.
+    let idx = !!g:sexp_regput_curpos
+    if g:sexp_regput_curpos == idx
+        " Desired position is 0 (head) or 1 (tail).
+        let ret.curpos = ret.orange[idx]
     endif
-    let ctx = s:regput__get_context(a:tgt)
-    let sep = s:regput__get_seps(ctx, reg)
-    let spl = s:regput__get_splice_info(a:count, ctx, reg, sep, {})
-    let ps = [vs, ve]
-    " TODO: Consider having put__get_context() build the position list.
-    let ps = s:concat_positions(vs, ve, ctx.range)
-    " Re-indent logic needs to know whether range was colinear.
-    let range_linespan = ctx.range[0][1] - ctx.range[1][1]
-    " Note: Set 'failsafe override' for put modes that can change non-ws.
-    call s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps,
-        \ ctx.put_mode =~ 'replace')
-    " Determine final cursor position.
-    " Design Decision: Analogously to builtin p and P, always position at end;
-    " however, unlike the builtins, always position on last non-ws at end.
-    let curpos = getpos("']")
-    " FIXME: Might not want to position cursor on end of put text.
-    " TODO: User feedback...
-    if sep[1] != s:EMPTY
-        " Need to back '] up to closest non-ws (i.e., final put element).
-        " TODO: Consider trimming register context to obviate need for this.
-        call s:setcursor(curpos)
-        " TODO: Consider adding stopline, but shouldn't be necessary.
-        " Assumption: Earlier short-circuit precludes possibility of empty or
-        " whitespace-only put, thereby ensuring this search will succeed.
-        let p = searchpos('\S', 'bW')
-        let curpos = [0, p[0], p[1], 0]
-        call setpos("']", curpos)
-    endif
-    " Determine range to pass to s:post_op_reindent.
+    " If necessary, adjust end of re-indent range.
     " Assumption: Indent logic always looks back to non-empty line preceding start, so
     " there's no need for start adjustment.
-    let s = getpos("'[")
     " Special Case: If ele/bra following put text was originally colinear with ele/bra on
     " other side, adjust reindent range to include ele/bra past put text.
     " Rationale: s:post_op_reindent() assumes a NL creates a 'clean point', but this is
@@ -3417,16 +3414,58 @@ function! s:regput__impl(tgt, count, tail)
     " thereby obviating the need to include that element in the reindent. In the colinear
     " tgt/adj case, however, there can be no 'clean point' before whatever follows the
     " put, so we must include it.
-    if range_linespan == 0
+    if a:orig_range[0][1] == a:orig_range[1][1]
         " Use adjusted range end.
-        let e = ctx.range[1]
-    else
-        let e = getpos("']")
+        " Assumption: Re-indent logic will pull in the entire element automatically; no
+        " need to find its end here.
+        let ret.irange[1] = a:ctx.range[1]
     endif
-    " FIXME: Make sure all branches above set curpos.
-    call s:post_op_reindent(s, e, [ps, curpos])
-    call s:setcursor(curpos)
-    call s:set_visual_marks([vs, ve])
+    return ret
+endfunction
+
+" Perform register put for all 4 command types (put, put_child, replace, replace_child)
+" and afterwards, visual mode restoration and option-dependent cursor repositioning.
+function! s:regput__impl(tgt, count)
+    let curpos = getpos('.')
+    " Calculate the put.
+    let reg = s:regput__get_reginfo()
+    if empty(reg) || empty(reg.text)
+        " Treat empty text like NOOP!
+        return
+    endif
+    let ctx = s:regput__get_context(a:tgt)
+    let sep = s:regput__get_seps(ctx, reg)
+    let spl = s:regput__get_splice_info(a:count, ctx, reg, sep, {})
+    " TODO: Consider having put__get_context() build the position list.
+    let ps = s:concat_positions(ctx.curpos, ctx.vrange, ctx.range)
+    " Re-indent logic will need the original (unadjusted) range.
+    " TODO: Consider having both ranges be part of context dict: e.g., range and arange
+    let orig_range = deepcopy(ctx.range)
+    " Note: Set 'failsafe override' for put modes that can change non-ws.
+    let repl_text = s:yankdel_range(spl.range[0], spl.range[1], spl.text, spl.inc, ps,
+        \ ctx.put_mode =~ 'replace')
+    " If not inhibited, update unnamed register.
+    " TODO: Consider integrating this into yankdel_range(), which, in its current form,
+    " *never* updates unnamed register (since it's been used exclusively for things that
+    " shouldn't update any registers).
+    if a:tgt.put_mode =~ 'replace' && !a:tgt.P
+        let @" = repl_text
+    endif
+    " Calculate reindent range and final curpos.
+    let d = s:regput__postop(ctx, sep, orig_range)
+    " Perform re-indent with newly-calculated positions added to adjustment list.
+    call s:post_op_reindent(d.irange[0], d.irange[1], [ps, d.curpos, d.orange])
+    if ctx.mode ==? 'v'
+        " Design Decision: Original selection may have been partial; set marks to
+        " encompass operated-on range, excluding any surrounding whitespace.
+        call s:set_visual_marks(d.orange)
+    else
+        " Restore original (but adjusted) visual marks and set post-op cursor position.
+        call s:set_visual_marks(ctx.vrange)
+    endif
+    " Since visual mode commands end in normal mode, we can always respect
+    " option-configurable desired curpos.
+    call s:setcursor(d.curpos)
 endfunction
 
 " Calculate and return the tgt_info dict needed by s:regput__get_context() for a 'put'
@@ -3464,7 +3503,8 @@ endfunction
 function! s:put__get_tgt(count, tail)
     let curpos = getpos('.')
     let ret = {
-        \ 'put_mode': 'put', 'count': a:count,
+        \ 'curpos': curpos, 'mode': 'n', 'put_mode': 'put', 'count': a:count,
+        \ 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': a:tail, 'force_nl': [0, 0]}
@@ -3563,7 +3603,7 @@ function! sexp#put(count, tail)
     if !s:regput__handle_as_put_child_maybe(a:count, a:tail)
         let count = a:count ? a:count : 1
         let tgt = s:put__get_tgt(count, a:tail)
-        call s:regput__impl(tgt, count, a:tail)
+        call s:regput__impl(tgt, count)
     endif
 endfunction
 
@@ -3606,16 +3646,15 @@ function! s:replace__get_tgt_normal(count, tgt)
 endfunction
 
 " Note: To avoid duplication, both replace and replace_child are handled by this function.
-" TODO: Decide about arg P, which is needed only for replace_child, and probably needs to
-" make it into the dict, since it will be needed downstream.
 function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
+    let curpos = getpos('.')
     let ret = {
-        \ 'put_mode': a:put_mode, 'count': a:count,
+        \ 'mode': a:mode, 'put_mode': a:put_mode, 'count': a:count, 'P': a:P,
+        \ 'curpos': curpos, 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'inner_range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': -1, 'force_nl': [0, 0]}
-    let curpos = getpos('.')
     try
         if a:put_mode == 'replace'
             " Allow mode-specific function to augment dict with the inner_range.
@@ -3656,16 +3695,16 @@ function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
     endtry
 endfunction
 
-" Note: For replace modes, tail indicates which p command was used: 0 == 'p', 1 == 'P'.
+" Note: For replace modes, P indicates which p command was used: 0 == 'p', 1 == 'P'.
 " Although it doesn't affect the result of the put, it does determine whether the unnamed
 " register is updated.
-function! sexp#replace(mode, count, tail)
+function! sexp#replace(mode, count, P)
     try
         let count = a:count ? a:count : 1
         " Target determination is mode-specific.
-        let tgt = s:replace_mode__get_tgt('replace', a:mode, count, -1, -1)
+        let tgt = s:replace_mode__get_tgt('replace', a:mode, count, -1, a:P)
         " Design Decision: Let tail==1 represent put with P.
-        call s:regput__impl(tgt, count, a:tail)
+        call s:regput__impl(tgt, count)
     catch /sexp-warning:/
         call sexp#warn#msg(v:exception)
     catch
@@ -3677,21 +3716,19 @@ endfunction
 " Calculate and return the tgt_info dict needed by s:regput__get_context() for the case of
 " a 'put_child' command.
 " Note: For details on this dict, see header of s:regput__get_context().
-" Tail Logic: For a non-child put, 'tail' indicates the *direction* of the put; for child
-" put mode, however, 'tail' indicates the side of the list at which the insert occurs (or
-" from which the insert position is offset by [count]). Although we could treat a child
-" put as a non-directional put, doing so would lead to the following ambiguity: in the
-" absence of a target, how do we decide which existing element to append/prepend to when
-" our contextual logic indicates appending/prepending makes sense. OTOH, if we make the
-" put directional, which direction makese sense? I.e., which element should server as the
-" target? Any answer to this question is bound to be somewhat arbitrary, but here's what
-" I'm thinking makes sense: when the put is *between* elements, the target is the element
-" furthest from the reference bracket (i.e., the bracket on the side from which put
-" occurs). As long as we take this approach, it's not necessary to toggle 'flag' in the
-" nominal case (put between child elements):
-" return dict: consider...
-"   put at head (a:tail == 0) <==> P (tail == 0)
-"   put at tail (a:tail == 1) <==> p (tail == 1)
+" Tail Logic: Although we could treat a child put as a non-directional put, doing so would
+" lead to the following ambiguity: in the absence of a target, how do we decide which
+" existing element to append/prepend to when our contextual logic indicates
+" appending/prepending makes sense. OTOH, if we make the put directional, which direction
+" makese sense? I.e., which element should serve as the target? Any answer to this
+" question is bound to be somewhat arbitrary, but here's what I'm thinking makes sense:
+" when the put is *between* elements, the target is the element furthest from the
+" reference bracket (i.e., the bracket on the side from which put occurs). As long as we
+" take this approach, it's not necessary to toggle 'tail' in the nominal case (put between
+" child elements): i.e.,
+"   -- Command --                  -- Implemented As --
+"   put at head (a:tail == 0)      put before target (P) (tail == 0)
+"   put at tail (a:tail == 1)      put after target (p) (tail == 1)
 " However, when the [count] is so large that the desired element doesn't exist, we put
 " between terminal child and list bracket, treating the terminal child as the target.
 " Since the put in this case is in the opposite direction relative to the target, we
@@ -3699,7 +3736,8 @@ endfunction
 function! s:put_child__get_tgt(count, tail)
     let cursor = getpos('.')
     let ret = {
-        \ 'put_mode': 'put_child', 'count': a:count,
+        \ 'mode': 'n', 'put_mode': 'put_child', 'count': a:count,
+        \ 'curpos': cursor, 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': a:tail, 'force_nl': [0, 0]}
@@ -3711,7 +3749,7 @@ function! s:put_child__get_tgt(count, tail)
             if a:count > 1
                 " Child other than terminal element requested.
                 " Find element before/after which to insert.
-                let c = s:child_range(a:count, a:tail, 0,
+                let c = s:child_range(a:count, a:tail, 1,
                     \ {'list_info': li, 'exact_count': 0})
                 if c.missing
                     " Requested child doesn't exist, so use limiting list bracket and
@@ -3763,31 +3801,7 @@ function! sexp#put_child(count, tail)
     let count = a:count ? a:count : 1
     let tgt = s:put_child__get_tgt(count, a:tail)
     " Note: [count] is used only for child location, so hardcode to 1.
-    call s:regput__impl(tgt, 1, a:tail)
-endfunction
-
-" Calculate and return the tgt_info dict needed by s:regput__get_context() for the case of
-" a 'replace_child' command.
-" Note: For details on this dict, see header of s:regput__get_context().
-" Note: For details on the meaning of 'tail', see header of put_child__get_tgt().
-function! s:replace_child__get_tgt(count, tail, P)
-    let cursor = getpos('.')
-    let ret = {
-        \ 'put_mode': 'put_child', 'count': a:count,
-        \ 'range': [s:nullpos, s:nullpos],
-        \ 'inner_range': [s:nullpos, s:nullpos],
-        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': a:tail, 'force_nl': [0, 0]}
-    try
-        let ret.inner_range = s:child_range(a:count, a:tail, 0, {'exact_count': 1})
-        if !ret.inner_range[0][1]
-            " Requested child doesn't exist!
-            throw "sexp-warning: 'replace_child': the requested child does not exist!"
-        endif
-    finally
-        call s:setcursor(cursor)
-        return ret
-    endtry
+    call s:regput__impl(tgt, 1)
 endfunction
 
 function! sexp#replace_child(count, tail, P)
@@ -3795,7 +3809,7 @@ function! sexp#replace_child(count, tail, P)
         let count = a:count ? a:count : 1
         let tgt = s:replace_mode__get_tgt('replace_child', 'n', count, a:tail, a:P)
         " Note: [count] is used only for child location, so hardcode to 1.
-        call s:regput__impl(tgt, 1, a:tail)
+        call s:regput__impl(tgt, 1)
     catch /sexp-warning:/
         call sexp#warn#msg(v:exception)
     catch

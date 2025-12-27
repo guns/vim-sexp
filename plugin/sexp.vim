@@ -244,6 +244,10 @@ if !exists('g:sexp_regput_ignore_list_shape')
     let g:sexp_regput_ignore_list_shape = 0
 endif
 
+if !exists('g:sexp_regput_curpos')
+    let g:sexp_regput_curpos = 0
+endif
+
 " Expert options
 if !exists('g:sexp_inhibit_failsafe')
     let g:sexp_inhibit_failsafe = 0

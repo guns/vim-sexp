@@ -28,13 +28,7 @@ let s:feat_notify = {
             \ 'regput_ignore_list_shape',
             \ 'regput_curpos',
         \ ],
-        \ 'msg':
-            \   "Vim-sexp now provides smarter, Lisp-aware versions of `register put'"
-            \ . " commands. You may wish to remap the builtin put operators to use them."
-            \ . " For more information, :help sexp-smart-paste. To silence this warning in"
-            \ . " future sessions, set any of the options pertaining to this feature"
-            \ . " (even to its default value): e.g.,"
-            \ . " let g:sexp_regput_bracket_is_target = 1"
+        \ 'msg': "vim-sexp: You could be using \"Smart Paste\" for this. (:help sexp-smart-paste)"
     \ },
 \ }
 

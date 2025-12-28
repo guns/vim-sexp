@@ -2438,19 +2438,20 @@ endfunction
 " list_info        If not empty or omitted, use to skip call to s:list_info()
 " exact_count      If the requested child does not exist, return nullpos pair: i.e., don't
 "                  simply return the terminal element.
+" inner_only       pass-through to s:list_info()
 " TODO: Add option that won't consider a list whose brackets/macros we're on.
 " TODO: Probably accept position other than curpos.
 function! s:child_range(count, tail, inner, ...)
     let cursor = getpos('.')
     let ret = {'range': [s:nullpos, s:nullpos], 'missing': a:count}
     try
-        if a:0
-            let top_is_list = get(a:1, 'top_is_list', 0)
-            let li = get(a:1, 'list_info', {})
-            let exact_count = get(a:1, 'exact_count', 0)
-        endif
+        " Extract optional flags
+        let top_is_list = a:0 ? get(a:1, 'top_is_list', 0) : 0
+        let li = a:0 ? get(a:1, 'list_info', {}) : {}
+        let exact_count = a:0 ? get(a:1, 'exact_count', 0) : 0
+        let inner_only = a:0 ? get(a:1, 'inner_only', 0) : 0
         " Get relevant info about current list, including desired terminal.
-        let li = empty(li) ? s:list_info(a:tail) : li
+        let li = empty(li) ? s:list_info(a:tail, {'inner_only': inner_only}) : li
         " Attempt to get non-null terminal range as starting point for search.
         " Caveat: Don't update return dict till desired child is found.
         let range = li.terminal_range
@@ -3665,7 +3666,8 @@ function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
             endif
         else " 'replace_child'
             let ret.tail = a:tail
-            let cr = s:child_range(a:count, a:tail, 1, {'exact_count': 1})
+            let cr = s:child_range(a:count, a:tail, 1,
+                \ {'exact_count': 1, 'inner_only': g:sexp_regput_bracket_is_child})
             if cr.missing
                 " Requested child doesn't exist!
                 throw "sexp-warning: 'replace_child': the requested child does not exist!"
@@ -3742,7 +3744,7 @@ function! s:put_child__get_tgt(count, tail)
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': a:tail, 'force_nl': [0, 0]}
     try
-        let li = s:list_info(a:tail) 
+        let li = s:list_info(a:tail, {'inner_only': g:sexp_regput_bracket_is_child}) 
         if li.terminal_range[0][1]
             " Non-empty list
             let r = ret.range
@@ -5520,16 +5522,22 @@ function! s:adjust_positions(start, end, splice, delta, ps)
     endfor
 endfunction
 
-" Calculate and return a dict describing the current list: i.e., the list within or on
-" which the cursor lies.
+" Calculate and return a dict describing the current list, defined as the smallest list
+" containing the test position, where the containment test is exclusive of brackets/macro
+" chars iff optional 'inner_only' flag is set.
 " Design Decision: Macro chars considered part of the list, just like brackets.
 " -- Args --
-" tail:   determines whether terminal_range should reflect head (0) or tail (1)
+"   tail:   determines whether terminal_range should reflect head (0) or tail (1)
+" -- Optional Dict --
+"   pos                position to test, defaults to curpos
+"   inner_only         if set, current list must contain (in bracket-exclusive sense) the
+"                      test position; defaults to 0
 " Return Dict:
 "   macro:           position of start of macro chars, else nullpos
 "   brackets[]:      [open, close], else [s:nullpos, s:nullpos] if no list
 "   terminal_range:  pos pair representing extents of terminal element requested by
 "                    a:tail, else nullpos_pair
+"   fallback:        1 iff caller wanted parent of the list represented by brackets[]
 " Exception Handling: Bare returns inside try/finally used to short-circuit remainder of
 " function, with cleanup and return value construction assured by the finally block.
 " TODO: Consider allowing caller to provide count to get non-terminal; let this be a
@@ -5538,44 +5546,62 @@ endfunction
 " duplication as it is now.
 " Partial Solution: child_range() accepts this function's return as optional arg, thereby
 " avoiding most of the duplication.
-" TODO: Consider having this accept a position.
-function! s:list_info(tail)
-    let cursor = getpos('.')
+function! s:list_info(tail, ...)
+    let save_cursor = getpos('.')
     let ret = {
         \ 'macro': s:nullpos, 'brackets': [s:nullpos, s:nullpos],
-        \ 'terminal_range': s:nullpos_pair
+        \ 'terminal_range': s:nullpos_pair,
+        \ 'fallback': 0,
     \ }
     try
-        " Make sure we get macro chars if they exist.
+        " Extract optional flags.
+        let inner_only = a:0 ? get(a:1, 'inner_only', 0) : 0
+        " Has caller specified a (non-cursor) position to test?
+        let pos = a:0 ? get(a:1, 'pos', s:nullpos) : s:nullpos
+        if pos[1] | call s:setcursor(pos) | endif
+        " Assumption: We're on test position.
+        " Move to its head, which is a safe place from which to search for containing open
+        " bracket if necessary.
         let p = s:move_to_current_element_terminal(0)
-        " Are we on a list?
         let isl = p[1] ? s:is_list(p[1], p[2]) : 0
-        if !isl
-            " Not *on* list brackets or macro chars. Move to parent list bracket in
-            " desired direction.
-            let p = s:move_to_nearest_bracket(a:tail)
-            if p[1]
-                " Update isl to allow downstream logic to work naturally.
-                " Note: 2=open 3=close
-                let isl = a:tail + 2
+        if !isl || inner_only
+            " Either not on list structure, or we are, but want its parent list.
+            " Look for nearest open bracket.
+            let pb = s:move_to_nearest_bracket(0)
+            if pb[1]
+                " Found parent open, but we need to know if there are macro chars.
+                let p = s:move_to_current_element_terminal(0)
+                if p != pb
+                    " Must be macro chars.
+                    let ret.macro = p
+                    " Move to open.
+                    call s:setcursor(pb)
+                endif
+                " Ensure subsequent macro char handling is skipped.
+                let isl = 2
+            elseif isl
+                " No parent, but we're on either open or macros of original list, which
+                " will have to suffice for current.
+                let ret.fallback = 1
             else
-                " No current or parent list!
+                " No current or parent list.
                 return
             endif
-        elseif isl == 1
-            " On macro chars preceding list.
+        endif
+        " Assumption: Arrival here guarantees we're on either open bracket or macro chars,
+        " as indicated by isl.
+        " Note: The following 'if' can be entered only if we started on macro chars and
+        " didn't look for (or looked for and failed to find) containing open.
+        if isl == 1
+            " On start of macro chars preceding list.
             " Save macro char start pos and move to open bracket.
             let ret.macro = p
             call s:setcursor(s:current_macro_character_terminal(1))
             call s:move_char(1)
-            " Update isl to simplify downstream logic.
-            let isl = 2
         endif
-        " We're on open or close bracket.
-        let i = isl - 2
-        let ret.brackets[i] = getpos('.')
-        " Find the opposite bracket.
-        let ret.brackets[!i] = s:nearest_bracket(!i)
+        " We're on open bracket. Save it and find close.
+        let ret.brackets[0] = getpos('.')
+        let ret.brackets[1] = s:nearest_bracket(1)
         " Begin search for list terminal from bracket indicated by a:tail.
         call s:setcursor(ret.brackets[a:tail])
         " Look *inward* for first non-whitespace.
@@ -5590,7 +5616,7 @@ function! s:list_info(tail)
         endif
     finally
         " Restore original position.
-        call s:setcursor(cursor)
+        call s:setcursor(save_cursor)
         return ret
     endtry
 endfunction
@@ -5618,11 +5644,14 @@ endfunction
 " if not on or within a non-empty list.
 " -- Args --
 " tail:  0=head 1=tail
+" -- Optional Args --
+"   pos                position to test, defaults to curpos
+"   inner_only         if set, current list must contain (in bracket-exclusive sense) the
+"                      test position; defaults to 0
 " Note: This is really just a convenience wrapper around s:list_info(); alternatively,
 " could use s:child_range() with count of 0 or 1.
-" FIXME!!!! This is broken, which breaks cleanup_ws()!!!
 function! s:list_terminal(tail, ...)
-    let li = s:list_info(a:tail)
+    let li = s:list_info(a:tail, a:0 ? a:1 : {})
     return li.terminal_range
 endfunction
 

@@ -980,8 +980,6 @@ set |g:sexp_regput_bracket_is_child| to 1.
 Note: Since a toplevel list has no parent, this option does not apply when the
 cursor is on the terminals of a toplevel list.
 
-IMPORTANT NOTE: |g:sexp_regput_bracket_is_child| is not yet supported.
-
                                              *sexp-regput-overriding-builtins*
 Overriding Builtin Put Commands  ~
 You may not have much need for Vim's builtin put operators once you become

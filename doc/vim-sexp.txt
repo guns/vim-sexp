@@ -902,11 +902,14 @@ register (`@"`); the latter does not. By default, the cursor will be left at
 the head of the put text, but this can be changed with option
 |g:sexp_regput_curpos|. All put (paste) commands perform an automatic
 re-indent on a range whose size is determined by |g:sexp_auto_indent_range|.
+By default, vim-sexp attempts to validate register contents before pasting
+them. To learn more about this behavior, including how to disable/customize
+it, see |sexp-regput-register-parsing|.
 
 Note: Although most users will probably wish to remap the builtin put
 operators to vim-sexp's smarter, Lisp-aware counterparts, the builtin put
 operators will not be overridden without an explicit request via one of the
-methods discussed in |sexp-overriding-builtins|.
+methods discussed in |sexp-regput-overriding-builtins|.
 
 Put register before/after (normal)  ~
                                                                     *sexp_put*
@@ -1012,6 +1015,26 @@ if you prefer that the cursor be left at the end (as it is for Vim's builtin
 `p` operator), simply set |g:sexp_regput_curpos| to 1. Alternatively, for a
 more "telescopic" (put at-a-distance) feel, set the option to 2 to preserve
 the original (pre-paste) cursor position.
+
+                                                *sexp-regput-register-parsing*
+Register Parsing  ~
+Before putting a register into the buffer, vim-sexp attempts to parse its
+contents as lisp code of a dialect corresponding to 'filetype'. The primary
+goal of this parsing is to detect problems such as unbalanced parentheses,
+which could render the code in the buffer malformed. A secondary goal is to
+characterize the register contents in a way that can inform decisions about
+how to separate the put text from the surrounding buffer text: e.g., Does the
+text begin or end with a comment? Does it contain multiple toplevel forms?
+The parsing is straightforward when Treesitter is available; when only the
+legacy syntax engine is available, vim-sexp must put the register contents
+into a hidden buffer where its own syntax-aware functions can be used to
+perform the parsing. In either case, the parsing should be completely
+invisible. With the default configuration, you will be prompted to decide
+whether to proceed with a put of invalid register contents. If you don't like
+this behavior, you can customize it with option
+|g:sexp_regput_invalid_register_action|.
+Note: Although it is possible to disable parsing altogether, it is not
+recommended. For details, see |g:sexp_regput_inhibit_regparse|.
 
                                              *sexp-regput-single-vs-multiline*
 Single vs Multi-line  ~
@@ -1662,6 +1685,32 @@ For additional details, see |sexp-regput-list-shape-preservation|.
 >
         " Default
         let g:sexp_regput_ignore_list_shape = 0
+<
+
+                                       *g:sexp_regput_invalid_register_action*
+Enumerated value that determines how to handle an attempt to put text that
+fails to parse as valid lisp (of a dialect determined by buffer 'filetype').
+  -1  Present continue/abort prompt to user
+   0  Abort paste with warning
+   1  Paste with warning
+   2  Paste silently
+
+>
+        " Default
+        let g:sexp_regput_invalid_register_action = -1
+<
+                                              *g:sexp_regput_inhibit_regparse*
+Set to 1 to inhibit the parsing of register contents described in
+|sexp-regput-register-parsing|. With parsing disabled, vim-sexp uses only
+simplistic, regex-based matching to determine the most critical information
+about the register: e.g., whether it contains comments. However, this approach
+is not able to fully and correctly characterize the register contents and
+makes no attempt to detect errors; thus, unless you're having issues with the
+parser, it's best not to disable it. (And if you do experience issues, please
+create an issue report.)
+>
+        " Default
+        let g:sexp_regput_inhibit_regparse = 0
 <
 
 Expert options ~

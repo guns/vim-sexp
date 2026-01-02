@@ -7,14 +7,15 @@ local ApiRange = require'sexp.range'
 -- This class is used to communicate the results of parsing text as current filetype.
 -- Intended Use Case: Characterize contents of register used as source of put.
 ---@class ParseResult
----@field err_count integer
 ---@field elem_count integer
+---@field err_loc VimPos4
+---@field err_hint string
 ---@field is_ml boolean
 ---@field linewise boolean
 ---@field has_com boolean
 ---@field s_is_com boolean
 ---@field e_is_com boolean
----@field error_ranges VimPos4Range[]
+---@field err_ranges VimPos4Range[]
 ---@field node_ranges VimPos4Range[]
 ---@field text string
 
@@ -519,12 +520,12 @@ function M.analyze_codestr(codestr, filetype)
   ---@local ParseResult
   -- Note: Table structure matches corresponding dict in legacy Vim implementation.
   local ret = {
-    err_count = 0,
     elem_count = 0,
+    err_loc = {0,0,0,0}, err_hint = "",
     is_ml = false,
     has_com = false, s_is_com = false, e_is_com = false,
     node_ranges = {},
-    error_ranges = {},
+    err_ranges = {},
     -- Surrounding whitespace is always superseded by builtin separator logic.
     text = vim.trim(codestr),
   }
@@ -538,12 +539,13 @@ function M.analyze_codestr(codestr, filetype)
   -- Note: Intentionally parsing raw (unstripped) input string.
   local tree = vim.treesitter.get_string_parser(codestr, ft):parse()[1]
   local root = tree:root()
-  -- Execute query for errors and save the location of each.
-  for _, node, _ in query:iter_captures(root, 0) do
-    table.insert(ret.error_ranges,
-      {ApiPos:new(node:start()):to_vim4(), ApiPos:new(node:end_()):to_vim4(true)})
+  -- Execute query for errors, saving only the first one in return table.
+  local _, node = vim.iter(query:iter_captures(root, 0)):next()
+  if node then
+    ret.err_loc = ApiPos:new(node:start()):to_vim4()
+    -- TODO: Should we attempt to provide hint?
+    ret.err_hint = ""
   end
-  ret.err_count = #ret.error_ranges
   -- Accumulate ranges of all (named) top-level nodes and ensure 'has_com' is set
   -- iff any of the nodes is a comment.
   ---@type TSNode
@@ -581,12 +583,17 @@ function M.analyze_codestr(codestr, filetype)
   ret.is_ml = s[2] ~= e[2]
   -- Perform 'linewise' check that takes option into account.
   -- If trailing newline, no need to check further.
+  -- TODO: I think this check is overkill: in particular, I don't know of any lisps which
+  -- permit forms to end in an ignored whitespace char.
   ret.linewise = codestr:sub(-1) == "\n"
   if not ret.linewise and vim.g.sexp_regput_untrimmed_is_linewise ~= 0 then
     -- One more chance...
-    local s_is_ws, e_is_ws = codestr:sub(1):match("%s"), codestr:sub(-1):match("%s")
+    local s_is_ws, e_is_ws = codestr:sub(1, 1):match("%s"), codestr:sub(-1):match("%s")
     if s_is_ws or e_is_ws then
       -- Found leading/trailing whitespace but need to ensure it's not ignored.
+      -- TODO: Is this really necessary? I don't know of any lisps that permit forms to
+      -- end with literal, escaped whitespace; moreover, the legacy Vim parser doesn't
+      -- currently check for it.
       local erow, ecol = vim.fn.line('$') - 1, vim.fn.col({vim.fn.line('$'), '$'}) - 1
       local snode = root:named_descendant_for_range(0, 0, 0, 1)
       local enode = root:named_descendant_for_range(erow, ecol, erow, ecol+1)
@@ -594,10 +601,7 @@ function M.analyze_codestr(codestr, filetype)
         s_is_ws and snode and not is_node_rgn_type(snode, "str_com_chr")
         or e_is_ws and enode and not is_node_rgn_type(enode, "str_com_chr")
     end
-  else
-    ret.linewise = 0
   end
-  print("linewise=" .. tostring(ret.linewise))
   return ret
 end
 

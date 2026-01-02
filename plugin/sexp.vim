@@ -237,7 +237,7 @@ if !exists('g:sexp_regput_untrimmed_is_linewise')
 endif
 
 if !exists('g:sexp_regput_linewise_forces_multiline')
-    let g:sexp_regput_linewise_forces_multiline = 0
+    let g:sexp_regput_linewise_forces_multiline = 1
 endif
 
 if !exists('g:sexp_regput_ignore_list_shape')
@@ -246,6 +246,14 @@ endif
 
 if !exists('g:sexp_regput_curpos')
     let g:sexp_regput_curpos = 0
+endif
+
+if !exists('g:sexp_regput_invalid_register_action')
+    let g:sexp_regput_invalid_register_action = -1
+endif
+
+if !exists('g:sexp_regput_inhibit_regparse')
+    let g:sexp_regput_inhibit_regparse = 0
 endif
 
 " Expert options

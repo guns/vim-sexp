@@ -914,13 +914,14 @@ methods discussed in |sexp-regput-overriding-builtins|.
 Put register before/after (normal)  ~
                                                                     *sexp_put*
 
-["x]<LocalLeader>P                                   *<Plug>(sexp_put_before)*
 ["x]<LocalLeader>p                                    *<Plug>(sexp_put_after)*
+["x]<LocalLeader>P                                   *<Plug>(sexp_put_before)*
         Put [count] copies of register x before (`<LocalLeader>P`) or after
         (`<LocalLeader>p`) the current element; alternatively, works like "put
         register into list" when the conditions in the following paragraph are
         met.
 
+                                            *sexp-regput-behavior-on-bracket*
         Special Behavior on List Brackets  ~
         By default, if this command is executed with the cursor on a list
         bracket (or the macro chars preceding an open), and the put direction
@@ -942,31 +943,32 @@ Put register before/after (normal)  ~
 
 Replace element/selection with register (normal, visual)  ~
 
-["x]<M-P>                                             *<Plug>(sexp_replace_P)*
-["x]<M-p>                                               *<Plug>(sexp_replace)*
+["x] <M-p>                                              *<Plug>(sexp_replace)*
+["x] <M-P>                                            *<Plug>(sexp_replace_P)*
         Replace the current element or visual selection with [count] copies of
-        register x, first expanding the visual selection to include all of any
-        partially selected elements. With `<M-P>`, the unnamed register (`@"`)
-        is not updated.
+        register `x`, first expanding the visual selection to include all of any
+        partially selected elements. `<M-P>` does not update the unnamed
+        register.
 
 Put register into list (normal)  ~
 
-["x]<LocalLeader><p                                 *<Plug>(sexp_put_at_head)*
-["x]<LocalLeader>>p                                 *<Plug>(sexp_put_at_tail)*
-        Put register x into the current list, making it the [count]th child
-        from head (`<LocalLeader><p`) or tail (`<LocalLeader>>p`).
+["x] <LocalLeader><p                                *<Plug>(sexp_put_at_head)*
+["x] <LocalLeader>>p                                *<Plug>(sexp_put_at_tail)*
+        Put register x into the current list, just before the `[count]`th
+        child from head (`<LocalLeader><p`) or after the `[count]`th child
+        from tail (`<LocalLeader>>p`).
 
         See also |sexp-regput-definition-of-current-list|.
 
 Replace child with register (normal)  ~
 
-["x]<LocalLeader>[p                              *<Plug>(sexp_replace_at_head)*
-["x]<LocalLeader>]p                              *<Plug>(sexp_replace_at_tail)*
-["x]<LocalLeader>[P                            *<Plug>(sexp_replace_at_head_P)*
-["x]<LocalLeader>]P                            *<Plug>(sexp_replace_at_tail_P)*
+["x] <LocalLeader>[p                            *<Plug>(sexp_replace_at_head)*
+["x] <LocalLeader>]p                            *<Plug>(sexp_replace_at_tail)*
+["x] <LocalLeader>[P                          *<Plug>(sexp_replace_at_head_P)*
+["x] <LocalLeader>]P                          *<Plug>(sexp_replace_at_tail_P)*
         Replace the [count]th child from head (`<LocalLeader>[p`) or tail
-        (`<LocalLeader>]p`) with register x. With the versions ending in `P`,
-        the unnamed register (`@"`) is not updated.
+        (`<LocalLeader>]p`) with register x. The commands ending in `P` do not
+        update the unnamed register.
 
         See also |sexp-regput-definition-of-current-list|.
 
@@ -1008,6 +1010,20 @@ Note: Because the put before/after commands are unavailable in visual mode,
 `p` and `P` are also used for visual mode `sexp_replace`, making `vp` and `vP`
 effectively aliases to `<M-p>` and `<M-P>`.
 
+p versus P (a Motivating Example)  ~
+Although `<M-j>`, `<M-k>`, `<M-h>`, `<M-l>` can be used to swap adjacent
+elements, they're not ideal for swapping non-adjacent elements. For instance,
+if you wished to swap the second and final elements of a list, you'd need to
+perform the number of swaps needed to move the second element to the end of
+the list, then separately, the number of swaps needed to bring the final
+element to the second slot in the list. Very tedious. But using the "replace
+child" variants that update the unnamed register, you could accomplish the
+same thing with only 3 commands, regardless of list length:
+>
+        y2ic     yank second "inner child" into unnamed register
+        ]p       replace final element with unnamed register
+        2[p      replace second element of list with unnamed register
+<
                                               *sexp-regput-cursor-positioning*
 Cursor Positioning  ~
 By default, the cursor is positioned at the start of the pasted form(s), but

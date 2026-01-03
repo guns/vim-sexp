@@ -131,6 +131,8 @@ endfunction
 function! sexp#pre_op(mode, name)
     let s:sexp_ve_save = &ve
     set ve=onemore
+    " May be used by command handlers to figure out how to leave view.
+    let s:win_view = winsaveview()
     " Create the msg queue used by sexp#warn#msg().
     call sexp#warn#create_msg_q()
     " TODO: Consider removing or simplifying the cache, which is currently needed only for
@@ -2524,9 +2526,9 @@ function! s:nth_from(pos, n, tail)
             let ret.range[a:tail] = sexp#current_element_terminal(a:tail)
             let ret.missing = cnt
         endif
+        return ret
     finally
         call s:setcursor(cursor)
-        return ret
     endtry
 endfunction
 
@@ -2598,9 +2600,9 @@ function! s:child_range(count, tail, inner, ...)
                 let ret.range = s:terminals_with_whitespace(ret.range[0], ret.range[1])
             endif
         endif
+        return ret
     finally
         call s:setcursor(cursor)
-        return ret
     endtry
 endfunction
 
@@ -2898,8 +2900,9 @@ endfunction
 " Set visual marks around count'th inner/outer child of current (or parent) list; 0 to
 " count backwards from tail, 1 to count forwards from head. If no such child element
 " exists, selects closest one (i.e., last in the specified direction).
-function! sexp#select_child(mode, count, next, inner)
-    let [s, e] = s:child_range(a:count, a:next, a:inner, {'exact_child': 0})
+function! sexp#select_child(mode, count, tail, inner)
+    let cr = s:child_range(a:count, a:tail, a:inner, {'exact_child': 0})
+    let [s, e] = cr.range
     if s[1]
         " Note: Although we may be called from visual mode, child selection ignores
         " current selection by definition.
@@ -3038,7 +3041,7 @@ function! s:regput__get_reginfo()
         " Register contents are not valid lisp. Decide how to handle...
         " Assumption: Can't get here if g:sexp_regput_inhibit_regparse disables parsing.
         let errmsg = printf("Error encountered at or near %s%s.",
-            \ string(ret.err_loc),
+            \ "(" . string(ret.err_loc[1:2]) . ")",
             \ !empty(ret.err_hint) ? " (Hint: " . ret.err_hint . ")" : "" )
         " Enumeration defined in help doc.
         let action = g:sexp_regput_invalid_register_action
@@ -3715,9 +3718,9 @@ function! s:put__get_tgt(count, tail)
         if !ret.range[1][1]
             let ret.range[1] = [0, line('$'), col([line('$'), '$']), 0]
         endif
+        return ret
     finally
         call s:setcursor(curpos)
-        return ret
     endtry
 endfunction
 
@@ -3816,7 +3819,7 @@ function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
                 \ {'exact_count': 1, 'inner_only': g:sexp_regput_bracket_is_child})
             if cr.missing
                 " Requested child doesn't exist!
-                throw "sexp-warning: 'replace_child': the requested child does not exist!"
+                throw "sexp-abort: 'replace_child': the requested child does not exist!"
             endif
             let ret.inner_range = cr.range
         endif
@@ -3837,9 +3840,9 @@ function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
             endif
             let ret.range[i] = p
         endfor
+        return ret
     finally
         call s:setcursor(curpos)
-        return ret
     endtry
 endfunction
 
@@ -3939,9 +3942,9 @@ function! s:put_child__get_tgt(count, tail)
             let ret.is_bra = [1, 1]
             let ret.is_ele = [0, 0]
         endif
+        return ret
     finally
         call s:setcursor(cursor)
-        return ret
     endtry
 endfunction
 
@@ -5770,10 +5773,10 @@ function! s:list_info(tail, ...)
             let ret.terminal_range =
                 \ [sexp#current_element_terminal(0), sexp#current_element_terminal(1)]
         endif
+        return ret
     finally
         " Restore original position.
         call s:setcursor(save_cursor)
-        return ret
     endtry
 endfunction
 
@@ -5790,9 +5793,9 @@ function! s:buffer_terminal(tail)
             " Found an element. Get its extents.
             let ret = [sexp#current_element_terminal(0), sexp#current_element_terminal(1)]
         endif
+        return ret
     finally
         call s:setcursor(cursor)
-        return ret
     endtry
 endfunction
 

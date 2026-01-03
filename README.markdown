@@ -133,6 +133,47 @@ If `g:sexp_indent_aligns_comments` is set (false by default), the `==` and `=-` 
 
 :help sexp-comment-alignment
 
+### Smart Paste Commands (normal, visual)
+
+A family of register put (paste) commands, optimized for use with S-Expressions.
+The following functionality is supported:
+
+- Put register before/after element at cursor
+- Replace element at cursor or visually-selected element(s) with register
+- Put register before/after `[count]`th child from head/tail of current list
+- Replace `[count]`th child of current list with register
+
+Although most of the commands are mapped to `<Leader>` keybindings, you may wish to remap a few of the builtin put operators for convenience.
+For details...
+```
+:help sexp-regput-overriding-builtins
+```
+
+#### Put register before/after (normal)
+* ["x] `<LocalLeader>p` puts `[count]` copies of register `x` after the current element.
+* ["x] `<LocalLeader>P` puts `[count]` copies of register `x` before the current element.
+
+**Note:** It is possible to configure whether these commands puts _into_ or _around_ a list whose bracket is _under_ the cursor.
+```
+:help sexp-regput-behavior-on-bracket
+```
+
+#### Replace element/selection with register (normal, visual)
+* ["x] `<M-p>` replaces the current element or visual selection with `[count]` copies of register `x`.
+* ["x] `<M-P>` idem, but doesn't update the unnamed register
+
+**Note:** In visual mode, the selection is first expanded to include all of any partially-selected forms.
+
+#### Put register into list (normal)
+* ["x] `<LocalLeader><p` puts register into current list, just before the `[count]`th child from head.
+* ["x] `<LocalLeader>>p` puts register into current list, just after the `[count]`th child from tail.
+
+#### Replace child with register (normal)
+* ["x] `<LocalLeader>[p` replaces the `[count]`th child from head of current list with register `x`.
+* ["x] `<LocalLeader>[P` idem, but doesn't update the unnamed register
+* ["x] `<LocalLeader>]p` replaces the `[count]`th child from tail of current list with register `x`.
+* ["x] `<LocalLeader>]P` idem, but doesn't update the unnamed register
+
 ### Clone Commands (normal, visual)
 
 * `<LocalLeader>c` inserts copy(s) of current list or visual selection before cursor without moving cursor

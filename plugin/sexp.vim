@@ -706,15 +706,15 @@ Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, v:count
 Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, v:prevcount)
 Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, v:count)
 
-Defplug  xnoremap sexp_outer_child_head sexp#select_child('v', v:prevcount, 1, 0)
-Defplug! onoremap sexp_outer_child_head sexp#select_child('o', v:count, 1, 0)
-Defplug  xnoremap sexp_inner_child_head sexp#select_child('v', v:prevcount, 1, 1)
-Defplug! onoremap sexp_inner_child_head sexp#select_child('o', v:count, 1, 1)
+Defplug  xnoremap sexp_outer_child_head sexp#select_child('v', v:prevcount, 0, 0)
+Defplug! onoremap sexp_outer_child_head sexp#select_child('o', v:count, 0, 0)
+Defplug  xnoremap sexp_inner_child_head sexp#select_child('v', v:prevcount, 0, 1)
+Defplug! onoremap sexp_inner_child_head sexp#select_child('o', v:count, 0, 1)
 
-Defplug  xnoremap sexp_outer_child_tail sexp#select_child('v', v:prevcount, 0, 0)
-Defplug! onoremap sexp_outer_child_tail sexp#select_child('o', v:count, 0, 0)
-Defplug  xnoremap sexp_inner_child_tail sexp#select_child('v', v:prevcount, 0, 1)
-Defplug! onoremap sexp_inner_child_tail sexp#select_child('o', v:count, 0, 1)
+Defplug  xnoremap sexp_outer_child_tail sexp#select_child('v', v:prevcount, 1, 0)
+Defplug! onoremap sexp_outer_child_tail sexp#select_child('o', v:count, 1, 0)
+Defplug  xnoremap sexp_inner_child_tail sexp#select_child('v', v:prevcount, 1, 1)
+Defplug! onoremap sexp_inner_child_tail sexp#select_child('o', v:count, 1, 1)
 """ Text Object Motions {{{1
 
 " Nearest bracket

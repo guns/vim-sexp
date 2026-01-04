@@ -175,6 +175,28 @@ ie                                                *<Plug>(sexp_inner_element)*
 
         An element always includes leading macro characters.
 
+aC                                             *<Plug>(sexp_outer_child_tail)*
+ac                                             *<Plug>(sexp_outer_child_head)*
+iC                                             *<Plug>(sexp_inner_child_tail)*
+ic                                             *<Plug>(sexp_inner_child_head)*
+        Select the [count]th "child" element from the head (lowercase c) or
+        tail (uppercase C) of the current compound form. If cursor is not on
+        the macro chars or paired bracket of a compound form, the containing
+        form is used. If there is no containing form (cursor at toplevel), it
+        is as though a virtual form encloses the file itself (i.e., [count]th
+        toplevel element from beginning or end of file).
+
+        The meaning of the terms "inner" and "outer" are as defined for the ie
+        and ae text objects. 
+
+                                             *sexp-child-objects-vs-[e-and-]e*
+        There is overlap between the use cases for child objects and the
+        select prev/next element commands ([e and ]e). The chief difference is
+        that a child object's offset is always specified relative to the start
+        or end of a compound form, whereas [e and ]e always search relative to
+        the cursor position. Depending on the use case, one set of commands
+        may be significantly more convenient than the other.
+
 Outer Element whitespace selection logic ~
                                           *sexp-outer-element-selection-logic*
                                            *sexp-surrounding-whitespace-rules*
@@ -234,28 +256,6 @@ Outer Element whitespace selection logic ~
           Note: By moving the cursor to the start of the selection, `o'
           changes the direction of the expansion.
 <
-
-aC                                             *<Plug>(sexp_outer_child_tail)*
-ac                                             *<Plug>(sexp_outer_child_head)*
-iC                                             *<Plug>(sexp_inner_child_tail)*
-ic                                             *<Plug>(sexp_inner_child_head)*
-        Select the [count]th "child" element from the head (lowercase c) or
-        tail (uppercase C) of the current compound form. If cursor is not on
-        the macro chars or paired bracket of a compound form, the containing
-        form is used. If there is no containing form (cursor at toplevel), it
-        is as though a virtual form encloses the file itself (i.e., [count]th
-        toplevel element from beginning or end of file).
-
-        The meaning of the terms "inner" and "outer" are as defined for the ie
-        and ae text objects. 
-
-                                             *sexp-child-objects-vs-[e-and-]e*
-        There is overlap between the use cases for child objects and the
-        select prev/next element commands ([e and ]e). The chief difference is
-        that a child object's offset is always specified relative to the start
-        or end of a compound form, whereas [e and ]e always search relative to
-        the cursor position. Depending on the use case, one set of commands
-        may be significantly more convenient than the other.
 
 TEXT OBJECT MOTIONS (normal, visual, operator-pending) ~
 

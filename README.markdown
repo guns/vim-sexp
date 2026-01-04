@@ -153,7 +153,7 @@ For details...
 * ["x] `<LocalLeader>p` puts `[count]` copies of register `x` after the current element.
 * ["x] `<LocalLeader>P` puts `[count]` copies of register `x` before the current element.
 
-**Note:** It is possible to configure whether these commands puts _into_ or _around_ a list whose bracket is _under_ the cursor.
+**Note:** It is possible to configure whether these commands put _into_ or _around_ a list whose bracket is _under_ the cursor.
 ```
 :help sexp-regput-behavior-on-bracket
 ```

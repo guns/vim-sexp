@@ -899,12 +899,12 @@ well as an optional [count] whose usage is documented with the corresponding
 command. Commands that replace existing elements have distinct `p` and `P`
 variants: by analogy with builtin `p` and `P`, the former updates the unnamed
 register (`@"`); the latter does not. By default, the cursor will be left at
-the head of the put text, but this can be changed with option
-|g:sexp_regput_curpos|. All put (paste) commands perform an automatic
-re-indent on a range whose size is determined by |g:sexp_auto_indent_range|.
-By default, vim-sexp attempts to validate register contents before pasting
-them. To learn more about this behavior, including how to disable/customize
-it, see |sexp-regput-register-parsing|.
+the head of the put text, but this can be changed with options
+|g:sexp_regput_curpos| and |g:sexp_regput_into_curpos|. All put (paste)
+commands perform an automatic re-indent on a range whose size is determined by
+|g:sexp_auto_indent_range|. By default, vim-sexp attempts to validate register
+contents before pasting them. To learn more about this behavior, including how
+to disable/customize it, see |sexp-regput-register-parsing|.
 
 Note: Although most users will probably wish to remap the builtin put
 operators to vim-sexp's smarter, Lisp-aware counterparts, the builtin put
@@ -1024,13 +1024,21 @@ same thing with only 3 commands, regardless of list length:
         ]p       replace final element with unnamed register
         2[p      replace second element of list with unnamed register
 <
+Caveat: In some scenarios, the sequence above may require an extra movement or
+two to move cursor off a child list bracket to prevent the child list from
+being treated as the target of the "replace child" command. The exact sequence
+may depend on the following option settings:
+        |g:sexp_regput_bracket_is_child|
+        |g:sexp_regput_into_curpos|
                                               *sexp-regput-cursor-positioning*
 Cursor Positioning  ~
 By default, the cursor is positioned at the start of the pasted form(s), but
-if you prefer that the cursor be left at the end (as it is for Vim's builtin
-`p` operator), simply set |g:sexp_regput_curpos| to 1. Alternatively, for a
-more "telescopic" (put at-a-distance) feel, set the option to 2 to preserve
-the original (pre-paste) cursor position.
+if you prefer that the cursor be left at the end (as with Vim's builtin `p`
+operator), set |g:sexp_regput_curpos| and/or |g:sexp_regput_into_curpos| to 1.
+Two options are provided to allow the put commands that put into lists to be
+configured independently of the commands that target the element at cursor.
+Alternatively, for a more "telescopic" (put at-a-distance) feel, set the
+option to 2 to preserve the original (pre-paste) cursor position.
 
                                                 *sexp-regput-register-parsing*
 Register Parsing  ~
@@ -1271,8 +1279,8 @@ For details, see section |sexp-auto-indent|.
         let g:sexp_auto_indent = -1
 <
                                                     *g:sexp_auto_indent_range*
-One or two character string indicating how the line range for an auto-indent
-should be calculated. The characters have the following meanings:
+One of the following characters indicating how the line range for an
+auto-indent should be calculated:
 
   'm'  use algorithm to find the minimal region required to guarantee
        correctness. (Assumes the indentation was correct before the operation
@@ -1290,11 +1298,13 @@ keep comments aligned. Others may prefer keeping the re-indent small (and
 fast) with 'm', using `sexp_align_comments_top` (`<M-\>`) to re-align comments
 manually only after they've become unacceptably "ragged".
 
-2-character format:  ~
+2-character format (DEPRECATED):  ~
 So that you needn't remember to change this option every time you enable or
 disable comment alignment, this option also recognizes a 2-character format,
 in which the second character specifies the range to use when comment
 alignment is enabled.
+**Note:** The 2-character format will probably be deleted in the near future
+(before initial feature release), so it's best not to rely on it.
 
 Examples:  ~
 >
@@ -1622,7 +1632,7 @@ For details, see |sexp-regput-overriding-builtins|.
 <
                                                         *g:sexp_regput_curpos*
 Determines where cursor is placed after a register put ("smart paste")
-command:
+command that targets current element (or cursor position):
   0  head of put form(s)
   1  tail of put form(s)
   2  preserve original cursor position (as closely as possible)
@@ -1631,6 +1641,18 @@ For details, see |sexp-regput-cursor-positioning|.
 >
         " Default
         let g:sexp_regput_curpos = 0
+<
+                                                   *g:sexp_regput_into_curpos*
+Determines where cursor is placed after a register put ("smart paste")
+command that puts into a list (both insert and replace variants):
+  0  head of put form(s)
+  1  tail of put form(s)
+  2  preserve original cursor position (as closely as possible)
+  
+For details, see |sexp-regput-cursor-positioning|.
+>
+        " Default
+        let g:sexp_regput_into_curpos = 0
 <
                                              *g:sexp_regput_bracket_is_target*
 When this is set, |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| are

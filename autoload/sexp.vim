@@ -3534,9 +3534,10 @@ function! s:regput__postop(ctx, sep, orig_range)
             let ret.orange[i] = sexp#current_element_terminal(i)
         endif
     endfor
-    " If option requests curpos target of head or tail, make adjustment.
-    let idx = !!g:sexp_regput_curpos
-    if g:sexp_regput_curpos == idx
+    " If put mode-specific option requests curpos target of head or tail, make adjustment.
+    let opt = a:ctx.put_mode =~ 'child' ? g:sexp_regput_into_curpos : g:sexp_regput_curpos
+    let idx = !!opt
+    if opt == idx
         " Desired position is 0 (head) or 1 (tail).
         " Caveat: Copy the position to prevent double-adjustment if caller adds both these
         " positions to an auto-adjustment list.

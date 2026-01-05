@@ -248,6 +248,10 @@ if !exists('g:sexp_regput_curpos')
     let g:sexp_regput_curpos = 0
 endif
 
+if !exists('g:sexp_regput_into_curpos')
+    let g:sexp_regput_into_curpos = 0
+endif
+
 if !exists('g:sexp_regput_invalid_register_action')
     let g:sexp_regput_invalid_register_action = -1
 endif

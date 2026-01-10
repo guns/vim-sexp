@@ -214,6 +214,28 @@ function! s:nearest_bracket(closing, ...)
     return call('s:invoke', ['nearest_bracket', a:closing] + a:000)
 endfunction
 
+" Return position representing the bracket that *contains* the cursor position, else
+" nullpos if top-level.
+" Note: Differs from s:nearest_bracket() only when reference pos is *on* bracket of type
+" corresponding to 'closing'.
+function! s:containing_bracket(closing, ...)
+    let save_cursor = getcurpos()
+    " TODO: Consider using s:is_list() to determine whether we need to look up a level.
+    try
+        let p = call('s:nearest_bracket', [a:closing] + a:000)
+        " Check to see whether this is the matching bracket of input pos.
+        call s:setcursor(p)
+        let opos = s:nearest_bracket([!a:closing] + a:000)
+        if !sexp#compare_pos(opos, save_cursor)
+            " We found matching bracket. Need to go up a level.
+            let p = call('s:nearest_bracket', [a:closing] + a:000)
+        endif
+        return p
+    finally
+        call s:setcursor(save_cursor)
+    endtry
+endfunction
+
 function! s:list_open()
     let cursor = getpos('.')
     let ret = [0, 0, 0, 0]
@@ -1698,11 +1720,15 @@ endfunction
 
 " Returns nonzero if input position is at toplevel.
 function! s:at_top(line, col)
-    let cursor = getpos('.')
-    call s:setcursor([0, a:line, a:col, 0])
-    let ret = !s:nearest_bracket(0)[1] || !s:nearest_bracket(1)[1]
-    call s:setcursor(cursor)
-    return ret
+    let save_cursor = getcurpos()
+    try
+        let cursor = getpos('.')
+        call s:setcursor([0, a:line, a:col, 0])
+        let ret = !s:nearest_bracket(0)[1] || !s:nearest_bracket(1)[1]
+        return ret
+    finally
+        call s:setcursor(save_cursor)
+    endtry
 endfunction
 
 " Returns nonzero if input position first non-ws on line
@@ -1760,12 +1786,15 @@ endfunction
 " whitespace that separates tokens.
 fu! sexp#range_has_ws(beg, end, check_ignored)
     let save_cursor = getcurpos()
-    call setpos('.', a:beg)
-    " Note: Empty 'skip' skips nothing.
-    let pos = searchpos('\s', 'nczW', a:end[1], 0, a:check_ignored ? s:match_ignored_region_fn : '')
-    let ret = pos[0] && sexp#compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
-    call setpos('.', save_cursor)
-    return ret
+    try
+        call s:setcursor(a:beg)
+        " Note: Empty 'skip' skips nothing.
+        let pos = searchpos('\s', 'nczW', a:end[1], 0, a:check_ignored ? s:match_ignored_region_fn : '')
+        let ret = pos[0] && sexp#compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
+        return ret
+    finally
+        call s:setcursor(save_cursor)
+    endtry
 endfu
 
 " Return true iff there's *any* non-whitespace in the range [beg,end].
@@ -1774,32 +1803,55 @@ endfu
 fu! sexp#range_has_non_ws(beg, end, check_ignored)
     let ret = 0
     let save_cursor = getcurpos()
-    call setpos('.', a:beg)
-    let pos = searchpos('\S', 'nczW', a:end[1])
-    let ret = pos[0] && sexp#compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
-    if !ret && a:check_ignored
-        " No true non-ws, but check for "ignored" ws, which counts as the same thing...
-        let pos = searchpos('\s', 'nczW', a:end[1], 0, s:nomatch_ignored_region_fn)
-        " Return true iff we found ignored ws within region.
+    try
+        call s:setcursor(a:beg)
+        let pos = searchpos('\S', 'nczW', a:end[1])
         let ret = pos[0] && sexp#compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
-    endif
-    call setpos('.', save_cursor)
-    return ret
+        if !ret && a:check_ignored
+            " No true non-ws, but check for "ignored" ws, which counts as the same thing...
+            let pos = searchpos('\s', 'nczW', a:end[1], 0, s:nomatch_ignored_region_fn)
+            " Return true iff we found ignored ws within region.
+            let ret = pos[0] && sexp#compare_pos([0, pos[0], pos[1], 0], a:end) <= 0
+        endif
+        return ret
+    finally
+        call s:setcursor(save_cursor)
+    endtry
+endfu
+
+" Return true iff both ends of the range are at the same level.
+fu! sexp#is_uniform_range(rng)
+    let save_cursor = getcurpos()
+    try
+        let open = [s:nullpos, s:nullpos]
+        " Find *containing* open for each end.
+        for i in range(2)
+            call s:setcursor(a:rng[i])
+            let open[i] = s:containing_bracket(0)
+        endfor
+        " Range is uniform if both ends are at same (possibly top) level.
+        return !open[0][1] && !open[1][1] || open[0] == open[1]
+    finally
+        call s:setcursor(save_cursor)
+    endtry
 endfu
 
 " Return true iff specified SexpPos is on whitespace (or blank if allow_blank).
 " Note: See previous function comment for usage of 'check_ignored'.
 fu! s:in_whitespace(pos, allow_blank, check_ignored)
-    local save_cursor = getcurpos()
-    call setpos('.', a:pos)
-    " Anchor search at cursor for efficiency (in case line is long).
-    " TODO: Consider different approach: e.g., grabbing and testing the char in lieu of
-    " search().
-    let re = '\v%.c\s' . (a:allow_blank ? '|^$' : '')
-    let pos = searchpos(re, 'nczW', a:pos[1], 0, a:check_ignored ? s:match_ignored_region_fn : '')
-    let ret = pos[0] && pos == save_cursor[1:2]
-    call setpos('.', save_cursor)
-    return ret
+    let save_cursor = getcurpos()
+    try
+        call s:setcursor(a:pos)
+        " Anchor search at cursor for efficiency (in case line is long).
+        " TODO: Consider different approach: e.g., grabbing and testing the char in lieu of
+        " search().
+        let re = '\v%.c\s' . (a:allow_blank ? '|^$' : '')
+        let pos = searchpos(re, 'nczW', a:pos[1], 0, a:check_ignored ? s:match_ignored_region_fn : '')
+        let ret = pos[0] && pos == save_cursor[1:2]
+        return ret
+    finally
+        call s:setcursor(save_cursor)
+    endtry
 endfu
 
 " Return input range adjusted inward such that start/end are both on non-whitespace.
@@ -3214,6 +3266,7 @@ function! s:regput__check_list_context(ctx, reg)
                 call add(ps, [sexp#current_element_terminal(0), prev_e])
                 let sidx += 1
             else
+                " FIXME: Check for `(' and return 0 if it's not what we hit!!!
                 break
             endif
         endwhile
@@ -3248,6 +3301,7 @@ function! s:regput__check_list_context(ctx, reg)
     " Special case requires at least 3 elements.
     " Rationale: We're looking for a list "shape" defined by 3 elements:
     "   (func arg1 arg2 NL arg3 ...)
+    " FIXME: Need to consider bracket type as well: only lists with ( ) should qualify.
     if eidx >= 3
         " TODO: Use s:is_list() and regex to test for (let* [ ...) here...
         " Cache some useful vars pertaining to the first 3 elements of list.
@@ -3297,11 +3351,13 @@ function! s:regput__get_seps(ctx, reg)
     let force_ml = g:sexp_regput_linewise_forces_multiline && reg.linewise
     " Determine whether put is into one of the special slots in a 'shaped' list.
     " Note: Inhibit this special case logic if more than one toplevel element in register.
+    " Also, inhibit for replace modes, in which case, we have an existing shape we don't
+    " really want to override.
     " Rationale: For the special logic to be meaningful in the multiple toplevel element
     " case, we'd need not only to parse the register text (already doing so), but also
     " potentially *modify* the whitespace between elements, which is analogous to the
     " 'interior separators' used for [count] > 1.
-    let lpi = g:sexp_regput_ignore_list_shape
+    let lpi = g:sexp_regput_ignore_list_shape || ctx.put_mode =~ 'replace'
         \ || reg.elem_count > 1 || ctx.empty_buffer || ctx.empty_list
         \ ? 0 : s:regput__check_list_context(ctx, reg)
     " Override the NL separators as needed.
@@ -3332,7 +3388,7 @@ function! s:regput__get_seps(ctx, reg)
                 let want_spc = !force_ml
                     \ && ctx.is_ele[i] && !ctx.alone[i] && !ctx.force_nl[i]
                     \ && !reg.is_ml && reg.elem_count <= 1
-                    \ && (tail != -1 && (i != tail || ctx.colinear[i]))
+                    \ && (tail == -1 || (i != tail || ctx.colinear[i]))
             endif
             " Override NL (if necessary).
             " Note: Special logic for replace mode puts may subsequently override this.
@@ -3763,6 +3819,9 @@ function! s:replace__get_tgt_visual(count, tgt)
     let curpos = getpos('.')
     try
         let [vs, ve] = s:get_visual_marks()
+        " TODO: Decide whether there should be any constraints on this: e.g., should we
+        " convert a range that crosses list boundaries (i.e., ends at different levels) to
+        " a super range, or should we warn and abort???
         let [s, e] = s:super_range(vs, ve)
         " Preceding call to s:super_range() obviates need for ignored region checking.
         if !sexp#range_has_non_ws(s, e, 0)
@@ -3796,6 +3855,29 @@ function! s:replace__get_tgt_normal(count, tgt)
     let a:tgt.inner_range = [p, sexp#current_element_terminal(1)]
 endfunction
 
+function! s:replace_mode__process_inner_range(tgt)
+    " Augment dict provided by caller.
+    let ret = a:tgt
+    " Determine the range that *contains* inner_range.
+    for i in range(2)
+        call s:setcursor(ret.inner_range[i])
+        let p = sexp#nearest_element_terminal(i, !i, 1, 1)
+        if p[1]
+            let ret.is_ele[i] = 1
+        else
+            let p = s:nearest_bracket(i)
+            if p[1]
+                let ret.is_bra[i] = 1
+            else
+                " Default to buffer extremity.
+                let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
+            endif
+        endif
+        let ret.range[i] = p
+    endfor
+    return ret
+endfunction
+
 " Note: To avoid duplication, both replace and replace_child are handled by this function.
 function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
     let curpos = getpos('.')
@@ -3824,26 +3906,86 @@ function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
             endif
             let ret.inner_range = cr.range
         endif
-        " Determine the range that *contains* inner_range.
-        for i in range(2)
-            call s:setcursor(ret.inner_range[i])
-            let p = sexp#nearest_element_terminal(i, !i, 1, 1)
-            if p[1]
-                let ret.is_ele[i] = 1
-            else
-                let p = s:nearest_bracket(i)
-                if p[1]
-                    let ret.is_bra[i] = 1
-                else
-                    " Default to buffer extremity.
-                    let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
-                endif
-            endif
-            let ret.range[i] = p
-        endfor
+        " Determine (outer) range from inner and set the is_{ele,bra}[] flags.
+        call s:replace_mode__process_inner_range(ret)
         return ret
     finally
         call s:setcursor(curpos)
+    endtry
+endfunction
+
+" TODO: Consider having this subsumed by s:replace_mode__get_tgt(), handled as just
+" another put_mode. If that's done, s:replace_mode__process_inner_range() could be
+" inlined.
+" ACTUALLY... Non-operator replace is going away...
+function! s:replace_op__get_tgt(ctx)
+    let ctx = a:ctx
+    let ret = {
+        \ 'mode': ctx.mode, 'put_mode': 'replace_op', 'count': ctx.count, 'P': ctx.P,
+        \ 'curpos': ctx.curpos, 'vrange': s:get_visual_marks(),
+        \ 'range': [s:nullpos, s:nullpos],
+        \ 'inner_range': [s:nullpos, s:nullpos],
+        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
+        \ 'tail': -1, 'force_nl': [0, 0]}
+    try
+        let [s, e] = [getpos("'["), getpos("']")]
+        let [s_orig, e_orig] = [s[:], e[:]]
+        if !sexp#range_has_non_ws(s, e, 1)
+            throw 'sexp-abort: Invalid attempt to apply replace operator'
+                \ . ' to pure whitespace'
+        endif
+        let rng = [s, e]
+        if !sexp#is_uniform_range(rng)
+            throw 'sexp-abort: Invalid attempt to apply replace operator'
+                \ . ' to range that crosses list boundaries'
+        endif
+        for i in range(2)
+            call s:setcursor(rng[i])
+            let rng[i] = sexp#move_to_current_element_terminal(i)
+            if !rng[i][1]
+                " Attempt to find nearest terminal in inward direction.
+                let rng[i] = sexp#move_to_adjacent_element_terminal(!i)
+            endif
+        endfor
+        let ret.inner_range = rng
+        " Determine (outer) range from inner and set the is_{ele,bra}[] flags.
+        call s:replace_mode__process_inner_range(ret)
+        return ret
+    finally
+        call s:setcursor(ctx.curpos)
+    endtry
+endfunction
+
+function! sexp#replace_op(mode, count, P, ...)
+    if !a:0
+        " Initial call
+        let ctx = {
+            \ 'curpos': getpos('.'),
+            \ 'mode': a:mode, 'count': a:count, 'P': a:P
+        \ }
+        " The call via 'opfunc' will get the original args + the context dict.
+        let &opfunc = function('sexp#replace_op', [a:mode, a:count, a:P, ctx])
+        return 'g@'
+    endif
+    try
+        " If here, we've been invoked by the 'opfunc' mechanism.
+        let [ctx, type] = a:000
+        if type != 'char'
+            call sexp#warn#msg("sexp#replace_op:"
+                \ " Invalid use of mode '" . type . "' with replace operator."
+                \ " Only charwise mode supported")
+            return
+        endif
+        "echomsg "replace_op:" string(ctx) "type=" type "'[:" getpos("'[") "']:" getpos("']")
+        let tgt = s:replace_op__get_tgt(ctx)
+        "echomsg "replace_op" string(tgt)
+        call s:regput__impl(tgt, a:count)
+
+    catch /sexp-\%(warning\|abort\):/
+        call sexp#warn#msg(v:exception)
+    catch
+        " Show throwpoint only for unexpected errors.
+        call sexp#warn#msg(v:exception . " at " . v:throwpoint)
     endtry
 endfunction
 
@@ -3856,6 +3998,7 @@ function! sexp#replace(mode, count, P)
         " Target determination is mode-specific.
         let tgt = s:replace_mode__get_tgt('replace', a:mode, cnt, -1, a:P)
         " Design Decision: Let tail==1 represent put with P.
+        echomsg "replace:" string(tgt)
         call s:regput__impl(tgt, cnt)
     catch /sexp-warning:/
         call sexp#warn#msg(v:exception)

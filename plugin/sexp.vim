@@ -282,14 +282,6 @@ endif
 let s:sexp_mapping_preset__regput = {
     \ 'sexp_put_before':                   {'n': 'P'},
     \ 'sexp_put_after':                    {'n': 'p'},
-    \ 'sexp_replace':                      {'n': '<M-p>', 'x': 'p'},
-    \ 'sexp_replace_P':                    {'n': '<M-P>', 'x': 'P'},
-    \ 'sexp_put_at_head':                  {'n': '<p'},
-    \ 'sexp_put_at_tail':                  {'n': '>p'},
-    \ 'sexp_replace_at_head':              {'n': '[p'},
-    \ 'sexp_replace_at_tail':              {'n': ']p'},
-    \ 'sexp_replace_at_head_P':            {'n': '[P'},
-    \ 'sexp_replace_at_tail_P':            {'n': ']P'},
 \ }
 
 let s:sexp_mappings = {
@@ -363,14 +355,10 @@ let s:sexp_mappings = {
     \ 'sexp_capture_next_element':         {'nx': '<M-S-l>'},
     \ 'sexp_put_before':                   {'n': '<LocalLeader>P'},
     \ 'sexp_put_after':                    {'n': '<LocalLeader>p'},
-    \ 'sexp_replace':                      {'nx': '<M-p>'},
-    \ 'sexp_replace_P':                    {'nx': '<M-P>'},
-    \ 'sexp_put_at_head':                  {'n': '<LocalLeader><p'},
-    \ 'sexp_put_at_tail':                  {'n': '<LocalLeader>>p'},
-    \ 'sexp_replace_at_head':              {'n': '<LocalLeader>[p'},
-    \ 'sexp_replace_at_tail':              {'n': '<LocalLeader>]p'},
-    \ 'sexp_replace_at_head_P':            {'n': '<LocalLeader>[P'},
-    \ 'sexp_replace_at_tail_P':            {'n': '<LocalLeader>]P'},
+    \ 'sexp_replace_op':                   {'n': '<M-p>'},
+    \ 'sexp_replace_op_P':                 {'n': '<M-P>'},
+    \ 'sexp_put_at_head':                  {'n': '<p'},
+    \ 'sexp_put_at_tail':                  {'n': '>p'},
     \ }
 
 if !empty(g:sexp_filetypes)
@@ -897,6 +885,12 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, '
 DefplugN nnoremap sexp_put_before  sexp#put(v:count, 0)
 DefplugN nnoremap sexp_put_after   sexp#put(v:count, 1)
 " Replace element/selection with register
+" TODO: Decide whether/how to use s:defplug for these operators. Either overhaul s:defplug
+" to accommodate or use separate mechanism for operators. Note that s:defplug() probably
+" could use overhaul either way.
+nnoremap <expr> <Plug>(sexp_replace_op)   sexp#replace_op('n', v:count, 0)
+nnoremap <expr> <Plug>(sexp_replace_op_P) sexp#replace_op('n', v:count, 1)
+" TODO: These 2 are going away!
 DefplugN nnoremap sexp_replace   sexp#replace('n', v:count, 0)
 DefplugN nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
 DefplugN xnoremap sexp_replace   sexp#replace('v', v:prevcount, 0)

@@ -893,23 +893,26 @@ LIST MANIPULATION (normal, visual) ~
 REGISTER PUT ("SMART PASTE") COMMANDS (normal, visual) ~
                                         *sexp-smart-paste* *sexp-register-put*
 
-All of the register put (paste) commands accept an optional register name via
-the standard Vim mechanism (e.g., `"ap` to put from the `"a` register), as
-well as an optional [count] whose usage is documented with the corresponding
-command. Commands that replace existing elements have distinct `p` and `P`
-variants: by analogy with builtin `p` and `P`, the former updates the unnamed
-register (`@"`); the latter does not. By default, the cursor will be left at
-the head of the put text, but this can be changed with options
+All of the register put (paste) commands (and operators) accept an optional
+register name via the standard Vim mechanism (e.g., `"ap` to put from the `"a`
+register), as well as an optional [count] whose usage is documented with the
+corresponding command. Commands that replace existing elements have distinct
+`p` and `P` variants: by analogy with builtin `p` and `P`, the former updates
+the unnamed register (|@"|); the latter does not. By default, the cursor will
+be left at the head of the put text, but this can be changed with options
 |g:sexp_regput_curpos| and |g:sexp_regput_into_curpos|. All put (paste)
 commands perform an automatic re-indent on a range whose size is determined by
 |g:sexp_auto_indent_range|. By default, vim-sexp attempts to validate register
 contents before pasting them. To learn more about this behavior, including how
 to disable/customize it, see |sexp-regput-register-parsing|.
 
+Note: If vim-repeat is installed, the replace commands/operators can be
+repeated with the |.| command.
+
 Note: Although most users will probably wish to remap the builtin put
-operators to vim-sexp's smarter, Lisp-aware counterparts, the builtin put
-operators will not be overridden without an explicit request via one of the
-methods discussed in |sexp-regput-overriding-builtins|.
+commands to vim-sexp's smarter, Lisp-aware counterparts, the builtins will not
+be overridden without an explicit request via one of the methods discussed in
+|sexp-regput-overriding-builtins|.
 
 Put register before/after (normal)  ~
                                                                     *sexp_put*
@@ -941,14 +944,42 @@ Put register before/after (normal)  ~
         line as the cursor forces a line break between the put text and the
         adjacent element.
 
-Replace element/selection with register (normal, visual)  ~
+Replace operator (normal)  ~
+                                                       *sexp-replace-operator*
+
+["x] <M-p>                                           *<Plug>(sexp_replace_op)*
+["x] <M-P>                                         *<Plug>(sexp_replace_op_P)*
+        Replace a target determined by one of the following with `[count]`
+        copies of register x:
+
+                * a motion
+                * a builtin text object
+                * a vim-sexp object (e.g., inner/outer element/list/child)
+
+                                             *sexp-replace-target-constraints*
+        Note: The target may contain multiple S-expressions, but may not cross
+        list boundaries, and must not contain partial S-expressions, unless
+        |g:sexp_regput_replace_expanded| is set, in which case, the target
+        will be expanded to include all of any partially selected
+        S-expressions.
+
+        Note: The `[count]` mentioned above is the count for the replace
+        operator itself; the motion/object that determines the target may have
+        its own count: e.g., `3<M-p>2ic` would replace the 2nd inner child
+        of the current list with 3 copies of the unnamed register.
+
+        The commands ending in `P` do not update the unnamed register.
+
+Replace visual selection with register (visual)  ~
 
 ["x] <M-p>                                              *<Plug>(sexp_replace)*
 ["x] <M-P>                                            *<Plug>(sexp_replace_P)*
-        Replace the current element or visual selection with [count] copies of
-        register `x`, first expanding the visual selection to include all of any
-        partially selected elements. `<M-P>` does not update the unnamed
-        register.
+        Replace the visually selected S-expression(s) with `[count]` copies of
+        register `x`.
+        Note: Constraints on the visual selection work just like constraints
+        on operator targets. (See |sexp-replace-target-constraints|.)
+
+        `<M-P>` does not update the unnamed register.
 
 Put register into list (normal)  ~
 
@@ -960,25 +991,13 @@ Put register into list (normal)  ~
 
         See also |sexp-regput-definition-of-current-list|.
 
-Replace child with register (normal)  ~
-
-["x] <LocalLeader>[p                            *<Plug>(sexp_replace_at_head)*
-["x] <LocalLeader>]p                            *<Plug>(sexp_replace_at_tail)*
-["x] <LocalLeader>[P                          *<Plug>(sexp_replace_at_head_P)*
-["x] <LocalLeader>]P                          *<Plug>(sexp_replace_at_tail_P)*
-        Replace the [count]th child from head (`<LocalLeader>[p`) or tail
-        (`<LocalLeader>]p`) with register x. The commands ending in `P` do not
-        update the unnamed register.
-
-        See also |sexp-regput-definition-of-current-list|.
-
                                        *sexp-regput-definition-of-current-list*
 Definition of "Current List"  ~
-By default, the preceding two commands treat a list whose bracket or macro
-char is under the cursor as the current list. Some users may prefer that a
-list be treated as a simple child element when the cursor is positioned on one
-of its terminals. The advantage of such an approach is consistency: as long as
-the cursor is positioned on element terminals, the result of the put will not
+By default, the preceding command treats a list whose bracket or macro char is
+under the cursor as the current list. Some users may prefer that a list be
+treated as a simple child element when the cursor is positioned on one of its
+terminals. The advantage of such an approach is consistency: as long as the
+cursor is positioned on element terminals, the result of the put will not
 depend on whether the element is a list or atom; in either case, the
 containing list is the target of the put. If you wish to enable this approach,
 set |g:sexp_regput_bracket_is_child| to 1.
@@ -987,28 +1006,23 @@ cursor is on the terminals of a toplevel list.
 
                                              *sexp-regput-overriding-builtins*
 Overriding Builtin Put Commands  ~
-You may not have much need for Vim's builtin put operators once you become
-comfortable with vim-sexp's "smart paste" commands. Since the default mappings
-are not as convenient as builtins, you may wish to remap Vim's builtin put
-operators to vim-sexp smart paste commands. The following snippet is provided
-to facilitate this. Either copy it into your |g:sexp_mappings| list to serve
-as a basis for further customization or set |g:sexp_regput_override_builtins|
-to use it as-is.
+You may not have much need for Vim's builtin put commands once you become
+comfortable with vim-sexp's "smart paste" commands and operators. Since the
+default mappings are not as convenient as builtins, you may wish to remap
+Vim's builtin put operators to vim-sexp smart paste commands. The following
+snippet is provided to facilitate this. Either copy it into your
+|g:sexp_mappings| list to serve as a basis for further customization or set
+|g:sexp_regput_override_builtins| to use it as-is.
 >
-    \ 'sexp_put_before':                   {'n': 'P'},
-    \ 'sexp_put_after':                    {'n': 'p'},
-    \ 'sexp_replace':                      {'n': '<M-p>', 'x': 'p'},
-    \ 'sexp_replace_P':                    {'n': '<M-P>', 'x': 'P'},
-    \ 'sexp_put_at_head':                  {'n': '<p'},
-    \ 'sexp_put_at_tail':                  {'n': '>p'},
-    \ 'sexp_replace_at_head':              {'n': '[p'},
-    \ 'sexp_replace_at_tail':              {'n': ']p'},
-    \ 'sexp_replace_at_head_P':            {'n': '[P'},
-    \ 'sexp_replace_at_tail_P':            {'n': ']P'},
+    \ 'sexp_put_before':                   'P',
+    \ 'sexp_put_after':                    'p',
+    \ 'sexp_replace_op':                   '<M-p>',
+    \ 'sexp_replace_op_P':                 '<M-P>',
+    \ 'sexp_replace':                      'p',
+    \ 'sexp_replace_P':                    'P',
+    \ 'sexp_put_at_head':                  '<p',
+    \ 'sexp_put_at_tail':                  '>p',
 <
-Note: Because the put before/after commands are unavailable in visual mode,
-`p` and `P` are also used for visual mode `sexp_replace`, making `vp` and `vP`
-effectively aliases to `<M-p>` and `<M-P>`.
 
 p versus P (a Motivating Example)  ~
 Although `<M-j>`, `<M-k>`, `<M-h>`, `<M-l>` can be used to swap adjacent
@@ -1017,28 +1031,27 @@ if you wished to swap the second and final elements of a list, you'd need to
 perform the number of swaps needed to move the second element to the end of
 the list, then separately, the number of swaps needed to bring the final
 element to the second slot in the list. Very tedious. But using the "replace
-child" variants that update the unnamed register, you could accomplish the
+operator" variant that updates the unnamed register, you could accomplish the
 same thing with only 3 commands, regardless of list length:
 >
-        y2ic     yank second "inner child" into unnamed register
-        ]p       replace final element with unnamed register
-        2[p      replace second element of list with unnamed register
+        y2ic       yank second "inner child" into unnamed register
+        <M-p>iC    replace final element with unnamed register
+        <M-p>2ic   replace second element of list with unnamed register
 <
-Caveat: In some scenarios, the sequence above may require an extra movement or
-two to move cursor off a child list bracket to prevent the child list from
-being treated as the target of the "replace child" command. The exact sequence
-may depend on the following option settings:
-        |g:sexp_regput_bracket_is_child|
-        |g:sexp_regput_into_curpos|
+Note: If the second child in the example happened to be a list, you would need
+to move the cursor off its list bracket after the yank to ensure the replace
+operators targeted the parent list and not the yanked child.
+
                                               *sexp-regput-cursor-positioning*
 Cursor Positioning  ~
 By default, the cursor is positioned at the start of the pasted form(s), but
 if you prefer that the cursor be left at the end (as with Vim's builtin `p`
 operator), set |g:sexp_regput_curpos| and/or |g:sexp_regput_into_curpos| to 1.
-Two options are provided to allow the put commands that put into lists to be
-configured independently of the commands that target the element at cursor.
-Alternatively, for a more "telescopic" (put at-a-distance) feel, set the
-option to 2 to preserve the original (pre-paste) cursor position.
+Two options are provided to allow the put commands that put into lists
+(|<Plug>(sexp_put_at_head)| and |<Plug>(sexp_put_at_tail)|) to be configured
+independently of the others. Alternatively, for a more "telescopic" (put
+at-a-distance) feel, set the option to 2 to preserve the original (pre-paste)
+cursor position.
 
                                                 *sexp-regput-register-parsing*
 Register Parsing  ~
@@ -1632,7 +1645,7 @@ For details, see |sexp-regput-overriding-builtins|.
 <
                                                         *g:sexp_regput_curpos*
 Determines where cursor is placed after a register put ("smart paste")
-command that targets current element (or cursor position):
+command that targets current element, visual selection, or operator target:
   0  head of put form(s)
   1  tail of put form(s)
   2  preserve original cursor position (as closely as possible)
@@ -1643,8 +1656,11 @@ For details, see |sexp-regput-cursor-positioning|.
         let g:sexp_regput_curpos = 0
 <
                                                    *g:sexp_regput_into_curpos*
-Determines where cursor is placed after a register put ("smart paste")
-command that puts into a list (both insert and replace variants):
+Determines where cursor is placed after either of the register put ("smart
+paste") commands that put into a list: i.e.,
+        |<Plug>(sexp_put_at_head)|
+        |<Plug>(sexp_put_at_tail)|
+
   0  head of put form(s)
   1  tail of put form(s)
   2  preserve original cursor position (as closely as possible)
@@ -1652,7 +1668,7 @@ command that puts into a list (both insert and replace variants):
 For details, see |sexp-regput-cursor-positioning|.
 >
         " Default
-        let g:sexp_regput_into_curpos = 0
+        let g:sexp_regput_into_curpos = g:sexp_regput_curpos
 <
                                              *g:sexp_regput_bracket_is_target*
 When this is set, |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| are
@@ -1667,12 +1683,11 @@ list (i.e., `P` from head or `p` from tail).
 <
 
                                               *g:sexp_regput_bracket_is_child*
-When this is set, the register put commands that put into a list (or replace a
-child element) will not treat a non-toplevel list whose brackets/macro chars
-are under the cursor as the target list, but will instead target its parent.
-In other words, setting this option ensures a list is not considered current
-unless the cursor is completely inside it (or there are no more containing
-lists).
+When this is set, the register put commands that put into a list will not
+treat a non-toplevel list whose brackets/macro chars are under the cursor as
+the target list, but will instead target its parent. In other words, setting
+this option ensures a list is not considered current unless the cursor is
+completely inside it (or there are no more containing lists).
 Motivation: To understand why you might wish to set this, see
 |sexp-regput-definition-of-current-list|.
 >
@@ -1853,14 +1868,14 @@ Note: To unbind a command, simply set its <lhs> to an empty string.
             \ 'sexp_emit_tail_element':         '<M-S-k>',
             \ 'sexp_capture_prev_element':      '<M-S-h>',
             \ 'sexp_capture_next_element':      '<M-S-l>',
-            \ 'sexp_put_before':                {'n': 'P'},
-            \ 'sexp_put_after':                 {'n': 'p'},
-            \ 'sexp_replace':                   {'n': 'gp', 'x': 'p'},
-            \ 'sexp_replace_P':                 {'n': 'gP', 'x': 'P'},
-            \ 'sexp_put_at_head':               {'n': '<M-p>'},
-            \ 'sexp_put_at_tail':               {'n': '<M-P>'},
-            \ 'sexp_replace_at_head':           {'n': '<LocalLeader>p'},
-            \ 'sexp_replace_at_tail':           {'n': '<LocalLeader>P'},
+            \ 'sexp_put_before':                '<LocalLeader>P',
+            \ 'sexp_put_after':                 '<LocalLeader>p',
+            \ 'sexp_replace_op':                '<M-p>',
+            \ 'sexp_replace_op_P':              '<M-P>',
+            \ 'sexp_replace':                   '<M-p>',
+            \ 'sexp_replace_P':                 '<M-P>',
+            \ 'sexp_put_at_head':               '<p',
+            \ 'sexp_put_at_tail':               '>p',
             \ }
 <
 Override Example: ~

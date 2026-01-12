@@ -249,7 +249,8 @@ if !exists('g:sexp_regput_curpos')
 endif
 
 if !exists('g:sexp_regput_into_curpos')
-    let g:sexp_regput_into_curpos = 0
+    " Default to the base variant that isn't specific to "put into" commands.
+    let g:sexp_regput_into_curpos = get(g:, 'sexp_regput_curpos', 0)
 endif
 
 if !exists('g:sexp_regput_invalid_register_action')
@@ -258,6 +259,10 @@ endif
 
 if !exists('g:sexp_regput_inhibit_regparse')
     let g:sexp_regput_inhibit_regparse = 0
+endif
+
+if !exists('g:sexp_regput_replace_expanded')
+    let g:sexp_regput_replace_expanded = 0
 endif
 
 " Expert options
@@ -282,6 +287,8 @@ endif
 let s:sexp_mapping_preset__regput = {
     \ 'sexp_put_before':                   {'n': 'P'},
     \ 'sexp_put_after':                    {'n': 'p'},
+    \ 'sexp_replace':                      {'x': 'p'},
+    \ 'sexp_replace_P':                    {'x': 'P'},
 \ }
 
 let s:sexp_mappings = {
@@ -357,6 +364,8 @@ let s:sexp_mappings = {
     \ 'sexp_put_after':                    {'n': '<LocalLeader>p'},
     \ 'sexp_replace_op':                   {'n': '<M-p>'},
     \ 'sexp_replace_op_P':                 {'n': '<M-P>'},
+    \ 'sexp_replace':                      {'x': '<M-p>'},
+    \ 'sexp_replace_P':                    {'x': '<M-P>'},
     \ 'sexp_put_at_head':                  {'n': '<p'},
     \ 'sexp_put_at_tail':                  {'n': '>p'},
     \ }
@@ -368,9 +377,6 @@ if !empty(g:sexp_filetypes)
     augroup END
 endif
 
-" Autoload and detect repeat.vim
-silent! call repeat#set('')
-let s:have_repeat_set = exists('*repeat#set')
 " If it's available, use <Cmd> modifier at the head of command rhs.
 " Rationale: The idiomatic (but now obsolete) `:<c-u>` has the undesirable side-effect of
 " generating a 'CmdlineChanged' autocmd event for *every character* in the command line
@@ -380,98 +386,42 @@ let s:have_repeat_set = exists('*repeat#set')
 let s:have_cmd = has('nvim') || v:version >= 900
 """ Functions {{{1
 
-command! -nargs=+       DEFPLUG  call <SID>defplug('000', <f-args>)
-command! -nargs=+ -bang Defplug  call <SID>defplug('1' . string(!empty('<bang>')) . '0', <f-args>)
-command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(!empty('<bang>')) . '1', <f-args>)
-
-" Create a <Plug> mapping. The 'flags' faux bitfield dictates behavior:
-"
-"   * flags == 0**: Map rhs as a key sequence
-"   * flags == 100: Map rhs as an expression
-"   * flags == 110: Map rhs as an expression, and setup repeat
-"   * flags == 101: Map rhs as an expression, and do not set '`
-"   * flags == 111: Map rhs as an expression, set up repeat, and do not set '`
-"
-" We don't use an actual bitfield because the bitwise functions and() and or()
-" were not introduced until patch 7.3.377.
-"
-function! s:defplug(flags, mapmode, name, ...)
-    let lhs = a:mapmode . ' <silent> <Plug>(' . a:name . ')'
-    let rhs = join(a:000)
-
-    let asexpr = a:flags[0] == '1'
-    let repeat = a:flags[1] == '1'
-    let nojump = a:flags[2] == '1'
-    let opmode = a:mapmode[0] ==# 'o'
-
-    " Build prefix/postfix for wrapping rhs.
-    let prefix = 'call sexp#pre_op("' . a:mapmode[0] . '", "' . a:name . '")'
-    \ . ' \| try \| '
-    let postfix = ' \| finally'
-    \ . ' \| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")'
-    \ . ' \| endtry'
-
-    " Key sequence
-    if !asexpr
-	" Note: All the DEFPLUGs have been converted to DefplugN to ensure they handle
-	" counts correctly. Since this block has no special v:count handling, it's unlikely
-	" maps defined with DEFPLUG would even work correctly.
-	" TODO: Consider removing DEFPLUG and simplifying this function accordingly: e.g.,
-	" the prefix/postfix assignments could be inlined below.
-    " CAVEAT!: This path does not invoke {pre,post}_op(), which means it may actually be
-    " broken, since pre_op() is what ensures correct settings of options like 've'.
-        execute lhs . ' ' . rhs
-        return 1
-    endif
-
-    " Common mapping prefix
-    " RE: vv
-    "   Due to a ?bug? in vim, we need to set curwin->w_curswant to the
-    "   current cursor position by entering and exiting character-wise visual
-    "   mode before completing an operator-pending command so that the cursor
-    "   returns to its original position after an = command.
-    " RE: b:sexp_count
-    "   v:count and v:prevcount can change while the concatenated commands are executing.
-    "   To ensure the count passed to functions is the one corresponding to the executed
-    "   map, we cache either v:count or v:prevcount (whichever is present in the raw
-    "   command) just after the cmd leader and replace all references to the vim count
-    "   with references to the cached var.
-    let use_count = rhs =~ 'v:prevcount' && !s:have_cmd ? 'v:prevcount' : 'v:count'
-    let prefix = lhs . ' '
-                 \ . (s:have_cmd ? '<cmd>' : ':<c-u>') . ' let b:sexp_count = ' . use_count
-                 \ . (s:have_cmd ? ' \| call sexp#ensure_normal_mode()' : '') . ' \| '
-                 \ . prefix
-                 \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
-                 \ . 'call ' . substitute(rhs, 'v:\%(prev\)\?count', 'b:sexp_count', 'g')
-    " Expression, non-repeating
-    if !repeat || !s:have_repeat_set
-        execute prefix . postfix . '<CR>'
-    " Expression, repeating, operator-pending mode
-    elseif opmode
-        execute prefix
-                \ . ' \| if v:operator ==? "c" \| '
-                \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
-                \ . 'else \| '
-                \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')", b:sexp_count) \| '
-                \ . 'endif'
-                \ . postfix . '<CR>'
-    " Expression, repeating, non-operator-pending mode
-    else
-        execute prefix . ' \| call <SID>repeat_set("\<Plug>(' . a:name . ')", b:sexp_count)'
-                \ . postfix . '<CR>'
-    endif
+" Convert list of bools to flags dict provided to s:defplug.
+" Rationale: Serializing the dict in the plug function arglist aids in readability.
+" -- Args --
+"   asexpr: create <expr> mapping
+"           TODO: Consider renaming this "asoper" since it's currently meant exclusively
+"           for use with operators.
+"   repeat: set up repeat (if repeat plugin available)
+"   nojump: inhibit set of '`
+function! s:defplug_flags(asexpr, repeat, nojump)
+    return {'asexpr': a:asexpr, 'repeat': a:repeat, 'nojump': a:nojump}
 endfunction
 
-" Calls repeat#set() and registers a one-time CursorMoved handler to correctly
-" set the value of g:repeat_tick.
-"
-" cf. https://github.com/tpope/vim-repeat/issues/8#issuecomment-13951082
-function! s:repeat_set(buf, count)
-    call repeat#set(a:buf, a:count)
-    augroup sexp_repeat
-        autocmd!
-        autocmd CursorMoved <buffer> let g:repeat_tick = b:changedtick | autocmd! sexp_repeat
-    augroup END
+" These commands invoke s:defplug() with arguments that will ensure creation of the
+" desired <Plug> mappings, which in turn, invoke sexp#plug#wrapper() when the map is
+" invoked.
+" Note: Defoper* relies on <expr> maps to define sexp operators.
+command! -nargs=+ -bang Defoper  call <SID>defplug(s:defplug_flags(1, !empty('<bang>'), 0), <f-args>)
+command! -nargs=+ -bang DefoperN call <SID>defplug(s:defplug_flags(1, !empty('<bang>'), 1), <f-args>)
+command! -nargs=+ -bang Defplug  call <SID>defplug(s:defplug_flags(0, !empty('<bang>'), 0), <f-args>)
+command! -nargs=+ -bang DefplugN call <SID>defplug(s:defplug_flags(0, !empty('<bang>'), 1), <f-args>)
+
+" Create a <Plug> mapping. The 'flags' dict provided by the Def* map influences behavior:
+function! s:defplug(flags, mapmode, name, ...)
+    let rhs = join(a:000)
+    let asexpr = a:flags.asexpr
+    let prefix = a:mapmode . (asexpr ? ' <expr>' : '')
+        \ . ' <silent> <Plug>(' . a:name . ')'
+
+    " Note: sexp#plug#wrapper() is called when map is invoked to handle both regular maps
+    " and sexp operators.
+    " Note: %s intentionally used to serialize the 'flags' dict.
+    execute prefix . printf(
+        \ '%s sexp#plug#wrapper(%s, "%s", "%s", v:count, "%s")%s',
+        \ asexpr ? '' : (s:have_cmd ? ' <cmd>' : ' :<c-u>') . ' call',
+        \ a:flags, a:mapmode, a:name, rhs,
+        \ (!asexpr ? '<cr>' : ''))
 endfunction
 
 " Display warning with requested highlighting.
@@ -483,15 +433,6 @@ function! s:warn(msg, ...)
     finally
         echohl None
     endtry
-endfunction
-
-" Return input lhs in canonical form to facilitate comparison.
-function! s:canonicalize_lhs(lhs)
-    let ret = a:lhs
-    " TODO: Use information in help section key-notation to create a function for
-    " canonicalizing lhs.
-    " ...
-    return ret
 endfunction
 
 " Simplify warning displays for mappings.
@@ -513,23 +454,6 @@ function! s:map_conflict_warn_once(lhs, rhs1, rhs2, mode)
     call sexp#warn#msg_once(s, printf(
         \ "Mapping %s => %s conflicts with existing mapping to %s in mode %s",
         \ a:lhs, a:rhs2, a:rhs1, a:mode))
-endfunction
-
-" TODO: UNTESTED and probably NOT NEEDED!
-function! s:set_nested_key(dict, ...)
-    if a:0 < 2
-        echoerr "set_nested_key: Internal error: requires at least 2 variadic args"
-    endif
-    let [i, dict] = [0, a:dict]
-    " Process all but final key in loop to ensure intermediate dicts exist.
-    while i < a:0 - 2
-        if !has_key(dict, key)
-            let dict[key] = {}
-        endif
-        let dict = dict[key]
-    endfor
-    " Assign value to leaf dict.
-    let dict[a:000[-2]] = a:000[-1]
 endfunction
 
 " Convert a single value in the sexp_mappings dict to a denormalized form conducive to use
@@ -596,6 +520,7 @@ endfunction
 
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
+" TODO: Consider moving more of this infrastructure into the plug autoload module.
 function! s:sexp_create_mappings()
     call sexp#feat#create_notifications()
     " Note: {s,g}entry stand for {s,g}:sexp_mappings entry, respectively.
@@ -884,25 +809,15 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, '
 " Put register before/after
 DefplugN nnoremap sexp_put_before  sexp#put(v:count, 0)
 DefplugN nnoremap sexp_put_after   sexp#put(v:count, 1)
-" Replace element/selection with register
-" TODO: Decide whether/how to use s:defplug for these operators. Either overhaul s:defplug
-" to accommodate or use separate mechanism for operators. Note that s:defplug() probably
-" could use overhaul either way.
-nnoremap <expr> <Plug>(sexp_replace_op)   sexp#replace_op('n', v:count, 0)
-nnoremap <expr> <Plug>(sexp_replace_op_P) sexp#replace_op('n', v:count, 1)
-" TODO: These 2 are going away!
-DefplugN nnoremap sexp_replace   sexp#replace('n', v:count, 0)
-DefplugN nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
+" Replace operator
+Defoper! nnoremap sexp_replace_op   sexp#replace_op('n', v:count, 0)
+Defoper! nnoremap sexp_replace_op_P sexp#replace_op('n', v:count, 1)
+" Replace selection with register
 DefplugN xnoremap sexp_replace   sexp#replace('v', v:prevcount, 0)
 DefplugN xnoremap sexp_replace_P sexp#replace('v', v:prevcount, 1)
 " Put register into list
 DefplugN nnoremap sexp_put_at_head sexp#put_child(v:count, 0)
 DefplugN nnoremap sexp_put_at_tail sexp#put_child(v:count, 1)
-" Replace child with register
-DefplugN nnoremap sexp_replace_at_head   sexp#replace_child(v:count, 0, 0)
-DefplugN nnoremap sexp_replace_at_head_P sexp#replace_child(v:count, 0, 1)
-DefplugN nnoremap sexp_replace_at_tail   sexp#replace_child(v:count, 1, 0)
-DefplugN nnoremap sexp_replace_at_tail_P sexp#replace_child(v:count, 1, 1)
 
 """ Insert mode mappings {{{1
 
@@ -952,6 +867,7 @@ DefplugI sexp_insert_backspace sexp#backspace_insertion()
 
 delcommand DefplugN
 delcommand Defplug
-delcommand DEFPLUG
+delcommand DefoperN
+delcommand Defoper
 
 " vim:ts=4:sw=4:et:tw=90

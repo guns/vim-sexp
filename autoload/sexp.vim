@@ -131,8 +131,6 @@ endfunction
 function! sexp#pre_op(mode, name)
     let s:sexp_ve_save = &ve
     set ve=onemore
-    " May be used by command handlers to figure out how to leave view.
-    let s:win_view = winsaveview()
     " Create the msg queue used by sexp#warn#msg().
     call sexp#warn#create_msg_q()
     " TODO: Consider removing or simplifying the cache, which is currently needed only for
@@ -3074,9 +3072,9 @@ endfunction
 "                possibly user response to input()) prohibit proceeding with paste.
 "                buffer's 'filetype
 "   sexp-noop:   register is empty (or whitespace-only); no reason to continue with put
-function! s:regput__get_reginfo()
+function! s:regput__get_reginfo(regname)
     let ret = {}
-    let regstr = getreg(v:register)
+    let regstr = getreg(a:regname)
     if regstr =~ '^\s*$'
         " No-op!
         throw "sexp-noop"
@@ -3627,7 +3625,7 @@ function! s:regput__impl(tgt, count)
         " Analyze the register.
         " Note: This function can throw sexp-abort and sexp-noop; in the case of
         " sexp-abort, its responsible for any associated warnings to user.
-        let reg = s:regput__get_reginfo()
+        let reg = s:regput__get_reginfo(a:tgt.regname)
         let ctx = s:regput__get_context(a:tgt)
         let sep = s:regput__get_seps(ctx, reg)
         let spl = s:regput__get_splice_info(a:count, ctx, reg, sep, {})
@@ -3711,6 +3709,7 @@ function! s:put__get_tgt(count, tail)
     let curpos = getpos('.')
     let ret = {
         \ 'curpos': curpos, 'mode': 'n', 'put_mode': 'put', 'count': a:count,
+        \ 'regname': v:register,
         \ 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
@@ -3806,6 +3805,7 @@ function! s:regput__handle_as_put_child_maybe(count, tail)
     return 1
 endfunction
 
+" Put before/after
 function! sexp#put(count, tail)
     if !s:regput__handle_as_put_child_maybe(a:count, a:tail)
         let cnt = a:count ? a:count : 1
@@ -3814,114 +3814,85 @@ function! sexp#put(count, tail)
     endif
 endfunction
 
-" Set inner_range of the input tgt dict.
-function! s:replace__get_tgt_visual(count, tgt)
-    let curpos = getpos('.')
-    try
-        let [vs, ve] = s:get_visual_marks()
-        " TODO: Decide whether there should be any constraints on this: e.g., should we
-        " convert a range that crosses list boundaries (i.e., ends at different levels) to
-        " a super range, or should we warn and abort???
-        let [s, e] = s:super_range(vs, ve)
-        " Preceding call to s:super_range() obviates need for ignored region checking.
-        if !sexp#range_has_non_ws(s, e, 0)
-            " Nothing to replace.
-            " Design Decision Needed: Should we a) throw and warn user or b) convert to
-            " normal put. (And if (b), should we try to ensure the put is non-directional,
-            " given that this might not happen naturally?)
-            throw "sexp-warning: "
-                \ . "visual mode 'replace with register' requires selection of"
-                \ . " something other than whitespace!"
-        endif
-        " We have a non-empty set of elements to replace.
-        let a:tgt.inner_range = [s, e]
-    finally
-        call s:setcursor(curpos)
-    endtry
-endfunction
-
-" Set inner_range of the input tgt dict.
-" Note: This mode is almost unnecessary, since the same effect could be achieved simply by
-" hitting v before the visual mapping.
-function! s:replace__get_tgt_normal(count, tgt)
-    " Look for element under cursor.
-    let p = sexp#current_element_terminal(0)
-    if !p[1]
-        " Refuse to do anything if no element under cursor!
-        " TODO: Need a way to communicate noop/error back to caller.
-        throw "sexp-warning: 'Replace with register' requires element under cursor!"
+" Augment provided 'tgt' dict with several range related fields, which are calculated
+" from the raw input range, which might represent a visual selection, a motion or sexp
+" object.
+" Note: This is factored into its own function because it's used by several replace modes.
+function! s:replace_mode__get_tgt(tgt, s, e)
+    " Augment provided dict.
+    let [tgt, s, e] = [a:tgt, a:s, a:e]
+    if !sexp#range_has_non_ws(s, e, 1)
+        throw 'sexp-abort: Invalid attempt to perform replacement'
+            \ . ' on pure whitespace'
     endif
-    " We have a current element to replace.
-    let a:tgt.inner_range = [p, sexp#current_element_terminal(1)]
-endfunction
-
-function! s:replace_mode__process_inner_range(tgt)
-    " Augment dict provided by caller.
-    let ret = a:tgt
+    let rng = [s, e]
+    if !sexp#is_uniform_range(rng)
+        throw 'sexp-abort: Invalid attempt to perform replacement'
+            \ . ' on range that crosses list boundaries'
+    endif
+    for i in range(2)
+        call s:setcursor(rng[i])
+        let rng[i] = sexp#move_to_current_element_terminal(i)
+        if !rng[i][1]
+            " Attempt to find nearest terminal in inward direction.
+            let rng[i] = sexp#move_to_adjacent_element_terminal(!i)
+        endif
+    endfor
+    let tgt.inner_range = rng
     " Determine the range that *contains* inner_range.
     for i in range(2)
-        call s:setcursor(ret.inner_range[i])
+        call s:setcursor(tgt.inner_range[i])
         let p = sexp#nearest_element_terminal(i, !i, 1, 1)
         if p[1]
-            let ret.is_ele[i] = 1
+            let tgt.is_ele[i] = 1
         else
             let p = s:nearest_bracket(i)
             if p[1]
-                let ret.is_bra[i] = 1
+                let tgt.is_bra[i] = 1
             else
                 " Default to buffer extremity.
                 let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
             endif
         endif
-        let ret.range[i] = p
+        let tgt.range[i] = p
     endfor
-    return ret
+    if !g:sexp_regput_replace_expanded
+        " Make sure original selection contained only complete S-Expressions.
+        if sexp#compare_pos(s, tgt.inner_range[0]) > 0
+            \ || sexp#compare_pos(e, tgt.inner_range[1]) < 0
+            throw 'sexp-abort: Current setting of g:sexp_regput_replace_expanded prohibits'
+                \ . ' selecting only part of an S-Expression for replacement.'
+        endif
+    endif
 endfunction
 
-" Note: To avoid duplication, both replace and replace_child are handled by this function.
-function! s:replace_mode__get_tgt(put_mode, mode, count, tail, P)
+function! s:replace__get_tgt(put_mode, mode, count, tail, P)
     let curpos = getpos('.')
     let ret = {
         \ 'mode': a:mode, 'put_mode': a:put_mode, 'count': a:count, 'P': a:P,
+        \ 'regname': v:register,
         \ 'curpos': curpos, 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'inner_range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
         \ 'tail': -1, 'force_nl': [0, 0]}
     try
-        if a:put_mode == 'replace'
-            " Allow mode-specific function to augment dict with the inner_range.
-            if a:mode == 'v'
-                call s:replace__get_tgt_visual(a:count, ret)
-            else
-                call s:replace__get_tgt_normal(a:count, ret)
-            endif
-        else " 'replace_child'
-            let ret.tail = a:tail
-            let cr = s:child_range(a:count, a:tail, 1,
-                \ {'exact_count': 1, 'inner_only': g:sexp_regput_bracket_is_child})
-            if cr.missing
-                " Requested child doesn't exist!
-                throw "sexp-abort: 'replace_child': the requested child does not exist!"
-            endif
-            let ret.inner_range = cr.range
-        endif
-        " Determine (outer) range from inner and set the is_{ele,bra}[] flags.
-        call s:replace_mode__process_inner_range(ret)
+        " Augment dict with the inner_range.
+        let [s, e] = ret.vrange
+        call s:replace_mode__get_tgt(ret, s, e)
         return ret
     finally
         call s:setcursor(curpos)
     endtry
 endfunction
 
-" TODO: Consider having this subsumed by s:replace_mode__get_tgt(), handled as just
-" another put_mode. If that's done, s:replace_mode__process_inner_range() could be
-" inlined.
-" ACTUALLY... Non-operator replace is going away...
 function! s:replace_op__get_tgt(ctx)
     let ctx = a:ctx
+    " Note: For replace operator, use the register saved in the context dict at operator
+    " invocation, *not* current v:register.
     let ret = {
         \ 'mode': ctx.mode, 'put_mode': 'replace_op', 'count': ctx.count, 'P': ctx.P,
+        \ 'regname': ctx.regname,
         \ 'curpos': ctx.curpos, 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'inner_range': [s:nullpos, s:nullpos],
@@ -3929,27 +3900,8 @@ function! s:replace_op__get_tgt(ctx)
         \ 'tail': -1, 'force_nl': [0, 0]}
     try
         let [s, e] = [getpos("'["), getpos("']")]
-        let [s_orig, e_orig] = [s[:], e[:]]
-        if !sexp#range_has_non_ws(s, e, 1)
-            throw 'sexp-abort: Invalid attempt to apply replace operator'
-                \ . ' to pure whitespace'
-        endif
-        let rng = [s, e]
-        if !sexp#is_uniform_range(rng)
-            throw 'sexp-abort: Invalid attempt to apply replace operator'
-                \ . ' to range that crosses list boundaries'
-        endif
-        for i in range(2)
-            call s:setcursor(rng[i])
-            let rng[i] = sexp#move_to_current_element_terminal(i)
-            if !rng[i][1]
-                " Attempt to find nearest terminal in inward direction.
-                let rng[i] = sexp#move_to_adjacent_element_terminal(!i)
-            endif
-        endfor
-        let ret.inner_range = rng
-        " Determine (outer) range from inner and set the is_{ele,bra}[] flags.
-        call s:replace_mode__process_inner_range(ret)
+        "let [s_orig, e_orig] = [s[:], e[:]]
+        call s:replace_mode__get_tgt(ret, s, e)
         return ret
     finally
         call s:setcursor(ctx.curpos)
@@ -3958,17 +3910,19 @@ endfunction
 
 function! sexp#replace_op(mode, count, P, ...)
     if !a:0
-        " Initial call
+        " Initial call (invoked explicitly, not via Vim's opfunc engine)
         let ctx = {
             \ 'curpos': getpos('.'),
+            \ 'regname': v:register,
+            \ 'backtick': getpos("'`"),
             \ 'mode': a:mode, 'count': a:count, 'P': a:P
         \ }
         " The call via 'opfunc' will get the original args + the context dict.
-        let &opfunc = function('sexp#replace_op', [a:mode, a:count, a:P, ctx])
-        return 'g@'
+        return function('sexp#replace_op', [a:mode, a:count, a:P, ctx])
     endif
     try
-        " If here, we've been invoked by the 'opfunc' mechanism.
+        " We've been invoked by our opfunc wrapper, called as 'opfunc' (not invoked
+        " explicitly by sexp#plug_runtime()).
         let [ctx, type] = a:000
         if type != 'char'
             call sexp#warn#msg("sexp#replace_op:"
@@ -3976,9 +3930,7 @@ function! sexp#replace_op(mode, count, P, ...)
                 \ " Only charwise mode supported")
             return
         endif
-        "echomsg "replace_op:" string(ctx) "type=" type "'[:" getpos("'[") "']:" getpos("']")
         let tgt = s:replace_op__get_tgt(ctx)
-        "echomsg "replace_op" string(tgt)
         call s:regput__impl(tgt, a:count)
 
     catch /sexp-\%(warning\|abort\):/
@@ -3996,9 +3948,8 @@ function! sexp#replace(mode, count, P)
     try
         let cnt = a:count ? a:count : 1
         " Target determination is mode-specific.
-        let tgt = s:replace_mode__get_tgt('replace', a:mode, cnt, -1, a:P)
+        let tgt = s:replace__get_tgt('replace', a:mode, cnt, -1, a:P)
         " Design Decision: Let tail==1 represent put with P.
-        echomsg "replace:" string(tgt)
         call s:regput__impl(tgt, cnt)
     catch /sexp-warning:/
         call sexp#warn#msg(v:exception)
@@ -4032,6 +3983,7 @@ function! s:put_child__get_tgt(count, tail)
     let cursor = getpos('.')
     let ret = {
         \ 'mode': 'n', 'put_mode': 'put_child', 'count': a:count,
+        \ 'regname': v:register,
         \ 'curpos': cursor, 'vrange': s:get_visual_marks(),
         \ 'range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
@@ -4097,20 +4049,6 @@ function! sexp#put_child(count, tail)
     let tgt = s:put_child__get_tgt(cnt, a:tail)
     " Note: [count] is used only for child location, so hardcode to 1.
     call s:regput__impl(tgt, 1)
-endfunction
-
-function! sexp#replace_child(count, tail, P)
-    try
-        let cnt = a:count ? a:count : 1
-        let tgt = s:replace_mode__get_tgt('replace_child', 'n', cnt, a:tail, a:P)
-        " Note: [count] is used only for child location, so hardcode to 1.
-        call s:regput__impl(tgt, 1)
-    catch /sexp-warning:/
-        call sexp#warn#msg(v:exception)
-    catch
-        " Show throwpoint only for non-warning errors.
-        call sexp#warn#msg(v:exception . " at " . v:throwpoint)
-    endtry
 endfunction
 
 " Swap current visual selection with adjacent element. If pairwise is true,

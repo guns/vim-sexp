@@ -3888,8 +3888,8 @@ endfunction
 
 function! s:replace_op__get_tgt(ctx)
     let ctx = a:ctx
-    " Note: For replace operator, use the register saved in the context dict at operator
-    " invocation, *not* current v:register.
+    " Note: For replace operator, use the register/count saved in the context dict at
+    " operator invocation, *not* current v:register/v:count.
     let ret = {
         \ 'mode': ctx.mode, 'put_mode': 'replace_op', 'count': ctx.count, 'P': ctx.P,
         \ 'regname': ctx.regname,

@@ -27,8 +27,10 @@ let s:have_repeat_set = exists('*repeat#set')
 " TODO: Consider making this an autoload function like s:opfunc().
 function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
     let opmode = a:mapmode[0] ==# 'o'
+    "echomsg "before:" v:count v:prevcount a:count
     " Assumption: v:count does not change before this call.
     call sexp#ensure_normal_mode()
+    "echomsg "after:" v:count v:prevcount a:count
     " Caveat: For a sexp operator (e.g., replace_op), the {pre,post}_op wrapper
     " invocations are deferred till operation completion.
     if !a:flags.asexpr
@@ -66,7 +68,7 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
         endif
         " Note: v:count may already have been reset (and transferred to v:prevcount);
         " fortunately, we snapshotted it in the call to this function, so use that.
-        let rhs = substitute(a:rhs, '\<v:\%(prev\)count\>', a:count, 'g')
+        let rhs = substitute(a:rhs, '\<v:\%(prev\)\?count\>', a:count, 'g')
         if a:flags.asexpr
             return call('s:opfunc', [a:mapmode[0], a:name, rhs])
         else

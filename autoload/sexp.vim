@@ -3814,6 +3814,26 @@ function! sexp#put(count, tail)
     endif
 endfunction
 
+function! s:replace_mode__process_inner_range(tgt)
+    " Determine the range that *contains* inner_range.
+    for i in range(2)
+        call s:setcursor(tgt.inner_range[i])
+        let p = sexp#nearest_element_terminal(i, !i, 1, 1)
+        if p[1]
+            let tgt.is_ele[i] = 1
+        else
+            let p = s:nearest_bracket(i)
+            if p[1]
+                let tgt.is_bra[i] = 1
+            else
+                " Default to buffer extremity.
+                let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
+            endif
+        endif
+        let tgt.range[i] = p
+    endfor
+endfunction
+
 " Augment provided 'tgt' dict with several range related fields, which are calculated
 " from the raw input range, which might represent a visual selection, a motion or sexp
 " object.
@@ -3839,23 +3859,6 @@ function! s:replace_mode__get_tgt(tgt, s, e)
         endif
     endfor
     let tgt.inner_range = rng
-    " Determine the range that *contains* inner_range.
-    for i in range(2)
-        call s:setcursor(tgt.inner_range[i])
-        let p = sexp#nearest_element_terminal(i, !i, 1, 1)
-        if p[1]
-            let tgt.is_ele[i] = 1
-        else
-            let p = s:nearest_bracket(i)
-            if p[1]
-                let tgt.is_bra[i] = 1
-            else
-                " Default to buffer extremity.
-                let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
-            endif
-        endif
-        let tgt.range[i] = p
-    endfor
     if !g:sexp_regput_replace_expanded
         " Make sure original selection contained only complete S-Expressions.
         if sexp#compare_pos(s, tgt.inner_range[0]) > 0
@@ -3864,6 +3867,8 @@ function! s:replace_mode__get_tgt(tgt, s, e)
                 \ . ' selecting only part of an S-Expression for replacement.'
         endif
     endif
+    " Post-process inner_range.
+    call s:replace_mode__process_inner_range(tgt)
 endfunction
 
 function! s:replace__get_tgt(put_mode, mode, count, tail, P)
@@ -3886,6 +3891,40 @@ function! s:replace__get_tgt(put_mode, mode, count, tail, P)
     endtry
 endfunction
 
+" Assuming operator motion was exclusive, convert range to fiducial inclusive.
+function! s:fix_operator_range(rng)
+endfunction
+
+function! s:replace_op__try_get_endpoint_tgt(ctx, s, e, allow_same_level)
+    echomsg "c:" getpos('.') "[:" getpos("'[") "]:" getpos("']")
+    let [ctx] = [a:ctx]
+    let rng = [a:s, a:e]
+    " Which direction was the motion search? (-1 indicates 'object' not motion).
+    let dir = a:s == ctx.curpos ? 1 : s:e == ctx.curpos ? 0 : -1
+    if dir == -1
+        " Motion not anchored at curpos; thus, endpoint mode not in effect.
+        return 0
+    endif
+    if !a:allow_same_level && sexp#is_uniform_range(rng)
+        " Motion did not cross levels; endpoint mode not in effect.
+        return 0
+    endif
+    " Determine the target sexp.
+    call s:setcursor(rng[dir])
+    let p = sexp#current_element_terminal(0)
+    if !p[1]
+        " Endpoint mode requires an endpoint strictly *on* an element; since we don't have
+        " that, just fallback to non-endpoint processing.
+        return 0
+    endif
+    " We're on an element; use its range.
+    let ctx.inner_range = [p, sexp#current_element_terminal(1)]
+    " Post-process inner range.
+    call s:replace_mode__process_inner_range(ctx)
+    " Return true to prevent fallback to non-endpoint mode.
+    return 1
+endfunction
+
 function! s:replace_op__get_tgt(ctx)
     let ctx = a:ctx
     " Note: For replace operator, use the register/count saved in the context dict at
@@ -3901,13 +3940,20 @@ function! s:replace_op__get_tgt(ctx)
     try
         let [s, e] = [getpos("'["), getpos("']")]
         "let [s_orig, e_orig] = [s[:], e[:]]
-        call s:replace_mode__get_tgt(ret, s, e)
+        " First, attempt to process as "endpoint" motion (unless inhibited by option).
+        " TODO: 0 is placeholder; eventually, explicit endpoint mode operator will cause
+        " it to be set.
+        if !s:replace_op__try_get_endpoint_tgt(ret, s, e, 0)
+            " Fallback to non-endpoint mode.
+            call s:replace_mode__get_tgt(ret, s, e)
+        endif
         return ret
     finally
         call s:setcursor(ctx.curpos)
     endtry
 endfunction
 
+" TODO: Probably add a parameter for the motion mode.
 function! sexp#replace_op(mode, count, P, ...)
     if !a:0
         " Initial call (invoked explicitly, not via Vim's opfunc engine)

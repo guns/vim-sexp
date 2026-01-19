@@ -895,18 +895,18 @@ REGISTER PUT ("SMART PASTE") COMMANDS (normal, visual) ~
 
 All of the register put (paste) commands (and operators) accept an optional
 register name via the standard Vim mechanism (e.g., `"ap` to put from the `"a`
-register), as well as an optional [count] whose usage is documented with the
+register), as well as an optional `[count]` whose usage is documented with the
 corresponding command. Commands that replace existing elements have distinct
 `p` and `P` variants: by analogy with builtin `p` and `P`, the former updates
 the unnamed register (|@"|); the latter does not. By default, the cursor will
-be left at the head of the put text, but this can be changed with options
-|g:sexp_regput_curpos| and |g:sexp_regput_into_curpos|. All put (paste)
-commands perform an automatic re-indent on a range whose size is determined by
+be left at the head of the put text, but this can be changed with option
+|g:sexp_regput_curpos| and its several variants. All put (paste) commands
+perform an automatic re-indent on a range whose size is determined by
 |g:sexp_auto_indent_range|. By default, vim-sexp attempts to validate register
 contents before pasting them. To learn more about this behavior, including how
 to disable/customize it, see |sexp-regput-register-parsing|.
 
-Note: If vim-repeat is installed, the replace commands/operators can be
+Note: If vim-repeat is installed, the non-operator smart-paste commands can be
 repeated with the |.| command.
 
 Note: Although most users will probably wish to remap the builtin put

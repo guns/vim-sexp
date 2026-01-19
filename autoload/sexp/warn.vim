@@ -3,6 +3,13 @@
 " larger autoload/sexp.
 " TODO: Consider renaming this autoload module to ui or some such.
 
+" Note: Do not uncomment the luaeval in this function, as it requires a logging module
+" that's not currently part of the plugin.
+" TODO: Eventually, remove it and all commented calls to it.
+fu! sexp#warn#dbg(...)
+    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+endfu
+
 " UTILITIES
 " Return a composite string that contains all the inputs and preserves the boundaries
 " between them: e.g., H("foo", "bar") is different from H("fo", "obar"), etc...

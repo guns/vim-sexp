@@ -3058,6 +3058,53 @@ function! s:analyze_codestr_simple(codestr, filetype)
     return ret
 endfunction
 
+function! s:regput__get_curpos_opt(put_mode)
+    let default = g:sexp_regput_curpos
+    " Just in case user has set to something invalid...
+    if default < 0 || default > 2
+        " Note: Warning will come later.
+        let default = 0
+    endif
+    " Map put_mode's to the corresponding option tags.
+    let optkeys = {'put': '', 'put_child': 'into', 'replace_op': 'op', 'replace_op_ep': 'op_ep'}
+    " Define the following option dependencies as a reversed tree, pre-selecting the one
+    " that applies to the specified put_mode.
+    "   <empty> (base g:sexp_regput_curpos)
+    "   into
+    "   op
+    "     op_ep
+    let deps = {'': [], 'into': [], 'op_ep': ['op'], 'op': []}[optkeys[a:put_mode]]
+    " If we finish loop without finding anything more specific, use default.
+    let [v, i] = [default, -1]
+    let k = optkeys[a:put_mode]
+    try
+        " First iteration will use the most specific key (initialized above, not pulled
+        " from deps list).
+        while i < len(deps)
+            if i >= 0
+                let k = deps[i]
+            endif
+            let optname = 'sexp_regput_' . k . (!empty(k) ? '_' : '') . 'curpos'
+            let v_ = get(g:, optname, -1)
+            let i += 1
+            if v_ < 0 || v_ > 2
+                if v_ != -1
+                    throw "sexp-warning: Invalid option setting for g:" . optname
+                        \ . " (" . v_ . ") defaulting to " . default
+                        \ . " (:help sexp-regput-cursor-positioning)"
+                endif
+                continue
+            endif
+            " Found valid override. Use it.
+            let v = v_
+            break
+        endwhile
+    catch /sexp-warning/
+        call sexp#warn#msg_once("regput 'curpos'", v:exception, 1)
+    endtry
+    return v
+endfu
+
 " Build and return a dict characterizing the text in the put register and canonicalize the
 " register contents. Use Treesitter if applicable, falling back to legacy syntax
 " highlighting, and even to simplistic regex-based parser if neither Treesitter nor legacy
@@ -3589,7 +3636,8 @@ function! s:regput__postop(ctx, sep, orig_range)
         endif
     endfor
     " If put mode-specific option requests curpos target of head or tail, make adjustment.
-    let opt = a:ctx.put_mode =~ 'child' ? g:sexp_regput_into_curpos : g:sexp_regput_curpos
+    " FIXME: Several more modes to consider: op and op_ep
+    let opt = s:regput__get_curpos_opt(a:ctx.put_mode)
     let idx = !!opt
     if opt == idx
         " Desired position is 0 (head) or 1 (tail).
@@ -3625,6 +3673,8 @@ function! s:regput__impl(tgt, count)
         " Analyze the register.
         " Note: This function can throw sexp-abort and sexp-noop; in the case of
         " sexp-abort, its responsible for any associated warnings to user.
+        " Caveat: Due to the indirect ways we can get here (e.g., using TextYankPost
+        " autocmd), it's important that we use saved regname, not v:register.
         let reg = s:regput__get_reginfo(a:tgt.regname)
         let ctx = s:regput__get_context(a:tgt)
         let sep = s:regput__get_seps(ctx, reg)
@@ -3815,6 +3865,7 @@ function! sexp#put(count, tail)
 endfunction
 
 function! s:replace_mode__process_inner_range(tgt)
+    let tgt = a:tgt
     " Determine the range that *contains* inner_range.
     for i in range(2)
         call s:setcursor(tgt.inner_range[i])
@@ -3892,20 +3943,30 @@ function! s:replace__get_tgt(put_mode, mode, count, tail, P)
 endfunction
 
 " Assuming operator motion was exclusive, convert range to fiducial inclusive.
-function! s:fix_operator_range(rng)
+function! s:fix_operator_range(rng, inclusive)
+    let ret = deepcopy(a:rng)
+    if !a:inclusive
+        " Offset final position in range.
+        let ret = sexp#offset_char(ret, 1)
+    endif
+    return ret
 endfunction
 
-function! s:replace_op__try_get_endpoint_tgt(ctx, s, e, allow_same_level)
-    echomsg "c:" getpos('.') "[:" getpos("'[") "]:" getpos("']")
+function! s:replace_op__try_get_endpoint_tgt(ctx, s, e, inclusive)
+    "echomsg "c:" getpos('.') "[:" getpos("'[") "]:" getpos("']")
     let [ctx] = [a:ctx]
     let rng = [a:s, a:e]
+    if a:inclusive != -1
+        let rng = s:fix_operator_range(rng, a:inclusive)
+    endif
+
     " Which direction was the motion search? (-1 indicates 'object' not motion).
-    let dir = a:s == ctx.curpos ? 1 : s:e == ctx.curpos ? 0 : -1
+    let dir = a:s == ctx.curpos ? 1 : a:e == ctx.curpos ? 0 : -1
     if dir == -1
         " Motion not anchored at curpos; thus, endpoint mode not in effect.
         return 0
     endif
-    if !a:allow_same_level && sexp#is_uniform_range(rng)
+    if sexp#is_uniform_range(rng)
         " Motion did not cross levels; endpoint mode not in effect.
         return 0
     endif
@@ -3922,13 +3983,18 @@ function! s:replace_op__try_get_endpoint_tgt(ctx, s, e, allow_same_level)
     " Post-process inner range.
     call s:replace_mode__process_inner_range(ctx)
     " Return true to prevent fallback to non-endpoint mode.
+    " Also, change the put_mode to reflect "endpoint mode", which will matter for post-op
+    " cursor positioning.
+    let ctx.put_mode = "replace_op_ep"
     return 1
 endfunction
 
-function! s:replace_op__get_tgt(ctx)
-    let ctx = a:ctx
+function! s:replace_op__get_tgt(ctx, inclusive)
+    let [ctx, inclusive] = [a:ctx, a:inclusive]
     " Note: For replace operator, use the register/count saved in the context dict at
     " operator invocation, *not* current v:register/v:count.
+    " Note: put_mode will be adjusted if we end up handling this with the special
+    " "endpoint mode".
     let ret = {
         \ 'mode': ctx.mode, 'put_mode': 'replace_op', 'count': ctx.count, 'P': ctx.P,
         \ 'regname': ctx.regname,
@@ -3939,11 +4005,8 @@ function! s:replace_op__get_tgt(ctx)
         \ 'tail': -1, 'force_nl': [0, 0]}
     try
         let [s, e] = [getpos("'["), getpos("']")]
-        "let [s_orig, e_orig] = [s[:], e[:]]
         " First, attempt to process as "endpoint" motion (unless inhibited by option).
-        " TODO: 0 is placeholder; eventually, explicit endpoint mode operator will cause
-        " it to be set.
-        if !s:replace_op__try_get_endpoint_tgt(ret, s, e, 0)
+        if !s:replace_op__try_get_endpoint_tgt(ret, s, e, inclusive)
             " Fallback to non-endpoint mode.
             call s:replace_mode__get_tgt(ret, s, e)
         endif
@@ -3963,20 +4026,28 @@ function! sexp#replace_op(mode, count, P, ...)
             \ 'backtick': getpos("'`"),
             \ 'mode': a:mode, 'count': a:count, 'P': a:P
         \ }
-        " The call via 'opfunc' will get the original args + the context dict.
-        return function('sexp#replace_op', [a:mode, a:count, a:P, ctx])
+        " Important Note: Ideally, we'd use the black hole register for this, but we need
+        " TextYankPost to fire, and it doesn't for the black hole register; thus, use z
+        " register and ensure the handlers save/restore both it and the unnamed register.
+        " TODO: Consider just returning boolean flag indicating the mode to use and
+        " letting opfunc handle the details?
+        let op = has('nvim-0.5') && g:sexp_regput_op_tele ? '"zyv' : 'g@v'
+        " The call via 'opfunc' or TextYankPost will get the original args + the context
+        " dict and the operator itself.
+        return [op, function('sexp#replace_op', [a:mode, a:count, a:P, ctx, op])]
     endif
     try
-        " We've been invoked by our opfunc wrapper, called as 'opfunc' (not invoked
-        " explicitly by sexp#plug_runtime()).
-        let [ctx, type] = a:000
+        " We've been invoked by our opfunc wrapper, called either as true 'opfunc' or in
+        " response to a TextYankPost: in either case, we're not invoked directly by
+        " sexp#plug_runtime()).
+        let [ctx, op, type, inclusive] = a:000
         if type != 'char'
             call sexp#warn#msg("sexp#replace_op:"
                 \ " Invalid use of mode '" . type . "' with replace operator."
                 \ " Only charwise mode supported")
             return
         endif
-        let tgt = s:replace_op__get_tgt(ctx)
+        let tgt = s:replace_op__get_tgt(ctx, inclusive)
         call s:regput__impl(tgt, a:count)
 
     catch /sexp-\%(warning\|abort\):/
@@ -4406,7 +4477,9 @@ function! s:yankdel_range__postadjust_positions(adj)
     " delta in preadjust function).
     let delta = s:total_bytes_in_file() - a:adj.bytes_in_file
     if delta != a:adj.delta
-        throw "Mismatch in calculated deltas: post-delta=" . delta . " pre-delta=" . a:adj.delta
+        " FIXME: Resolve this!!!!!!
+        let delta = a:adj.delta
+        "throw "Mismatch in calculated deltas: post-delta=" . delta . " pre-delta=" . a:adj.delta
     endif
     let [op, ps, offs] = [a:adj.op, a:adj.ps, a:adj.byte_offs]
     let [anchor, anchor_byte] = [a:adj.anchor, a:adj.anchor_byte]

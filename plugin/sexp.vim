@@ -249,8 +249,15 @@ if !exists('g:sexp_regput_curpos')
 endif
 
 if !exists('g:sexp_regput_into_curpos')
-    " Default to the base variant that isn't specific to "put into" commands.
-    let g:sexp_regput_into_curpos = get(g:, 'sexp_regput_curpos', 0)
+    let g:sexp_regput_into_curpos = -1
+endif
+
+if !exists('g:sexp_regput_op_curpos')
+    let g:sexp_regput_op_curpos = -1
+endif
+
+if !exists('g:sexp_regput_op_ep_curpos')
+    let g:sexp_regput_op_ep_curpos = -1
 endif
 
 if !exists('g:sexp_regput_invalid_register_action')
@@ -263,6 +270,10 @@ endif
 
 if !exists('g:sexp_regput_replace_expanded')
     let g:sexp_regput_replace_expanded = 0
+endif
+
+if !exists('g:sexp_regput_op_tele')
+    let g:sexp_regput_op_tele = 0
 endif
 
 " Expert options
@@ -807,17 +818,17 @@ Defplug! nnoremap sexp_capture_next_element sexp#docount_stateful(v:count, 'sexp
 Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 1, 1)
 
 " Put register before/after
-DefplugN nnoremap sexp_put_before  sexp#put(v:count, 0)
-DefplugN nnoremap sexp_put_after   sexp#put(v:count, 1)
+DefplugN! nnoremap sexp_put_before  sexp#put(v:count, 0)
+DefplugN! nnoremap sexp_put_after   sexp#put(v:count, 1)
 " Replace operator
-Defoper! nnoremap sexp_replace_op   sexp#replace_op('n', v:count, 0)
-Defoper! nnoremap sexp_replace_op_P sexp#replace_op('n', v:count, 1)
+DefoperN! nnoremap sexp_replace_op   sexp#replace_op('n', v:count, 0)
+DefoperN! nnoremap sexp_replace_op_P sexp#replace_op('n', v:count, 1)
 " Replace selection with register
-DefplugN xnoremap sexp_replace   sexp#replace('v', v:prevcount, 0)
-DefplugN xnoremap sexp_replace_P sexp#replace('v', v:prevcount, 1)
+DefplugN! xnoremap sexp_replace   sexp#replace('v', v:prevcount, 0)
+DefplugN! xnoremap sexp_replace_P sexp#replace('v', v:prevcount, 1)
 " Put register into list
-DefplugN nnoremap sexp_put_at_head sexp#put_child(v:count, 0)
-DefplugN nnoremap sexp_put_at_tail sexp#put_child(v:count, 1)
+DefplugN! nnoremap sexp_put_at_head sexp#put_child(v:count, 0)
+DefplugN! nnoremap sexp_put_at_tail sexp#put_child(v:count, 1)
 
 """ Insert mode mappings {{{1
 

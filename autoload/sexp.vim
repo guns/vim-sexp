@@ -3899,7 +3899,8 @@ function! s:replace_mode__get_tgt(tgt, s, e)
     let rng = [s, e]
     if !sexp#is_uniform_range(rng)
         throw 'sexp-abort: Invalid attempt to perform replacement'
-            \ . ' on range that crosses list boundaries'
+            \ . ' on range that crosses list boundaries.'
+            \ . ' Did you mean to set g:sexp_regput_enable_teleop?'
     endif
     for i in range(2)
         call s:setcursor(rng[i])
@@ -4006,7 +4007,8 @@ function! s:replace_op__get_tgt(ctx, inclusive)
     try
         let [s, e] = [getpos("'["), getpos("']")]
         " First, attempt to process as "endpoint" motion (unless inhibited by option).
-        if !s:replace_op__try_get_endpoint_tgt(ret, s, e, inclusive)
+        if !g:sexp_regput_enable_teleop
+            \ || !s:replace_op__try_get_endpoint_tgt(ret, s, e, inclusive)
             " Fallback to non-endpoint mode.
             call s:replace_mode__get_tgt(ret, s, e)
         endif
@@ -4018,23 +4020,30 @@ endfunction
 
 " TODO: Probably add a parameter for the motion mode.
 function! sexp#replace_op(mode, count, P, ...)
+    " Replace operator doesn't use a count.
+    " TODO: Currently, warning is given by plug wrapper, but consider creating a
+    " sexp#warn#if_count_provided() or some such, which could eventually be easily invoked
+    " from other sexp operators (but only the ones for which it makes sense).
+    " TODO: Consider whether the aforementioned warning would be best coming before or
+    " after the motion/object.
+    let cnt = 1
     if !a:0
         " Initial call (invoked explicitly, not via Vim's opfunc engine)
         let ctx = {
             \ 'curpos': getpos('.'),
             \ 'regname': v:register,
             \ 'backtick': getpos("'`"),
-            \ 'mode': a:mode, 'count': a:count, 'P': a:P
+            \ 'mode': a:mode, 'count': cnt, 'P': a:P
         \ }
         " Important Note: Ideally, we'd use the black hole register for this, but we need
         " TextYankPost to fire, and it doesn't for the black hole register; thus, use z
         " register and ensure the handlers save/restore both it and the unnamed register.
         " TODO: Consider just returning boolean flag indicating the mode to use and
         " letting opfunc handle the details?
-        let op = has('nvim-0.5') && g:sexp_regput_op_tele ? '"zyv' : 'g@v'
+        let op = v:version >= 801 && g:sexp_regput_enable_teleop ? '"zyv' : 'g@v'
         " The call via 'opfunc' or TextYankPost will get the original args + the context
         " dict and the operator itself.
-        return [op, function('sexp#replace_op', [a:mode, a:count, a:P, ctx, op])]
+        return [op, function('sexp#replace_op', [a:mode, cnt, a:P, ctx, op])]
     endif
     try
         " We've been invoked by our opfunc wrapper, called either as true 'opfunc' or in

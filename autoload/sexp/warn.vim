@@ -7,7 +7,9 @@
 " that's not currently part of the plugin.
 " TODO: Eventually, remove it and all commented calls to it.
 fu! sexp#warn#dbg(...)
-    call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    if get(g:, 'sexp_enable_debug_output', 0)
+        call luaeval("require'dp':get'sexp':logf(unpack(_A))", a:000)
+    endif
 endfu
 
 " UTILITIES
@@ -52,6 +54,7 @@ endfunction
 
 " Wrapper for sexp#warn#msg(), which takes an arbitrary key representing the warning and
 " ensures the warning is displayed only once per buffer.
+" TODO: Consider making the key optional, defaulting to msg itself.
 " -- Optional Arg(s) --
 " a:1  1 if warning should be displayed with error highlighting
 fu! sexp#warn#msg_once(key, msg, ...)

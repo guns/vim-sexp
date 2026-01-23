@@ -7,6 +7,51 @@
 silent! call repeat#set('')
 let s:have_repeat_set = exists('*repeat#set')
 
+" Configure dot repeat for the specified command.
+function! s:configure_repeat(plug_name, opmode, count)
+    let [op_ipg, op_info] = [s:OP_ipg(), s:OP_get()]
+    " Determine the sequence to pass to repeat#set.
+    " Note: The identical sequence must be used for both setreg() and set().
+    " Special Case: If the operator was c (change), the dot register should contain the
+    " text we wish to insert over the sexp motion/object; however, the dot repeat will
+    " simply do `c<Plug>(some_sexp_object)', leaving us in insert mode with nothing
+    " inserted. To complete the desired operation, we must then use `<C-R>' to insert the
+    " dot register, then use `<C-\><C-n>' to ensure our return to normal mode doesn't
+    " trigger a beep.
+    let opstr = a:opmode
+        \ ? op_ipg
+            \ ? "\<Plug>(" . op_info.plug_cmd . ")"
+            \ : v:operator
+        \ : ""
+    let seq = a:opmode && v:operator ==? "c"
+        \ ? opstr . "\<Plug>(" . a:plug_name . ")\<C-r>.\<C-Bslash>\<C-n>"
+        \ : opstr . "\<Plug>(" . a:plug_name . ")"
+    " If sexp operator in progress, use cached v:register.
+    " Design Decision: Always pass register, even if unnamed.
+    " Rationale: Failure to set register explicitly inhibits the repeat plugin's register
+    " logic, with the result that a register specification for the "." command would be
+    " ignored.
+    " Note: Use a lambda with a closure to simplify the operator callback.
+    let reg = op_ipg ? op_info.reg : v:register
+    let RepFn = {->
+        \ repeat#set(seq, a:count) && repeat#setreg(seq, reg)
+    \ }
+    if op_ipg
+        " A sexp op is in progress! Allow repeat to be set *after* it completes.
+        " Note: If the motion/object for a sexp operator is not a sexp motion/object, we
+        " won't get here, so RepFn won't be set and repeat won't be configured. This is an
+        " inherent limitation.
+        call sexp#warn#dbg(
+            \ "Setting op_ipg.RepFn for %s with seq=%s reg=%s", a:plug_name, seq, reg)
+        let op_info.RepFn = RepFn
+    else
+        " No need to defer setting repeat.
+        call sexp#warn#dbg(
+            \ "non-deferred repeat#set on %s with seq=%s reg=%s", a:plug_name, seq, reg)
+        call RepFn()
+    endif
+endfunction
+
 function! s:opfunc(mode, name, cnt, expr, ...)
     if !a:0
         " Let the operator function provide a stateful callback to be invoked to complete
@@ -66,7 +111,6 @@ endfunction
 "   Currently, the count arg is captured before this function escapes to normal mode (if
 "   it does). In particular, neither <cmd> nor :<c-u> (even from visual mode) reset
 "   v:count, so we should never need to use v:prevcount.
-" TODO: Consider making this an autoload function like s:opfunc().
 function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
     let opmode = a:mapmode[0] ==# 'o'
     " Assumption: v:count does not change before this call.
@@ -84,68 +128,31 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
             " TODO: This may need special handling with g:sexp_regput{_into}_curpos == 2.
             exe "normal! " . (opmode ? 'vv' : '') . "m`"
         endif
-        let op_ipg = get(s:, 'OP', {})
-        "let cnt = max([1, a:count])
-        let cnt = a:count
         " Don't set repeat if this is a sexp operator, but if it's an operator-pending
         " sexp command, set it in a way that takes any *active* operator (including a sexp
-        " operator) into account. Note that for this to work, we have to save both the
-        " plug cmd and any count associated with the sexp operator when it's first
-        " invoked. If the object/motion belongs to sexp, we'll concatenate the following
-        " for repeat:
-        "   {op count} {sexp operator} {object/motion count} {sexp object/motion}
-        " If the object/motion is non-sexp, we'll have no way of knowing what it was, and
-        " will simply discard the repeat information without ever calling repeat#set().
+        " operator) into account. If the object/motion belongs to sexp, we'll concatenate
+        " the following for repeat: {sexp operator} {sexp object/motion}
+        " If the object/motion is non-sexp, we'll have no way of knowing what it was
+        " (since Vim doesn't provide it), and will simply discard the repeat information
+        " without ever calling repeat#set().
         if !a:flags.asexpr && a:flags.repeat && s:have_repeat_set
-            " Note: The identical sequence must be used for both setreg() and set().
-            " Special Case: If the operator was c (change), the dot register should
-            " contain the text we wish to insert over the sexp motion/object. The
-            " repeat effectively does `c<Plug>(some_sexp_object)', leaving us in
-            " insert mode; thus, we use `<C-R>' to insert the dot register, then use
-            " `<C-\><C-n>' to ensure our return to normal mode doesn't trigger a beep.
-            let opstr = opmode
-                \ ? !empty(get(s:, 'OP', {}))
-                    \ ? (s:OP.cnt > 1 ? s:OP.cnt : '') . "\<Plug>(" . s:OP.plug_cmd . ")"
-                    \ : v:operator
-                \ : ""
-            " TODO: Decide on best way to handle the 2 relevant counts.
-            let cntstr = !empty(op_ipg) ? (cnt > 1 ? cnt : '') : ''
-            let seq = opmode && v:operator ==? "c"
-                \ ? opstr . cntstr . "\<Plug>(" . a:name . ")\<C-r>.\<C-Bslash>\<C-n>"
-                \ : opstr . cntstr . "\<Plug>(" . a:name . ")"
-            " The repeat plugin defaults to the unnamed register, so don't bother setting
-            " reg unless current register is named.
-            let reg = v:register != '"' ? v:register : ''
-            " Design Decision: Always pass repeat#set() a count of 1.
-            " Rationale: Allows us to embed distinct counts for operator and motion/object
-            " in the actual repeat sequence.
-            " Note: Use a lambda with a closure to simplify the operator callback.
-            let RepFn = {->
-                \ repeat#set(seq, cnt) && !empty(reg)
-                \ ? repeat#setreg(seq, reg) : 0
-            \ }
-            if !empty(op_ipg)
-                " A sexp op is in progress! Allow repeat to be set *after* it completes.
-                " Note: If the motion/object for a sexp operator is not a sexp
-                " motion/object, RepFn won't be set and repeat won't be configured.
-                call sexp#warn#dbg(
-                    \ "Setting op_ipg.RepFn for %s with seq=%s reg=%s", a:name, seq, reg)
-                let op_ipg.RepFn = RepFn
-            else
-                " No need to defer setting repeat.
-                call sexp#warn#dbg(
-                    \ "non-deferred repeat#set on %s with seq=%s reg=%s", a:name, seq, reg)
-                call RepFn()
-            endif
+            call s:configure_repeat(a:name, opmode, a:count)
         endif
         " Note: v:count may already have been reset (and transferred to v:prevcount), but
         " we snapshotted it in the call to this function, so use that.
-        let rhs = substitute(a:rhs, '\<v:\%(prev\)\?count\>', cnt, 'g')
+        " TODO: Remove 'prev' from the pattern now that it's been removed from cmd defs.
+        let rhs = substitute(a:rhs, '\<v:\%(prev\)\?count\>', a:count, 'g')
         if a:flags.asexpr
+            if a:count > 1
+                call sexp#warn#msg_once('operator counts',
+                    \ "Warning: Counts provided to sexp operators are ignored"
+                    \ . " but will multiply any count provided to the motion/object."
+                    \ . " It's best to provide counts only to motion/object commands.")
+            endif
             " Let opfunc decide what the mapping looks like (i.e., g@ or *yv).
-            return call('s:opfunc', [a:mapmode[0], a:name, cnt, rhs])
+            return call('s:opfunc', [a:mapmode[0], a:name, a:count, rhs])
         else
-            " No need for deferred execution
+            " Not an operator: no need for deferred execution
             exe 'call' rhs
         endif
     finally
@@ -153,6 +160,16 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
             call sexp#post_op(a:mapmode[0], a:name)
         endif
     endtry
+endfunction
+
+" Return dict for a sexp operator in progress, else {}.
+function! s:OP_get()
+    return get(s:, 'OP', {})
+endfunction
+
+" Return true iff sexp operator is in progress.
+function! s:OP_ipg()
+    return !empty(get(s:, 'OP', {}))
 endfunction
 
 " Remove all autocmds used as part of the TextYankPost-based mechanism for handling
@@ -169,7 +186,7 @@ endfunction
 " Pre-condition: Called when the operator is first triggered and only when the
 " TextYankPost mechanism isn't in use.
 function! s:OP_cache(name, cnt)
-    let s:OP = {'plug_cmd': a:name, 'cnt': a:cnt}
+    let s:OP = {'plug_cmd': a:name, 'cnt': a:cnt, 'reg': v:register}
 endfunction
 
 " Configure use of TextYankPost (and other autocmds) to handle sexp operators in a way
@@ -178,6 +195,7 @@ function! s:OP_setup(Fn, name, cnt)
     let s:OP = {
         \ 'plug_cmd': a:name,
         \ 'cnt': a:cnt,
+        \ 'reg': v:register,
         \ 'unnamed_reg': @",
         \ 'z_reg': @z,
         \ 'fn': a:Fn,

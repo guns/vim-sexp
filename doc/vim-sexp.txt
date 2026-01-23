@@ -893,22 +893,24 @@ LIST MANIPULATION (normal, visual) ~
 REGISTER PUT ("SMART PASTE") COMMANDS (normal, visual) ~
                                         *sexp-smart-paste* *sexp-register-put*
 
-All of the register put (paste) commands (and operators) accept an optional
+All of the register put (paste) commands and operators accept an optional
 register name via the standard Vim mechanism (e.g., `"ap` to put from the `"a`
-register). The non-operator commands also accept an optional `[count]` , whose
-usage is documented with the corresponding command. Commands that replace
-existing elements have distinct `p` and `P` variants: by analogy with builtin
-`p` and `P`, the former updates the unnamed register (|@"|); the latter does
-not. By default, the cursor is left at the head of the put text, but this
-can be changed with option |g:sexp_regput_curpos| and its several variants.
-All put (paste) commands and operators perform an automatic re-indent on a
-range whose size is determined by |g:sexp_auto_indent_range|. By default,
-vim-sexp attempts to validate register contents before pasting them. To learn
-more about this behavior, including how to disable/customize it, see
-|sexp-regput-register-parsing|.
+register). The non-operator put commands also accept an optional `[count]`,
+whose usage is documented with the corresponding command. Commands that
+replace existing elements have distinct `p` and `P` variants: by analogy with
+builtin `p` and `P`, the former updates the unnamed register (|@"|); the
+latter does not. By default, the cursor is left at the head of the put text,
+but this can be changed with option |g:sexp_regput_curpos| and its several
+variants. All put (paste) commands and operators perform an automatic
+re-indent on a range whose size is determined by |g:sexp_auto_indent_range|.
+By default, vim-sexp attempts to validate register contents before pasting
+them. To learn more about this behavior, including how to disable/customize
+it, see |sexp-regput-register-parsing|.
 
-Note: If vim-repeat is installed, the all smart-paste commands and operators
-can be repeated with the |.| command.
+Note: If vim-repeat is installed, all smart-paste commands can be repeated
+with the "." command. Smart-paste operators can be repeated if and only if
+their operand is a sexp object/motion. (This is an inherent limitation, due to
+the fact that Vim's API does not expose the object/motion to the opfunc.)
 
 Note: Although most users will probably wish to remap the builtin put
 commands to vim-sexp's smarter, Lisp-aware counterparts, the builtins will not
@@ -920,7 +922,7 @@ Put register before/after (normal)  ~
 
 ["x]<LocalLeader>p                                    *<Plug>(sexp_put_after)*
 ["x]<LocalLeader>P                                   *<Plug>(sexp_put_before)*
-        Put [count] copies of register x before (`<LocalLeader>P`) or after
+        Put `[count]` copies of register x before (`<LocalLeader>P`) or after
         (`<LocalLeader>p`) the current element; alternatively, works like "put
         register into list" when the conditions in the following paragraph are
         met.
@@ -951,28 +953,40 @@ Replace operator (normal)  ~
 ["x] <M-p>                                           *<Plug>(sexp_replace_op)*
 ["x] <M-P>                                         *<Plug>(sexp_replace_op_P)*
         Replace a target determined by a motion or text/sexp object with the
-        contents of register x. For motions/objects whose endpoints are both
-        within a single level of the sexp tree, the selection or moved-over
-        region determines the replacement target.
+        contents of register x. 
 
                                              *sexp-replace-target-constraints*
         The target may contain multiple S-expressions, and must not contain
         partial S-expressions, unless |g:sexp_regput_replace_expanded| is set,
         in which case, the target will be expanded to include all of any
-        partially selected S-expressions.
+        partially selected S-expressions. Moreover, the motion endpoints must
+        lie within the same node of the sexp tree unless you've set option
+        |g:sexp_regput_enable_teleop|, which is the subject of the following
+        section.
 
-**Experimental**  ~
+        Note: Unlike the non-operator smart paste commands, the replace
+        operator does not use a `[count]`. If you supply one, Vim's operator
+        mechanism will use it as a multiplier for any count used with the
+        motion/object (probably not what you intended).
+        **Warning**: Use counts only with the motion/operator and do not
+        use a count with the "." (repeat) operator when using it to repeat a
+        replace operation.
+
+        The commands ending in `P` do not update the unnamed register.
+
+"Telescopic" Mode (***Experimental*** - Requires Vim Version >= 8.1) ~
                                                 *sexp-replace-telescopic-mode*
-        Unless you set |g:sexp_regput_op_tele|, vim-sexp will refuse to
-        operate on a region whose defining motion's endpoints are at different
-        levels of the sexp tree. This is done to minimize the risk of creating
-        unbalanced forms. There is, however, another way of looking at
-        operator motions, which gives them meaning when they span multiple
-        levels: rather than selecting the forms "moved over", a motion can
-        select the form "reached" by the motion search. Here's an illustrative
-        example, which assumes the following option settings:
+        By default, vim-sexp's replace operators will refuse to operate on an
+        "unbalanced" region whose endpoints are not both contained within the
+        same node of the sexp tree. While this is necessary to minimize the
+        risk of creating unbalanced forms, setting option
+        |g:sexp_regput_enable_teleop| enables an additional interpretation of
+        operator motions, which gives them meaning even when they reach across
+        tree levels: rather than selecting the forms "moved over", a motion
+        can select the form "reached" by the motion search. Here's an
+        illustrative example, which assumes the following option settings:
 
-          `g:sexp_regput_op_tele == 1`
+          `g:sexp_regput_enable_teleop == 1`
           `g:sexp_regput_curpos == 2`
 >
           (foo (bar)
@@ -987,24 +1001,14 @@ Replace operator (normal)  ~
 <
         Because this mode permits "action at a distance", it is known as
         "telescopic" mode. It may also be referred to as "endpoint" mode. This
-        feature is still considered experimental because some additional work
-        is needed to ensure it works properly with all vim-sexp motions, but
-        it already works well with non-sexp search operators (e.g., `/` and
-        `?`) and even works with motion plugins like vim-easymotion. The issue
-        with vim-sexp motions is that they sometimes exclude brackets from the
+        feature is still considered experimental because additional work is
+        needed to ensure it works properly with all vim-sexp motions, but it
+        already works well with non-sexp search operators (e.g., `/` and `?`)
+        and even works with motion plugins like vim-easymotion. The issue with
+        vim-sexp motions is that they sometimes exclude brackets from the
         motion in a way that is generally helpful to the user, but which
         breaks the telescopic selection logic. Fortunately, there's a
         workaround, which should be implemented in a subsequent version...
-
-        Note: Unlike the non-operator smart paste commands, the replace
-        operator does not use a `[count]`. If you supply one, Vim's operator
-        mechanism will use it as a multiplier for any count used with the
-        motion/object (probably not what you intended).
-        **Warning**: Use counts only with the motion/operator and do not
-        use a count with the "." (repeat) operator when using it to repeat a
-        replace operation.
-
-        The commands ending in `P` do not update the unnamed register.
 
 Replace visual selection with register (visual)  ~
 

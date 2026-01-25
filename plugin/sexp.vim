@@ -249,15 +249,15 @@ if !exists('g:sexp_regput_curpos')
 endif
 
 if !exists('g:sexp_regput_into_curpos')
-    let g:sexp_regput_into_curpos = -1
+    let g:sexp_regput_into_curpos = 0
 endif
 
 if !exists('g:sexp_regput_op_curpos')
     let g:sexp_regput_op_curpos = -1
 endif
 
-if !exists('g:sexp_regput_op_ep_curpos')
-    let g:sexp_regput_op_ep_curpos = -1
+if !exists('g:sexp_regput_op_tele_curpos')
+    let g:sexp_regput_op_tele_curpos = -1
 endif
 
 if !exists('g:sexp_regput_invalid_register_action')
@@ -300,11 +300,15 @@ endif
 " with the same format as s:sexp_mappings, to be searched for overrides.
 " Constraint: A given plug rhs should never belong to multiple presets, as this would give
 " rise to ambiguity when both presets were enabled.
+" Note: Currently, a preset entry completely *replaces* the corresponding plugin-defined
+" command entry.
+" TODO: Decide whether it should be merged with it instead...
+" TODO: Decide whether the normal mode replace commands should have default mappings.
 let s:sexp_mapping_preset__regput = {
     \ 'sexp_put_before':                   {'n': 'P'},
     \ 'sexp_put_after':                    {'n': 'p'},
-    \ 'sexp_replace':                      {'x': 'p'},
-    \ 'sexp_replace_P':                    {'x': 'P'},
+    \ 'sexp_replace':                      {'x': 'p', 'n': '<LocalLeader><LocalLeader>p'},
+    \ 'sexp_replace_P':                    {'x': 'P', 'n': '<LocalLeader><LocalLeader>P'},
 \ }
 
 let s:sexp_mappings = {
@@ -380,10 +384,12 @@ let s:sexp_mappings = {
     \ 'sexp_put_after':                    {'n': '<LocalLeader>p'},
     \ 'sexp_replace_op':                   {'n': '<M-p>'},
     \ 'sexp_replace_op_P':                 {'n': '<M-P>'},
-    \ 'sexp_replace':                      {'x': '<M-p>'},
-    \ 'sexp_replace_P':                    {'x': '<M-P>'},
-    \ 'sexp_put_at_head':                  {'n': '<p'},
-    \ 'sexp_put_at_tail':                  {'n': '>p'},
+    \ 'sexp_replace':                      {'x': '<LocalLeader>p', 'n': '<LocalLeader><LocalLeader>p'},
+    \ 'sexp_replace_P':                    {'x': '<LocalLeader>P', 'n': '<LocalLeader><LocalLeader>P'},
+    \ 'sexp_put_before_op':                {'n': '<p'},
+    \ 'sexp_put_after_op':                 {'n': '>p'},
+    \ 'sexp_put_at_head':                  {'n': '<LocalLeader>[p'},
+    \ 'sexp_put_at_tail':                  {'n': '<LocalLeader>]p'},
     \ }
 
 if !empty(g:sexp_filetypes)
@@ -826,11 +832,18 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:count, 'sexp
 DefplugN! nnoremap sexp_put_before  sexp#put(v:count, 0)
 DefplugN! nnoremap sexp_put_after   sexp#put(v:count, 1)
 " Replace operator
-DefoperN! nnoremap sexp_replace_op   sexp#replace_op('n', v:count, 0)
-DefoperN! nnoremap sexp_replace_op_P sexp#replace_op('n', v:count, 1)
+DefoperN! nnoremap sexp_replace_op   sexp#regput_op(1, 0)
+DefoperN! nnoremap sexp_replace_op_P sexp#regput_op(1, 1)
 " Replace selection with register
 DefplugN! xnoremap sexp_replace   sexp#replace('v', v:count, 0)
 DefplugN! xnoremap sexp_replace_P sexp#replace('v', v:count, 1)
+" Replace element under cursor with register
+" TODO: Decide whether to map this by default...
+DefplugN! nnoremap sexp_replace   sexp#replace('n', v:count, 0)
+DefplugN! nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
+" Put before/after operators
+DefoperN! nnoremap sexp_put_before_op sexp#regput_op(0, 1)
+DefoperN! nnoremap sexp_put_after_op  sexp#regput_op(0, 0)
 " Put register into list
 DefplugN! nnoremap sexp_put_at_head sexp#put_child(v:count, 0)
 DefplugN! nnoremap sexp_put_at_tail sexp#put_child(v:count, 1)

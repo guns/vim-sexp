@@ -460,6 +460,15 @@ function! s:current_macro_character_terminal(end)
     return [0, termline, termcol, 0]
 endfunction
 
+" Return range [start,end] for element under the cursor, else [nullpos, nullpos].
+function! sexp#current_element_terminals()
+    let s = sexp#current_element_terminal(0)
+    if s[1]
+        return [s, sexp#current_element_terminal(1)]
+    endif
+    return [s:nullpos, s:nullpos]
+endfunction
+
 " Position of start/end of current element: 0 for start, 1 for end. Returns
 " [0, 0, 0, 0] if not currently in an element.
 "
@@ -3065,27 +3074,33 @@ function! s:regput__get_curpos_opt(put_mode)
         " Note: Warning will come later.
         let default = 0
     endif
-    " Map put_mode's to the corresponding option tags.
-    let optkeys = {'put': '', 'put_child': 'into', 'replace_op': 'op', 'replace_op_ep': 'op_ep'}
     " Define the following option dependencies as a reversed tree, pre-selecting the one
     " that applies to the specified put_mode.
     "   <empty> (base g:sexp_regput_curpos)
     "   into
     "   op
-    "     op_ep
-    let deps = {'': [], 'into': [], 'op_ep': ['op'], 'op': []}[optkeys[a:put_mode]]
+    "     op_tele
+    let optkey = a:put_mode =~ 'op'
+        \ ? a:put_mode =~ '_tele'
+            \ ? 'op_tele'
+            \ : 'op'
+        \ : a:put_mode =~ '_into'
+        \ ? 'into'
+        \ : ''
+    let deps = {'': [], 'into': [], 'op_tele': ['op'], 'op': []}[optkey]
     " If we finish loop without finding anything more specific, use default.
     let [v, i] = [default, -1]
-    let k = optkeys[a:put_mode]
+    let k = optkey
     try
-        " First iteration will use the most specific key (initialized above, not pulled
-        " from deps list).
+        " First iteration uses one of the keys from deps; subsequent interations use keys
+        " from the list selected by that initial key.
         while i < len(deps)
             if i >= 0
                 let k = deps[i]
             endif
             let optname = 'sexp_regput_' . k . (!empty(k) ? '_' : '') . 'curpos'
             let v_ = get(g:, optname, -1)
+            " Make sure next iteration considers less specific optkey (if applicable).
             let i += 1
             if v_ < 0 || v_ > 2
                 if v_ != -1
@@ -3093,6 +3108,7 @@ function! s:regput__get_curpos_opt(put_mode)
                         \ . " (" . v_ . ") defaulting to " . default
                         \ . " (:help sexp-regput-cursor-positioning)"
                 endif
+                " Ignore unset option.
                 continue
             endif
             " Found valid override. Use it.
@@ -3180,7 +3196,7 @@ endfunction
 "   Note: List keys are pairs whose indices correspond to the elements of range[].
 "   --[[ Beginning of merged-in tgt_info dict
 "   count:           [count] associated with the operation
-"   put_mode:        one of 'put', 'put_child', 'replace', 'replace_child'
+"   put_mode:        one of 'put', 'put_child', 'replace', 'replace_op', 'replace_op_tele'
 "   tail:            At the time of command invocation, 'tail' indicates either the put
 "                    *direction* (non-child put) or the *side* of the list from which the
 "                    insert location is calculated (child put). At this point, however,
@@ -3556,13 +3572,13 @@ endfunction
 " of arguments to s:yankdel_range().
 function! s:regput__get_splice_info(count, ctx, reg, sep, flags)
     let ret = {
-        \ 'range': a:ctx.put_mode =~ 'repl' ? a:ctx.inner_range : a:ctx.range,
+        \ 'range': a:ctx.put_mode =~ 'replace' ? a:ctx.inner_range : a:ctx.range,
         \ 'text': '', 'inc': [0, 0]
     \ }
     let [ctx, reg, sep] = [a:ctx, a:reg, a:sep]
     let tail = ctx.tail
     " TODO: Perhaps these flags should be added to ctx for convenience.
-    let [is_repl, has_tgt] = [ctx.put_mode =~ 'repl', ctx.put_mode == 'put']
+    let [is_repl, has_tgt] = [ctx.put_mode =~ 'replace', ctx.put_mode =~ 'put']
 
     " No range/inclusivity adjustments required in empty buffer case.
     if !ctx.empty_buffer
@@ -3636,7 +3652,7 @@ function! s:regput__postop(ctx, sep, orig_range)
         endif
     endfor
     " If put mode-specific option requests curpos target of head or tail, make adjustment.
-    " FIXME: Several more modes to consider: op and op_ep
+    " FIXME: Several more modes to consider: op and op_tele
     let opt = s:regput__get_curpos_opt(a:ctx.put_mode)
     let idx = !!opt
     if opt == idx
@@ -3726,6 +3742,10 @@ endfunction
 " Calculate and return the tgt_info dict needed by s:regput__get_context() for a 'put'
 " command.
 " Note: For details, see header of s:regput__get_context().
+" -- Args --
+" count:        the sexp command count
+" tail:         put direction flag (0=before 1=after)
+" [ctx]:        (optional) dict this function should augment
 " -- Logic --
 " Nominal Case: If cursor is *on* element, use that element as the target, and let
 " direction be determined by put command (p/P).
@@ -3755,15 +3775,11 @@ endfunction
 " Design Decision: Although we could handle p and P the same way in the 2 ElseIf's above,
 " treating the one that puts *away from* the colinear target as a request for extra
 " separation seems intuitive and gives extra flexibility.
-function! s:put__get_tgt(count, tail)
-    let curpos = getpos('.')
-    let ret = {
-        \ 'curpos': curpos, 'mode': 'n', 'put_mode': 'put', 'count': a:count,
-        \ 'regname': v:register,
-        \ 'vrange': s:get_visual_marks(),
-        \ 'range': [s:nullpos, s:nullpos],
-        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': a:tail, 'force_nl': [0, 0]}
+function! s:put__get_tgt(count, tail, ...)
+    let save_curpos = getpos('.')
+    let ret = a:0 && !empty(a:1)
+        \ ? a:1
+        \ : s:regput__ctx_init('n', a:tail ? 'put_after' : 'put_before', a:count)
     try
         " First, attempt to get natural target: i.e., side of *current* element in
         " direction of put. If no such element, special logic will determine a 'virtual'
@@ -3826,13 +3842,14 @@ function! s:put__get_tgt(count, tail)
         endif
         return ret
     finally
-        call s:setcursor(curpos)
+        call s:setcursor(save_curpos)
     endtry
 endfunction
 
-" If all conditions are met, convert a put before/after to the corresponding put child,
-" returning 1 let caller know the command was handled.
-function! s:regput__handle_as_put_child_maybe(count, tail)
+" If all conditions are met for converting a put before/after to the corresponding put
+" child, return 1.
+" FIXME: This is going away, obsoleted by the put operators.
+function! s:regput__handle_as_put_into_empty_list(count, tail)
     if !g:sexp_regput_bracket_is_target
         " Feature disabled by user config
         return 0
@@ -3847,23 +3864,28 @@ function! s:regput__handle_as_put_child_maybe(count, tail)
     if !a:tail && isl != 3 || a:tail && isl == 3
         return 0
     endif
-    " All conditions met for converting put to put_child!
-    " Caveat: Toggle tail due to change in meaning: e.g.,
-    "   put from open bracket (tail == 1) ==> put at head (tail == 0)
-    call sexp#put_child(a:count, !a:tail)
-    " Let caller know it's been handled.
+    " Treat as put into empty list!
     return 1
 endfunction
 
-" Put before/after
-function! sexp#put(count, tail)
-    if !s:regput__handle_as_put_child_maybe(a:count, a:tail)
+" Put before/after (both normal and operator variants)
+" Note: Optional ctx dict provided by caller if invoked internally by operator mechanism.
+function! sexp#put(count, tail, ...)
+    if s:regput__handle_as_put_into_empty_list(a:count, a:tail)
+        " All conditions met for converting put to put_child!
+        " Caveat: Toggle tail due to change in meaning: i.e.,
+        "   put (forwards) from open bracket (tail == 1) ==> put at head (tail == 0)
+        "   put (backwards) from close bracket (tail == 0) ==> put at tail (tail == 1)
+        call sexp#put_child(a:count, !a:tail, a:0 ? a:1 : {})
+    else
         let cnt = a:count ? a:count : 1
-        let tgt = s:put__get_tgt(cnt, a:tail)
+        let tgt = s:put__get_tgt(cnt, a:tail, a:0 ? a:1 : {})
         call s:regput__impl(tgt, cnt)
     endif
 endfunction
 
+" Augment provided 'tgt' dict with several range related fields, which are calculated from
+" the raw input range, which might represent a visual selection, a motion or sexp object.
 function! s:replace_mode__process_inner_range(tgt)
     let tgt = a:tgt
     " Determine the range that *contains* inner_range.
@@ -3885,58 +3907,79 @@ function! s:replace_mode__process_inner_range(tgt)
     endfor
 endfunction
 
-" Augment provided 'tgt' dict with several range related fields, which are calculated
-" from the raw input range, which might represent a visual selection, a motion or sexp
-" object.
-" Note: This is factored into its own function because it's used by several replace modes.
-function! s:replace_mode__get_tgt(tgt, s, e)
-    " Augment provided dict.
-    let [tgt, s, e] = [a:tgt, a:s, a:e]
-    if !sexp#range_has_non_ws(s, e, 1)
-        throw 'sexp-abort: Invalid attempt to perform replacement'
-            \ . ' on pure whitespace'
-    endif
-    let rng = [s, e]
-    if !sexp#is_uniform_range(rng)
-        throw 'sexp-abort: Invalid attempt to perform replacement'
-            \ . ' on range that crosses list boundaries.'
-            \ . ' Did you mean to set g:sexp_regput_enable_teleop?'
-    endif
-    for i in range(2)
-        call s:setcursor(rng[i])
-        let rng[i] = sexp#move_to_current_element_terminal(i)
-        if !rng[i][1]
-            " Attempt to find nearest terminal in inward direction.
-            let rng[i] = sexp#move_to_adjacent_element_terminal(!i)
-        endif
-    endfor
-    let tgt.inner_range = rng
-    if !g:sexp_regput_replace_expanded
-        " Make sure original selection contained only complete S-Expressions.
-        if sexp#compare_pos(s, tgt.inner_range[0]) > 0
-            \ || sexp#compare_pos(e, tgt.inner_range[1]) < 0
-            throw 'sexp-abort: Current setting of g:sexp_regput_replace_expanded prohibits'
-                \ . ' selecting only part of an S-Expression for replacement.'
-        endif
-    endif
-    " Post-process inner_range.
-    call s:replace_mode__process_inner_range(tgt)
-endfunction
-
-function! s:replace__get_tgt(put_mode, mode, count, tail, P)
-    let curpos = getpos('.')
-    let ret = {
-        \ 'mode': a:mode, 'put_mode': a:put_mode, 'count': a:count, 'P': a:P,
+" TODO: Move this...
+function! s:regput__ctx_init(mode, put_mode, count, ...)
+    " Create dict with superset of keys required for various regput modes.
+    " Provide reasonable defaults where they exist, giving precedence to any defaults
+    " provided by caller in optional override dict.
+    let ctx = {
+        \ 'mode': a:mode,
+        \ 'put_mode': a:put_mode,
+        \ 'count': a:count,
+        \ 'curpos': getpos('.'),
         \ 'regname': v:register,
-        \ 'curpos': curpos, 'vrange': s:get_visual_marks(),
+        \ 'backtick': getpos("'`"),
+        \ 'P': -1,
+        \ 'tail': -1,
+        \ 'vrange': s:get_visual_marks(),
+        \ 'orange': [getpos("'["), getpos("']")],
         \ 'range': [s:nullpos, s:nullpos],
         \ 'inner_range': [s:nullpos, s:nullpos],
         \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': -1, 'force_nl': [0, 0]}
+        \ 'force_nl': [0, 0],
+    \ }
+    if a:0
+        let ctx = extend(ctx, a:1)
+    endif
+    return ctx
+endfunction
+
+function! s:replace__get_tgt(mode, count, tail, P, ...)
+    let ret = a:0 && !empty(a:1) ? a:1 : s:regput__ctx_init(a:mode, 'replace', a:count)
+    let curpos = getpos('.')
     try
-        " Augment dict with the inner_range.
-        let [s, e] = ret.vrange
-        call s:replace_mode__get_tgt(ret, s, e)
+        if a:mode ==? 'n' && ret.put_mode != 'replace_op'
+            " Assumption: Caller has positioned cursor correctly.
+            let rng = sexp#current_element_terminals()
+            if !rng[0][1]
+                throw 'sexp-abort: No valid target for sexp replace'
+            endif
+        else " visual mode or non-telescopic replace operator.
+            " Validate and adjust range to include only complete forms.
+            let [s, e] = ret.put_mode == 'replace_op' ? ret.orange : ret.vrange
+            if !sexp#range_has_non_ws(s, e, 1)
+                throw 'sexp-abort: Invalid attempt to perform replacement'
+                    \ . ' on pure whitespace'
+            endif
+            let rng = [s, e]
+            if !sexp#is_uniform_range(rng)
+                throw 'sexp-abort: Invalid attempt to perform replacement'
+                    \ . ' on range that crosses list boundaries'
+            endif
+            for i in range(2)
+                call s:setcursor(rng[i])
+                let rng[i] = sexp#move_to_current_element_terminal(i)
+                if !rng[i][1]
+                    " Attempt to find nearest terminal in inward direction.
+                    let rng[i] = sexp#move_to_adjacent_element_terminal(!i)
+                endif
+            endfor
+            " Design Decision: Be less strict with visual selections.
+            " Rationale: Errors are less likely when selection is visually apparent before
+            " command execution.
+            if !g:sexp_regput_replace_expanded && ret.put_mode =~ 'replace_op'
+                " Make sure original selection contained only complete S-Expressions.
+                if sexp#compare_pos(s, rng[0]) > 0
+                    \ || sexp#compare_pos(e, rng[1]) < 0
+                    throw 'sexp-abort: Current setting of g:sexp_regput_replace_expanded prohibits'
+                        \ . ' selecting only part of an S-Expression for replacement.'
+                        \ . ' :help g:sexp_regput_replace_expanded'
+                endif
+            endif
+        endif
+        let ret.inner_range = rng
+        " Post-process inner_range.
+        call s:replace_mode__process_inner_range(ret)
         return ret
     finally
         call s:setcursor(curpos)
@@ -3953,88 +3996,86 @@ function! s:fix_operator_range(rng, inclusive)
     return ret
 endfunction
 
-function! s:replace_op__try_get_endpoint_tgt(ctx, s, e, inclusive)
-    "echomsg "c:" getpos('.') "[:" getpos("'[") "]:" getpos("']")
-    let [ctx] = [a:ctx]
-    let rng = [a:s, a:e]
-    if a:inclusive != -1
-        let rng = s:fix_operator_range(rng, a:inclusive)
-    endif
-
-    " Which direction was the motion search? (-1 indicates 'object' not motion).
-    let dir = a:s == ctx.curpos ? 1 : a:e == ctx.curpos ? 0 : -1
-    if dir == -1
-        " Motion not anchored at curpos; thus, endpoint mode not in effect.
-        return 0
-    endif
-    if sexp#is_uniform_range(rng)
-        " Motion did not cross levels; endpoint mode not in effect.
-        return 0
-    endif
-    " Determine the target sexp.
-    call s:setcursor(rng[dir])
-    let p = sexp#current_element_terminal(0)
-    if !p[1]
-        " Endpoint mode requires an endpoint strictly *on* an element; since we don't have
-        " that, just fallback to non-endpoint processing.
-        return 0
-    endif
-    " We're on an element; use its range.
-    let ctx.inner_range = [p, sexp#current_element_terminal(1)]
-    " Post-process inner range.
-    call s:replace_mode__process_inner_range(ctx)
-    " Return true to prevent fallback to non-endpoint mode.
-    " Also, change the put_mode to reflect "endpoint mode", which will matter for post-op
-    " cursor positioning.
-    let ctx.put_mode = "replace_op_ep"
-    return 1
-endfunction
-
-function! s:replace_op__get_tgt(ctx, inclusive)
-    let [ctx, inclusive] = [a:ctx, a:inclusive]
-    " Note: For replace operator, use the register/count saved in the context dict at
-    " operator invocation, *not* current v:register/v:count.
-    " Note: put_mode will be adjusted if we end up handling this with the special
-    " "endpoint mode".
-    let ret = {
-        \ 'mode': ctx.mode, 'put_mode': 'replace_op', 'count': ctx.count, 'P': ctx.P,
-        \ 'regname': ctx.regname,
-        \ 'curpos': ctx.curpos, 'vrange': s:get_visual_marks(),
-        \ 'range': [s:nullpos, s:nullpos],
-        \ 'inner_range': [s:nullpos, s:nullpos],
-        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': -1, 'force_nl': [0, 0]}
-    try
-        let [s, e] = [getpos("'["), getpos("']")]
-        " First, attempt to process as "endpoint" motion (unless inhibited by option).
-        if !g:sexp_regput_enable_teleop
-            \ || !s:replace_op__try_get_endpoint_tgt(ret, s, e, inclusive)
-            " Fallback to non-endpoint mode.
-            call s:replace_mode__get_tgt(ret, s, e)
+" FIXME: This is intended to replace the subsequent function.
+function! s:regput_op__try_get_tele_pos(ctx, inclusive)
+    let ret = s:nullpos
+    let curpos = a:ctx.curpos
+    let [s, e] = [getpos("'["), getpos("']")]
+    if g:sexp_regput_enable_teleop
+        " Telescopic operators enabled.
+        let rng = [s[:], e[:]]
+        if a:inclusive != -1
+            let rng = s:fix_operator_range(rng, a:inclusive)
         endif
-        return ret
-    finally
-        call s:setcursor(ctx.curpos)
-    endtry
+        " Which direction was the motion search? (-1 indicates 'object' not motion).
+        let dir = rng[0] == curpos ? 1 : rng[1] == curpos ? 0 : -1
+        if dir != -1
+            " Motion anchored at curpos; telescopic mode may be in effect.
+            if !sexp#is_uniform_range(rng)
+                " Tree levels crossed. Treat as telescopic.
+                let ret = rng[dir]
+            endif
+        endif
+    endif
+    return ret
 endfunction
 
-" TODO: Probably add a parameter for the motion mode.
-function! sexp#replace_op(mode, count, P, ...)
-    " Replace operator doesn't use a count.
+" Augment the provided context dict, taking the type of regput operator, and if
+" applicable, the 'inclusive' flag extracted from the TextYankPost autocmd event, into
+" account.
+function! s:replace_op__handle(ctx, inclusive)
+    let ctx = a:ctx
+    " Check to see whether telescopic mode selected a non-local position.
+    let tele_pos = s:regput_op__try_get_tele_pos(ctx, a:inclusive)
+    if tele_pos[1]
+        " TODO: Consider not changing put_mode, but having distinct is_tele flag.
+        let ctx.put_mode .= "_tele"
+        call s:setcursor(tele_pos)
+    endif
+    call sexp#replace('n', 1, ctx.P, ctx)
+endfunction
+
+function! s:put_op__handle(ctx, inclusive)
+    " Check to see whether telescopic mode selected a non-local position.
+    let tele_pos = s:regput_op__try_get_tele_pos(a:ctx, a:inclusive)
+    " Let the non-operator put_{before,after} function augment context dict.
+    " Rationale: Its logic is *precisely* what we want, but we want to use the
+    " searched position, not original (saved) cursor pos.
+    if tele_pos[1]
+        let a:ctx.put_mode .= "_tele"
+        " TODO: Consider not changing put_mode, but having distinct is_tele flag.
+        call s:setcursor(tele_pos)
+    else
+        " Sanity-check the selection to see whether it makes sense to support put
+        " before/after on it.
+        if !sexp#is_uniform_range(a:ctx.orange)
+            throw "Ooops! Non-uniform range can't be used here!"
+        endif
+        " Let sexp#put handle the rest.
+        call s:setcursor(a:ctx.orange[a:ctx.tail])
+    endif
+    call sexp#put(1, a:ctx.tail, a:ctx)
+endfunction
+
+" Note: This function used for both replace_op and put_op and "P" has meaning (albeit
+" different meaning) for both.
+function! sexp#regput_op(is_replace, P, ...)
+    " Sexp operators don't use counts.
     " TODO: Currently, warning is given by plug wrapper, but consider creating a
     " sexp#warn#if_count_provided() or some such, which could eventually be easily invoked
     " from other sexp operators (but only the ones for which it makes sense).
     " TODO: Consider whether the aforementioned warning would be best coming before or
     " after the motion/object.
-    let cnt = 1
     if !a:0
         " Initial call (invoked explicitly, not via Vim's opfunc engine)
-        let ctx = {
-            \ 'curpos': getpos('.'),
-            \ 'regname': v:register,
-            \ 'backtick': getpos("'`"),
-            \ 'mode': a:mode, 'count': cnt, 'P': a:P
-        \ }
+        " Note: Set tail to -1 for inherently non-directional replace op; otherwise, determine
+        " its value from the P flag (P=before p=after - note the inversion).
+        " TODO: Consider an init function that creates these for everyone, with default
+        " values, or perhaps allowing optional list of keys to be passed in.
+        let ctx = s:regput__ctx_init('n', a:is_replace ? 'replace_op' : 'put_op', 1, {
+            \ 'P': a:is_replace ? a:P : -1,
+            \ 'tail': a:is_replace ? -1 : !a:P,
+        \ })
         " Important Note: Ideally, we'd use the black hole register for this, but we need
         " TextYankPost to fire, and it doesn't for the black hole register; thus, use z
         " register and ensure the handlers save/restore both it and the unnamed register.
@@ -4043,7 +4084,7 @@ function! sexp#replace_op(mode, count, P, ...)
         let op = v:version >= 801 && g:sexp_regput_enable_teleop ? '"zyv' : 'g@v'
         " The call via 'opfunc' or TextYankPost will get the original args + the context
         " dict and the operator itself.
-        return [op, function('sexp#replace_op', [a:mode, cnt, a:P, ctx, op])]
+        return [op, function('sexp#regput_op', [a:is_replace, a:P, ctx, op])]
     endif
     try
         " We've been invoked by our opfunc wrapper, called either as true 'opfunc' or in
@@ -4056,9 +4097,15 @@ function! sexp#replace_op(mode, count, P, ...)
                 \ " Only charwise mode supported")
             return
         endif
-        let tgt = s:replace_op__get_tgt(ctx, inclusive)
-        call s:regput__impl(tgt, a:count)
-
+        " Update 'orange' to reflect motion/object.
+        " TODO: Decide whether we want to preserve new visual range or visual range at
+        " time operator was invoked.
+        let ctx.orange = [getpos("'["), getpos("']")]
+        if a:is_replace
+            call s:replace_op__handle(ctx, inclusive)
+        else
+            call s:put_op__handle(ctx, inclusive)
+        endif
     catch /sexp-\%(warning\|abort\):/
         call sexp#warn#msg(v:exception)
     catch
@@ -4067,14 +4114,15 @@ function! sexp#replace_op(mode, count, P, ...)
     endtry
 endfunction
 
+" Perform both replace and replace_op: in the latter case, ctx dict is provided by caller.
 " Note: For replace modes, P indicates which p command was used: 0 == 'p', 1 == 'P'.
 " Although it doesn't affect the result of the put, it does determine whether the unnamed
 " register is updated.
-function! sexp#replace(mode, count, P)
+function! sexp#replace(mode, count, P, ...)
     try
         let cnt = a:count ? a:count : 1
         " Target determination is mode-specific.
-        let tgt = s:replace__get_tgt('replace', a:mode, cnt, -1, a:P)
+        let tgt = s:replace__get_tgt(a:mode, cnt, -1, a:P, a:0 ? a:1 : {})
         " Design Decision: Let tail==1 represent put with P.
         call s:regput__impl(tgt, cnt)
     catch /sexp-warning:/
@@ -4105,15 +4153,13 @@ endfunction
 " between terminal child and list bracket, treating the terminal child as the target.
 " Since the put in this case is in the opposite direction relative to the target, we
 " toggle 'tail' in the return dict to reflect the reversal.
-function! s:put_child__get_tgt(count, tail)
+function! s:put_child__get_tgt(count, tail, ...)
     let cursor = getpos('.')
-    let ret = {
-        \ 'mode': 'n', 'put_mode': 'put_child', 'count': a:count,
-        \ 'regname': v:register,
-        \ 'curpos': cursor, 'vrange': s:get_visual_marks(),
-        \ 'range': [s:nullpos, s:nullpos],
-        \ 'is_bra': [0, 0], 'is_ele': [0, 0],
-        \ 'tail': a:tail, 'force_nl': [0, 0]}
+    let ret = a:0 && !empty(a:1)
+        \ ? a:1
+        \ : s:regput__ctx_init('n', 'put_child', a:count, {
+            \ 'tail': a:tail
+        \ })
     try
         let li = s:list_info(a:tail, {'inner_only': g:sexp_regput_bracket_is_child}) 
         if li.terminal_range[0][1]
@@ -4170,9 +4216,9 @@ function! s:put_child__get_tgt(count, tail)
     endtry
 endfunction
 
-function! sexp#put_child(count, tail)
+function! sexp#put_child(count, tail, ...)
     let cnt = a:count ? a:count : 1
-    let tgt = s:put_child__get_tgt(cnt, a:tail)
+    let tgt = s:put_child__get_tgt(cnt, a:tail, a:0 ? a:1 : {})
     " Note: [count] is used only for child location, so hardcode to 1.
     call s:regput__impl(tgt, 1)
 endfunction

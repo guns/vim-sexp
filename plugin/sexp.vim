@@ -307,8 +307,10 @@ endif
 let s:sexp_mapping_preset__regput = {
     \ 'sexp_put_before':                   {'n': 'P'},
     \ 'sexp_put_after':                    {'n': 'p'},
-    \ 'sexp_replace':                      {'x': 'p', 'n': '<LocalLeader><LocalLeader>p'},
-    \ 'sexp_replace_P':                    {'x': 'P', 'n': '<LocalLeader><LocalLeader>P'},
+    \ 'sexp_replace':                      {'x': 'p', 'n': '<LocalLeader>p'},
+    \ 'sexp_replace_P':                    {'x': 'P', 'n': '<LocalLeader>P'},
+    \ 'sexp_put_at_head':                  {'n': '[p'},
+    \ 'sexp_put_at_tail':                  {'n': ']p'},
 \ }
 
 let s:sexp_mappings = {

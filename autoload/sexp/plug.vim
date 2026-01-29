@@ -82,7 +82,8 @@ function! s:opfunc(mode, name, cnt, expr, ...)
     let inclusive = op[0] == 'g' ? -1 : a:000[3]
     try
         " Note: The Fn callback contains everything it needs but type.
-        call sexp#warn#dbg("Invoking the sexp op callback... %s", string(s:OP))
+        call sexp#warn#dbg("Invoking the sexp op callback... %s ']=%s '>=%s",
+            \ string(s:OP), string(getpos("']")), string(getpos("'>")))
         call Fn(type, inclusive)
         let RepFn = get(s:OP, 'RepFn', v:null)
         if type(RepFn) == v:t_func
@@ -251,6 +252,7 @@ function! s:OP_TextYankPost()
     let s:OP.range = [getpos("'["), getpos("']")]
     let s:OP.inclusive = v:event.inclusive
     call sexp#warn#dbg("OP_TextYankPost: Cached TYP %s", string(s:OP))
+    call sexp#warn#dbg("OP_TextYankPost: v:event: %s", string(v:event))
 endfunction
 
 " Calls repeat#set() and registers a one-time CursorMoved handler to correctly

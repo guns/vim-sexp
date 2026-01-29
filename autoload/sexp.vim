@@ -4023,10 +4023,11 @@ endfunction
 " of g@, explicitly invoking what would have been the 'opfunc' in the TextYankPost
 " handler where we have access to v:event.inclusive, which is passed to this function.
 function! s:fix_operator_range(rng, inclusive)
+    " Note: Deepcopy not really necessary, but doesn't hurt.
     let ret = deepcopy(a:rng)
     if !a:inclusive
         " Offset final position in range.
-        let ret = sexp#offset_char(ret, 1)
+        let ret[1] = sexp#offset_char(ret[1], 1)
     endif
     return ret
 endfunction

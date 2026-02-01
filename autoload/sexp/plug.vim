@@ -44,6 +44,9 @@ function! s:configure_repeat(plug_name, opmode, count)
         call sexp#warn#dbg(
             \ "Setting op_ipg.RepFn for %s with seq=%s reg=%s", a:plug_name, seq, reg)
         let op_info.RepFn = RepFn
+        " Record the fact that the operator motion/object is provided by sexp, as this
+        " has implications for range handling.
+        let op_info.motion = a:plug_name
     else
         " No need to defer setting repeat.
         call sexp#warn#dbg(
@@ -60,6 +63,7 @@ function! s:opfunc(mode, name, cnt, expr, ...)
         " a:expr string, we can't really access them, but we don't really need to, so long
         " as the initial invocation packages up the required args with function().
         let [op, SexpFn] = eval(a:expr)
+        " Note: Both 'opfunc' and TextYankPost handler will use this function as callback.
         let Fn = function('s:opfunc', [a:mode, a:name, a:cnt, a:expr, op, SexpFn])
         if op[0] == 'g'
             let &opfunc = Fn
@@ -73,18 +77,21 @@ function! s:opfunc(mode, name, cnt, expr, ...)
         endif
         return op
     endif
+    call sexp#warn#dbg("!!!getpos(\"']\")=%s", string(getpos("']")))
     call sexp#pre_op(a:mode, a:name)
+    let op_info = s:OP_get()
     " The callback function that completes the operation was packaged as the first
     " variadic arg in the rhs of the assignment to &opfunc above. The type flag is
     " provided by Vim's opfunc engine.
-    " Caveat: Only when called by opfunc mechanism will we receive 3rd vararg ('type').
+    " Caveat: Only when called by opfunc mechanism will we receive 3rd vararg
+    " ('type').
     let [op, Fn, type] = a:000[0:2]
     let inclusive = op[0] == 'g' ? -1 : a:000[3]
     try
         " Note: The Fn callback contains everything it needs but type.
         call sexp#warn#dbg("Invoking the sexp op callback... %s ']=%s '>=%s",
             \ string(s:OP), string(getpos("']")), string(getpos("'>")))
-        call Fn(type, inclusive)
+        call Fn(type, inclusive, op_info.motion)
         let RepFn = get(s:OP, 'RepFn', v:null)
         if type(RepFn) == v:t_func
             call sexp#warn#dbg("Invoking RepFn()")
@@ -185,14 +192,17 @@ endfunction
 
 " Cache the information needed to support repeat for a sexp operator.
 " Pre-condition: Called when the operator is first triggered and only when the
-" TextYankPost mechanism isn't in use.
+" TextYankPost mechanism *isn't* in use.
+" Note: If a sexp motion/object is used as operand, 'motion' key will be added.
 function! s:OP_cache(name, cnt)
-    let s:OP = {'plug_cmd': a:name, 'cnt': a:cnt, 'reg': v:register}
+    let s:OP = {'plug_cmd': a:name, 'cnt': a:cnt, 'reg': v:register, 'motion': ''}
 endfunction
 
 " Configure use of TextYankPost (and other autocmds) to handle sexp operators in a way
 " that permits detection of object/motion inclusivity.
 function! s:OP_setup(Fn, name, cnt)
+    " Note: If a sexp command provides the object/motion, 'motion' will be set to the plug
+    " cmd.
     let s:OP = {
         \ 'plug_cmd': a:name,
         \ 'cnt': a:cnt,
@@ -202,6 +212,7 @@ function! s:OP_setup(Fn, name, cnt)
         \ 'fn': a:Fn,
         \ 'range': [[0,0,0,0],[0,0,0,0]],
         \ 'inclusive': -1,
+        \ 'motion': '',
     \}
     call sexp#warn#dbg("Configuring TYP callback OP=%s", string(s:OP))
     augroup SexpTextYankPost
@@ -233,15 +244,19 @@ function! s:OP_SafeState()
 endfunction
 
 function! s:OP_handle()
-    " If we get here without a valid range having been set in OP_TextYankPost(), something
-    " unexpected happened...
-    if !empty(s:OP) && s:OP.range[0][1]
-        call sexp#warn#dbg("OP_handle: Handling op with cached TYP!")
-        " Perform callback.
-        let Fn = s:OP.fn
-        call Fn('char', s:OP.inclusive)
-    endif
-    call s:OP_cleanup()
+    try
+        " If we get here without a valid range having been set in OP_TextYankPost(), something
+        " unexpected happened...
+        if !empty(s:OP) && s:OP.range[0][1]
+            call sexp#warn#dbg("OP_handle: Handling op with cached TYP!")
+            " Perform callback.
+            let Fn = s:OP.fn
+            call Fn('char', s:OP.inclusive)
+        endif
+    finally
+        " Kill the autocmd unconditionally to eliminate possibility of endless error loops.
+        call s:OP_cleanup()
+    endtry
 endfunction
 
 " Cache the yank information and restore the registers clobbered by the yank, letting the

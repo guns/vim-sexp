@@ -904,7 +904,7 @@ be changed with option |g:sexp_regput_curpos| and its several variants. All
 put (paste) commands and operators perform an automatic re-indent on a range
 whose size is determined by |g:sexp_auto_indent_range|. By default, vim-sexp
 attempts to validate register contents before pasting them. To learn more
-about this behavior, including how to disable/customize it, see
+about this behavior, including how to disable or customize it, see
 |sexp-regput-register-parsing|.
 
 Note: If vim-repeat is installed, all smart-paste commands can be repeated
@@ -975,7 +975,7 @@ Replace current element with register (normal)  ~
 
         Feel free to unmap in |g:sexp_mappings|.
 
-Put register into list (normal)  ~
+Put register into current list (normal)  ~
 
 ["x] <LocalLeader>[p                                *<Plug>(sexp_put_at_head)*
 ["x] <LocalLeader>]p                                *<Plug>(sexp_put_at_tail)*
@@ -1000,7 +1000,7 @@ Replace operator (normal)  ~
 ["x] <M-P>                                         *<Plug>(sexp_replace_op_P)*
         Works just like the corresponding non-operator replace commands, but
         instead of the element at the cursor, replaces the S-expression(s)
-        covered by the operator motion/object range.
+        selected by the operator motion/object range.
 
                                              *sexp-replace-target-constraints*
         The target range may contain multiple S-expressions, but must not
@@ -1015,12 +1015,12 @@ Replace operator (normal)  ~
 
         Examples:  ~
         1. Replace current list:  `<M-p>af`
-        2. Replace current element without updating @":  `<M-P>ae`
+        2. Replace current element without updating @":  `<M-P>ie`
         3. Replace second child of current list:  `<M-p>2ic`
         4. Replace current and next two elements: `<M-p>3E`
 
         For a powerful approach to replacing elements in distant branches of
-        the sexp tree, (optionally) without moving the cursor, see
+        the sexp tree, (optionally) without even moving the cursor, see
         |sexp-operator-telescopic-mode|.
 
 
@@ -1031,8 +1031,7 @@ Put operator (normal)  ~
 ["x] `<p`                                         *<Plug>(sexp_put_before_op)*
         Works just like the corresponding non-operator put before/after
         commands, but instead of the element at the cursor, puts before/after
-        the first/last element covered (fully or partially) by the
-        motion/object range.
+        the first/last element selected by the motion/object range.
 
                                                  *sexp-put-target-constraints*
         The target may contain multiple elements, but only the element at the
@@ -1064,9 +1063,10 @@ Put operator (normal)  ~
         |g:sexp_regput_enable_teleop| enables an alternative interpretation of
         operator motions, which gives them meaning even when they reach across
         tree levels: rather than selecting the forms "moved over", a motion
-        can select the form "reached" by the motion search. The concept is
-        best illustrated with an example, for which the following option
-        settings are assumed:
+        can select the form "reached" by the motion search. Because this mode
+        permits "action at a distance", it is known as "telescopic mode". The
+        concept is best illustrated with an example, for which the following
+        option settings are assumed:
 
           `g:sexp_regput_enable_teleop == 1`
           `g:sexp_regput_curpos == 2`
@@ -1081,16 +1081,47 @@ Put operator (normal)  ~
           <M-p>?foo<CR>
           <M-p>ie
 <
-        Because this mode permits "action at a distance", it is known as
-        "telescopic" mode. This feature is still considered experimental
-        because additional work is needed to ensure it works properly with all
+        Note that |g:sexp_regput_enable_teleop| is not a simple flag but an
+        enumerated value. Setting it to 1 enables "telescopic mode" only for
+        jumps to other levels of the sexp tree. To enable telescopic mode
+        unconditionally, even within the same sexp tree node, set to 2 or 3: 3
+        if you want this behavior for all operators, 2 if you want it only for
+        the put operator (for which the traditional motion interpretation
+        tends to be less useful). The following example illustrates the
+        difference between conditionally and unconditionally enabled
+        "telescopic mode".
+
+        Unnamed:      `blammo`
+        Options:      `g:sexp_regput_enable_teleop == 1`
+                      `g:sexp_regput_curpos_op == 2`
+        Initial Form: `(|foo bar baz)`
+        Command:      `<M-p>fz`
+        
+        `g:sexp_regput_enable_teleop == 1`
+        Final:       `(|blammo)`
+        Explanation: Under the traditional motion interpretation, `fz` selects
+        all 3 elements in the list, and thus all 3 elements are replaced by
+        the contents of the unnamed register.
+
+        `g:sexp_regput_enable_teleop == 3`
+        Final:       `(|foo bar blammo)`
+        Explanation: In "telescopic mode", `fz` targets only the final element
+        of the list ("baz"), and thus, only that element is replaced.
+<
+        Note: Regardless of the setting of |g:sexp_regput_enable_teleop|,
+        telescopic mode is inhibited when vim-sexp can tell that a text object
+        (or vim-sexp object) was used as the target of the operator.
+
+        **CAVEAT**: This feature is still considered experimental because
+        additional work is needed to ensure it works properly with all
         vim-sexp motions, but it already works well with non-sexp search
         operators (e.g., `/` and `?`) and even works with motion plugins like
         vim-easymotion. The issue with vim-sexp motions is that they sometimes
         exclude brackets from the motion in a way that is generally helpful to
-        the user, but which breaks the telescopic selection logic.
-        Fortunately, there's a workaround, which should be implemented in a
-        subsequent version...
+        the user, but breaks the telescopic selection logic. Fortunately,
+        there's a workaround, which should be implemented in a subsequent
+        version...
+
 
 Overriding Builtin Put Commands  ~
 You may not have much need for Vim's builtin put commands once you become
@@ -1888,6 +1919,21 @@ Set to 1 to make the replace operator use partial element selections.
         let g:sexp_regput_replace_expanded = 0
 <
 
+                                                 *g:sexp_regput_enable_teleop*
+Enumerated value that determines the conditions under which put/replace
+operators use "telescopic mode" rather than traditional Vim motions/objects.
+  0  Never use "telescopic mode".
+  1  Use "telescopic mode" for motions whose endpoints lie in different sexp
+     tree nodes.
+  2  Like 1, but always use "telescopic mode" for the put operator.
+  3  Always use "telescopic mode".
+
+
+
+>
+        " Default
+        let g:sexp_regput_enable_teleop = 0
+<
 Expert options ~
 
                                                      *g:sexp_inhibit_failsafe*
@@ -1994,10 +2040,14 @@ Note: To unbind a command, simply set its <lhs> to an empty string.
             \ 'sexp_put_after':                 '<LocalLeader>p',
             \ 'sexp_replace_op':                '<M-p>',
             \ 'sexp_replace_op_P':              '<M-P>',
-            \ 'sexp_replace':                   '<M-p>',
-            \ 'sexp_replace_P':                 '<M-P>',
+            \ 'sexp_replace':                   {'x': '<LocalLeader>p',
+            \                                    'n': '<LocalLeader><LocalLeader>p'},
+            \ 'sexp_replace_P':                 {'x': '<LocalLeader>P',
+            \                                    'n': '<LocalLeader><LocalLeader>P'},
             \ 'sexp_put_at_head':               '<p',
             \ 'sexp_put_at_tail':               '>p',
+            \ 'sexp_put_at_head':               '<LocalLeader>[p',
+            \ 'sexp_put_at_tail':               '<LocalLeader>]p',
             \ }
 <
 Override Example: ~

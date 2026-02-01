@@ -1807,6 +1807,7 @@ endfu
 " Return true iff there's *any* non-whitespace in the range [beg,end].
 " Note: See previous function comment for usage of 'check_ignored'.
 " TODO: Make check_ignored optional, defaulting to true.
+" TODO: Consider taking a true range (for consistency with is_uniform_range()).
 fu! sexp#range_has_non_ws(beg, end, check_ignored)
     let ret = 0
     let save_cursor = getcurpos()
@@ -3987,7 +3988,7 @@ function! s:replace__get_tgt(mode, count, tail, P, ...)
                 let rng[i] = sexp#move_to_current_element_terminal(i)
                 if !rng[i][1]
                     " Attempt to find nearest terminal in inward direction.
-                    let rng[i] = sexp#move_to_adjacent_element_terminal(!i)
+                    let rng[i] = sexp#move_to_adjacent_element_terminal(!i, i, 0)
                 endif
             endfor
             " Design Decision: Be less strict with visual selections.
@@ -4012,6 +4013,19 @@ function! s:replace__get_tgt(mode, count, tail, P, ...)
     endtry
 endfunction
 
+" !!!No longer needed!!!
+" Adjust a *normalized* range (obtained from within 'opfunc') to include the excluded char
+" if the operator's motion was exclusive.
+function! s:fix_operator_range_from_opfunc(rng, inclusive)
+    " Note: Deepcopy not really necessary, but doesn't hurt.
+    let ret = deepcopy(a:rng)
+    if !a:inclusive
+        " Offset final position in range.
+        let ret[1] = sexp#offset_char(ret[1], 1)
+    endif
+    return ret
+endfunction
+
 " Assuming the input range represents '[ and '] after a yank, and the inclusive flag was
 " extracted from the TextYankPost autocmd event, return an adjusted range representing the
 " actual yank range, which may include one additional character: e.g., after a yw, the
@@ -4027,79 +4041,117 @@ function! s:fix_operator_range(rng, inclusive)
     let ret = deepcopy(a:rng)
     if !a:inclusive
         " Offset final position in range.
-        let ret[1] = sexp#offset_char(ret[1], 1)
+        let ret[1] = sexp#offset_char(ret[1], -1)
     endif
     return ret
 endfunction
 
-" Determine whether the motion/object represented by input context dict and inclusive flag
-" (assumed to have come from a TextYankPost autocmd v:event) should be treated as a
-" "telescopic" selection motion instead of a standard motion/object, and if so, return the
-" position selected.
-function! s:regput_op__try_get_tele_pos(ctx, inclusive)
-    let ret = s:nullpos
-    let curpos = a:ctx.curpos
-    let rng = a:ctx.orange
-    if g:sexp_regput_enable_teleop
-        " Telescopic operators enabled.
-        if a:inclusive != -1
-            let rng = s:fix_operator_range(rng, a:inclusive)
-        endif
-        " Which direction was the motion search? (-1 indicates 'object' not motion).
+" Update the provided context dict to reflect the operator motion/object stored therein,
+" using both the relevant option(s) and the nature of the motion/object itself to choose
+" between "telescopic mode" and normal mode.
+" Cursor Preservation: Set cursor position appropriately if the function that performs the
+" put or replace will use it; otherwise, restore it to curpos at function entry.
+" The following fields are subject to update:
+"   put_mode
+"   orange
+" See s:regput_op__handle() for parameter descriptions.
+function! s:regput_op__process_motion(ctx, inclusive, motion)
+    " Initial curpos used to determine whether motion may have been used.
+    let [curpos, rng] = [a:ctx.curpos, a:ctx.orange]
+    " Sexp objects inhibit telescopic mode.
+    let is_sexp_motion = a:motion =~ 'sexp_\%(inner\|outer\)_'
+    " In some cases, we'll want to restore original cursor pos; set to nullpos to inhibit.
+    let save_curpos = getpos('.')
+    try
+        " Which direction was the motion search? (-1 if 'object' not motion).
         let dir = rng[0] == curpos ? 1 : rng[1] == curpos ? 0 : -1
-        if dir != -1
-            " Motion anchored at curpos; telescopic mode may be in effect.
-            if !sexp#is_uniform_range(rng)
-                " Tree levels crossed. Treat as telescopic.
-                let ret = rng[dir]
+        " Cache effective 'tail' flag (defaulting to 0)
+        let tail = a:ctx.tail != -1 ? a:ctx.tail : 0
+        if a:inclusive != -1
+            " TextYankPost (not g@) mechanism was used.
+            if g:sexp_regput_enable_teleop && !is_sexp_motion && dir != -1
+                " Telescopic mode enabled, not sexp object/motion, and motion anchored at
+                " curpos.
+                if g:sexp_regput_enable_teleop >= (a:ctx.put_mode =~ 'replace_op' ? 3 : 2)
+                    \ || !sexp#is_uniform_range(rng)
+                    " Either telescopic mode unconditionally enabled or tree levels crossed.
+                    " Treat as telescopic, provided the reached position is actually *on* a
+                    " sexp.
+                    call s:setcursor(rng[dir])
+                    " If this is a put, tail should indicate the side of the element from
+                    " which put will occur, so might as well pick that side.
+                    let p = sexp#move_to_current_element_terminal(tail)
+                    if !p[1]
+                        throw "sexp-abort: Regput telescopic mode motion must target non-ws."
+                    endif
+                    " Keep current position.
+                    let save_curpos = s:nullpos
+                    " Record conversion to telescopic mode.
+                    let a:ctx.put_mode .= "_tele"
+                    return
+                endif
             endif
+            " Not telescopic mode, but because TextYankPost mechanism was used, we need to
+            " adjust range to account for motion exclusivity.
+            let a:ctx.orange = s:fix_operator_range(a:ctx.orange, a:inclusive)
         endif
-    endif
-    return ret
+        " Not telescopic mode, and any adjustments required for operator range have been
+        " performed.
+        if a:ctx.put_mode =~ 'put_op'
+            " Note: sexp#replace() performs validation on the operator range; however,
+            " sexp#put() uses cursor pos, even if it's in whitespace, and we don't want to
+            " allow that for put operator. Also, we don't want to allow selections that
+            " cross list boundaries in non-telescopic mode.
+            if !sexp#is_uniform_range(a:ctx.orange)
+                throw "sexp-abort: put operator requires uniform range."
+                    \ . " Did you mean to enable telescopic mode?"
+                    \ . " (:help g:sexp_regput_enable_teleop)"
+            endif
+            if !sexp#range_has_non_ws(a:ctx.orange[0], a:ctx.orange[1], 1)
+                throw "sexp-abort: put operator requires non-empty range"
+            endif
+            " Position cursor on target of put, making sure we're on actual sexp.
+            call s:setcursor(rng[dir])
+            let p = sexp#move_to_current_element_terminal(tail)
+            if !p[1]
+                " Edge of range lies in whitespace; look inwards.
+                " Assumption: Prior test guarantees success.
+                let p = sexp#move_to_adjacent_element_terminal(!tail, tail, 0)
+            endif
+            " Keep current position.
+            let save_curpos = s:nullpos
+        endif
+    finally
+        " If pos is non-null, desired cursor position has already been set.
+        if save_curpos[1]
+            call s:setcursor(save_curpos)
+        endif
+    endtry
 endfunction
 
 " Augment the provided context dict, taking the type of regput operator, and if
 " applicable, the 'inclusive' flag extracted from the TextYankPost autocmd event, into
 " account.
-function! s:regput_op__handle(ctx, inclusive)
+" -- Args --
+" ctx:        context dict (see get_context() header for format)
+" inclusive:  indicates inclusivity of motion/object (-1 if unknown)
+"             Note: If opfunc mechanism (rather than TextYankPost autocmd) was used,
+"             inclusive flag is set to -1 to reflect fact that Vim has normalized the
+"             operator range without telling us whether the motion was inclusive.
+" motion:     name of sexp plug command if motion/object provided by sexp, else ""
+function! s:regput_op__handle(ctx, inclusive, motion)
+    " Cached 'orange' reflects '[ '] at the time operator was invoked; update to reflect
+    " operand.
+    let a:ctx.orange = [getpos("'["), getpos("']")]
     " Implementation Note: To avoid redundancy and eliminate risk of inconsistent
     " behavior, we delegate to non-operator-specific functions that handle both operator
     " and non-operator commands the same way. First, however, we must ensure the function
-    " will see the correct cursor position or range.
-    " Update 'orange' to reflect motion/object. Note, however, that it won't be used in
-    " "telescopic" mode.
-    " TODO: Decide whether we want to preserve new visual range or visual range at
-    " time operator was invoked.
-    let a:ctx.orange = [getpos("'["), getpos("']")]
-    " Check to see whether "telescopic" mode selected a non-local position.
-    let tele_pos = s:regput_op__try_get_tele_pos(a:ctx, a:inclusive)
+    " will see the correct cursor position and/or range.
+    call s:regput_op__process_motion(a:ctx, a:inclusive, a:motion)
     if a:ctx.put_mode =~ 'replace'
         " Replace operator
-        if tele_pos[1]
-            " TODO: Consider not changing put_mode, but having distinct is_tele flag.
-            let a:ctx.put_mode .= "_tele"
-            call s:setcursor(tele_pos)
-        endif
         call sexp#replace('n', 1, a:ctx.P, a:ctx)
     else
-        " Put before/after operator
-        " Note: Because the non-operator sexp#put function contains the logic we need,
-        " we're going to defer to it, but first we need to pre-position cursor.
-        " Rationale: Its logic is *precisely* what we want, but we want to use the
-        " searched position, not original (saved) cursor pos.
-        if tele_pos[1]
-            let a:ctx.put_mode .= "_tele"
-            " TODO: Consider not changing put_mode, but having distinct is_tele flag.
-            call s:setcursor(tele_pos)
-        else
-            " Sanity-check the selection to see whether it makes sense to support put
-            " before/after on it.
-            if !sexp#is_uniform_range(a:ctx.orange)
-                throw "Ooops! Non-uniform range can't be used here!"
-            endif
-            " Let sexp#put handle the rest.
-            call s:setcursor(a:ctx.orange[a:ctx.tail])
-        endif
         call sexp#put(1, a:ctx.tail, a:ctx)
     endif
 endfunction
@@ -4128,7 +4180,7 @@ function! sexp#regput_op(is_replace, P, ...)
         " register and ensure the handlers save/restore both it and the unnamed register.
         " TODO: Consider just returning boolean flag indicating the mode to use and
         " letting opfunc handle the details?
-        let op = v:version >= 801 && g:sexp_regput_enable_teleop ? '"zyv' : 'g@v'
+        let op = v:version >= 801 && g:sexp_regput_enable_teleop ? '"zy' : 'g@'
         " The call via 'opfunc' or TextYankPost will get the original args + the context
         " dict and the operator itself.
         return [op, function('sexp#regput_op', [a:is_replace, a:P, ctx, op])]
@@ -4137,14 +4189,14 @@ function! sexp#regput_op(is_replace, P, ...)
         " We've been invoked by our opfunc wrapper, called either as true 'opfunc' or in
         " response to a TextYankPost: in either case, we're not invoked directly by
         " sexp#plug_runtime()).
-        let [ctx, op, type, inclusive] = a:000
+        let [ctx, op, type, inclusive, motion] = a:000
         if type != 'char'
             call sexp#warn#msg("sexp#replace_op:"
                 \ " Invalid use of mode '" . type . "' with replace operator."
                 \ " Only charwise mode supported")
             return
         endif
-        call s:regput_op__handle(ctx, inclusive)
+        call s:regput_op__handle(ctx, inclusive, motion)
     catch /sexp-\%(warning\|abort\):/
         call sexp#warn#msg(v:exception)
     catch

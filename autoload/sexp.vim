@@ -3098,61 +3098,32 @@ function! s:analyze_codestr_simple(codestr, filetype)
     return ret
 endfunction
 
-" Return option value that applies to the specified put_mode.
-" TODO: This function is complicated by an option inheritance scheme, which may be going
-" away, in favor of a simpler one.
+" Return 'curpos' option value that applies to the specified put_mode.
 function! s:regput__get_curpos_opt(put_mode)
-    let default = g:sexp_regput_curpos
-    " Just in case user has set to something invalid...
-    if default < 0 || default > 2
-        " Note: Warning will come later.
-        let default = 0
+    " Default values
+    let optdefs = {
+        \ 'sexp_regput_curpos': 0,
+        \ 'sexp_regput_curpos_child': 0,
+        \ 'sexp_regput_curpos_op': 2
+    \ }
+    " Get applicable option name.
+    let optname = a:put_mode =~ 'op'
+        \ ? 'sexp_regput_curpos_op'
+        \ : a:put_mode == 'put_child'
+            \ ? 'sexp_regput_curpos_child'
+            \ : 'sexp_regput_curpos'
+    " Get and validate the applicable option value.
+    let ret = get(g:, optname, optname)
+    if !(type(ret) == type(0) && ret >=0 && ret <= 2)
+        " User provided invalid value!
+        let def = get(optdefs, optname)
+        call sexp#warn#msg_once(optname,
+            \ printf("sexp-warning: Ignoring invalid option setting: %s=%s."
+                \ . " Defaulting to %d",
+                \ optname, string(ret), def))
+        let ret = def
     endif
-    " Define the following option dependencies as a reversed tree, pre-selecting the one
-    " that applies to the specified put_mode.
-    "   <empty> (base g:sexp_regput_curpos)
-    "   into
-    "   op
-    "     op_tele
-    let optkey = a:put_mode =~ 'op'
-        \ ? a:put_mode =~ '_tele'
-            \ ? 'op_tele'
-            \ : 'op'
-        \ : a:put_mode =~ '_into'
-        \ ? 'into'
-        \ : ''
-    let deps = {'': [], 'into': [], 'op_tele': ['op'], 'op': []}[optkey]
-    " If we finish loop without finding anything more specific, use default.
-    let [v, i] = [default, -1]
-    let k = optkey
-    try
-        " First iteration uses one of the keys from deps; subsequent interations use keys
-        " from the list selected by that initial key.
-        while i < len(deps)
-            if i >= 0
-                let k = deps[i]
-            endif
-            let optname = 'sexp_regput_' . k . (!empty(k) ? '_' : '') . 'curpos'
-            let v_ = get(g:, optname, -1)
-            " Make sure next iteration considers less specific optkey (if applicable).
-            let i += 1
-            if v_ < 0 || v_ > 2
-                if v_ != -1
-                    throw "sexp-warning: Invalid option setting for g:" . optname
-                        \ . " (" . v_ . ") defaulting to " . default
-                        \ . " (:help sexp-regput-cursor-positioning)"
-                endif
-                " Ignore unset option.
-                continue
-            endif
-            " Found valid override. Use it.
-            let v = v_
-            break
-        endwhile
-    catch /sexp-warning/
-        call sexp#warn#msg_once("regput 'curpos'", v:exception, 1)
-    endtry
-    return v
+    return ret
 endfu
 
 " Build and return a dict characterizing the text in the put register and canonicalize the
@@ -4069,10 +4040,10 @@ function! s:regput_op__process_motion(ctx, inclusive, motion)
         let tail = a:ctx.tail != -1 ? a:ctx.tail : 0
         if a:inclusive != -1
             " TextYankPost (not g@) mechanism was used.
-            if g:sexp_regput_enable_teleop && !is_sexp_motion && dir != -1
+            if g:sexp_regput_tele_motion && !is_sexp_motion && dir != -1
                 " Telescopic mode enabled, not sexp object/motion, and motion anchored at
                 " curpos.
-                if g:sexp_regput_enable_teleop >= (a:ctx.put_mode =~ 'replace_op' ? 3 : 2)
+                if g:sexp_regput_tele_motion >= (a:ctx.put_mode =~ 'replace_op' ? 3 : 2)
                     \ || !sexp#is_uniform_range(rng)
                     " Either telescopic mode unconditionally enabled or tree levels crossed.
                     " Treat as telescopic, provided the reached position is actually *on* a
@@ -4105,7 +4076,7 @@ function! s:regput_op__process_motion(ctx, inclusive, motion)
             if !sexp#is_uniform_range(a:ctx.orange)
                 throw "sexp-abort: put operator requires uniform range."
                     \ . " Did you mean to enable telescopic mode?"
-                    \ . " (:help g:sexp_regput_enable_teleop)"
+                    \ . " (:help g:sexp_regput_tele_motion)"
             endif
             if !sexp#range_has_non_ws(a:ctx.orange[0], a:ctx.orange[1], 1)
                 throw "sexp-abort: put operator requires non-empty range"
@@ -4180,7 +4151,7 @@ function! sexp#regput_op(is_replace, P, ...)
         " register and ensure the handlers save/restore both it and the unnamed register.
         " TODO: Consider just returning boolean flag indicating the mode to use and
         " letting opfunc handle the details?
-        let op = v:version >= 801 && g:sexp_regput_enable_teleop ? '"zy' : 'g@'
+        let op = v:version >= 801 && g:sexp_regput_tele_motion ? '"zy' : 'g@'
         " The call via 'opfunc' or TextYankPost will get the original args + the context
         " dict and the operator itself.
         return [op, function('sexp#regput_op', [a:is_replace, a:P, ctx, op])]

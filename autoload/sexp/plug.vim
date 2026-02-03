@@ -26,6 +26,23 @@ function! s:configure_repeat(plug_name, opmode, count)
     let seq = a:opmode && v:operator ==? "c"
         \ ? opstr . "\<Plug>(" . a:plug_name . ")\<C-r>.\<C-Bslash>\<C-n>"
         \ : opstr . "\<Plug>(" . a:plug_name . ")"
+    " Have separate counts have been supplied to operator and operand? 
+    " Assumption: When separate counts are provided, both will be > 1 and the operand
+    " count will be greater than the operator count (due to Vim's multiplication).
+    if op_ipg && op_info.cnt > 1 && a:count > op_info.cnt
+        " This is unlikely to do what the user expects.
+        " Note that the test is designed to permit a non-unity count to be used on the
+        " operator alone. If we didn't permit this, there would be no way to provide a
+        " count to the sexp object in a custom mapping whose rhs looked like this:
+        " <sexp_op> <sexp_object>.
+        call sexp#warn#msg_once('operator counts',
+            \ "Warning: Separate counts have been provided to a sexp operator and"
+            \ . " its operand. This is unlikely to work the way you expect: vim-sexp's"
+            \ . " operators do not support counts and Vim multiplies the motion/object"
+            \ . " count by the operator count. It's best to provide counts only to"
+            \ . " motion/object commands.")
+        call sexp#warn#dbg("Counts mismatch: operator: %d operand: %d", op_info.cnt, a:count)
+    endif
     " If sexp operator in progress, use cached v:register.
     " Design Decision: Always pass register, even if unnamed.
     " Rationale: Failure to set register explicitly inhibits the repeat plugin's register
@@ -133,7 +150,7 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
         " Caveat: Can't set marks in an <expr> mapping. If it's necessary, the opfunc
         " should save the old '` and restore it at completion of operation.
         if !a:flags.nojump && !a:flags.asexpr
-            " TODO: This may need special handling with g:sexp_regput{_into}_curpos == 2.
+            " TODO: This may need special handling with g:sexp_regput_curpos* == 2.
             exe "normal! " . (opmode ? 'vv' : '') . "m`"
         endif
         " Don't set repeat if this is a sexp operator, but if it's an operator-pending
@@ -151,12 +168,6 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
         " TODO: Remove 'prev' from the pattern now that it's been removed from cmd defs.
         let rhs = substitute(a:rhs, '\<v:\%(prev\)\?count\>', a:count, 'g')
         if a:flags.asexpr
-            if a:count > 1
-                call sexp#warn#msg_once('operator counts',
-                    \ "Warning: Counts provided to sexp operators are ignored"
-                    \ . " but will multiply any count provided to the motion/object."
-                    \ . " It's best to provide counts only to motion/object commands.")
-            endif
             " Let opfunc decide what the mapping looks like (i.e., g@ or *yv).
             return call('s:opfunc', [a:mapmode[0], a:name, a:count, rhs])
         else

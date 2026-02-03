@@ -248,16 +248,12 @@ if !exists('g:sexp_regput_curpos')
     let g:sexp_regput_curpos = 0
 endif
 
-if !exists('g:sexp_regput_into_curpos')
-    let g:sexp_regput_into_curpos = 0
+if !exists('g:sexp_regput_curpos_child')
+    let g:sexp_regput_curpos_child = 0
 endif
 
-if !exists('g:sexp_regput_op_curpos')
-    let g:sexp_regput_op_curpos = -1
-endif
-
-if !exists('g:sexp_regput_op_tele_curpos')
-    let g:sexp_regput_op_tele_curpos = -1
+if !exists('g:sexp_regput_curpos_op')
+    let g:sexp_regput_curpos_op = 2
 endif
 
 if !exists('g:sexp_regput_invalid_register_action')
@@ -272,10 +268,10 @@ if !exists('g:sexp_regput_replace_expanded')
     let g:sexp_regput_replace_expanded = 0
 endif
 
-if !exists('g:sexp_regput_enable_teleop')
-    let g:sexp_regput_enable_teleop = 0
+if !exists('g:sexp_regput_tele_motion')
+    let g:sexp_regput_tele_motion = 0
 else
-    if g:sexp_regput_enable_teleop && v:version < 801
+    if g:sexp_regput_tele_motion && v:version < 801
         call sexp#warn#msg(
             \ "Warning: Replace operator's telescopic mode requires Vim version >= 8.1.")
     endif

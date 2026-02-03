@@ -3099,6 +3099,8 @@ function! s:analyze_codestr_simple(codestr, filetype)
 endfunction
 
 " Return 'curpos' option value that applies to the specified put_mode.
+" TODO: Consider whether curpos_child should inherit from curpos if user has set only the
+" latter.
 function! s:regput__get_curpos_opt(put_mode)
     " Default values
     let optdefs = {
@@ -4049,9 +4051,11 @@ function! s:regput_op__process_motion(ctx, inclusive, motion)
                     " Treat as telescopic, provided the reached position is actually *on* a
                     " sexp.
                     call s:setcursor(rng[dir])
-                    " If this is a put, tail should indicate the side of the element from
-                    " which put will occur, so might as well pick that side.
-                    let p = sexp#move_to_current_element_terminal(tail)
+                    " Make sure we're on a sexp.
+                    " Note: Intentionally keeping the searched position (not the terminal)
+                    " since it can matter for downstream logic (e.g., in put mode, if
+                    " target was open/close bracket).
+                    let p = sexp#current_element_terminal(0)
                     if !p[1]
                         throw "sexp-abort: Regput telescopic mode motion must target non-ws."
                     endif
@@ -4217,11 +4221,11 @@ endfunction
 " toggle 'tail' in the return dict to reflect the reversal.
 function! s:put_child__get_tgt(count, tail, ...)
     let cursor = getpos('.')
+    " Note: Because we may be converting an existing context dict to a put_child one, we
+    " need to ensure 'tail' and 'put_mode' fields are overridden.
     let ret = a:0 && !empty(a:1)
-        \ ? a:1
-        \ : s:regput__ctx_init('n', 'put_child', a:count, {
-            \ 'tail': a:tail
-        \ })
+        \ ? extend(a:1, {'tail': a:tail, 'put_mode': 'put_child'})
+        \ : s:regput__ctx_init('n', 'put_child', a:count, { 'tail': a:tail })
     try
         let li = s:list_info(a:tail, {'inner_only': g:sexp_regput_bracket_is_child}) 
         if li.terminal_range[0][1]

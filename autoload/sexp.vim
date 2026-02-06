@@ -3788,7 +3788,7 @@ endfunction
 " treating the one that puts *away from* the colinear target as a request for extra
 " separation seems intuitive and gives extra flexibility.
 function! s:put__get_tgt(count, tail, ...)
-    let save_curpos = getpos('.')
+    let curpos = getpos('.')
     let ret = a:0 && !empty(a:1)
         \ ? a:1
         \ : s:regput__ctx_init('n', a:tail ? 'put_after' : 'put_before', a:count)
@@ -3854,7 +3854,7 @@ function! s:put__get_tgt(count, tail, ...)
         endif
         return ret
     finally
-        call s:setcursor(save_curpos)
+        call s:setcursor(curpos)
     endtry
 endfunction
 

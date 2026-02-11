@@ -38,7 +38,7 @@ if !exists('g:sexp_maxlines')
     let g:sexp_maxlines = -1 " Use fast best-effort top list search
 endif
 
-let s:countindex = 0 " Stores current count index during sexp#docount
+let s:countindex = -1 " Stores current count index during sexp#docount
 let s:bracket = '\v\(|\)|\[|\]|\{|\}'
 let s:opening_bracket = '\v\(|\[|\{'
 let s:closing_bracket = '\v\)|\]|\}'
@@ -2412,90 +2412,144 @@ endif
 " the number of columns inwards from the brackets to set the marks.
 "
 " If allow_expansion is 1, the visual marks are set to the next outer pair of
-" brackets under the following circumstances:
+" brackets when either of the following conditions is met:
 "
-"   * Mode equals 'v', the cursor is on an opening bracket, the mark '< is
-"     valid, and the marks '< and '> are not equal. This occurs when calling
-"     this function while already having a list selected in visual mode.
+"   * Mode equals 'v', the visual selection is more than one column wide, and selecting
+"     the requested inner/outer list would not expand the visual selection.
+"     Note: The *current* inner/outer list is determined by the *cursor side* of the
+"     visual selection; this matters when the selection crosses list boundaries (i.e.,
+"     when the selection ends are not within the same sexp tree node).
+"     Example: With selection given by < > and cursor by |...
+"       <(foo (bar|>))
+"     ...the (bar) list will be selected: i.e., this function doesn't call super_range().
 "
-"   * s:countindex is greater than 0 and the mark '< is valid. Occurs when
-"     called by sexp#docount()
+"   * s:countindex is greater than 0 and the visual marks are valid.
+"     Use Case: Counted expansion by sexp#docount().
 "
-" Will set both to [0, 0, 0, 0] if none are found and mode does not equal 'v'.
+" Visual Marks: Both are deleted if there's no list to select and mode does not equal 'v'.
+" Rationale: Erase < > only to prevent operation (o-pending mode) on something that's not
+" a list. I could see an argument for erasing visual marks even in visual mode, but this
+" is the way it's always worked.
+" Note: If the optimal inner/outer list doesn't exist, but a suitable fallback does, set
+" both marks and the 'success' flag, but also set the 'stopiter' flag to allow a higher
+" level loop to terminate early.
 "
-" Returns 1 if marks were set successfully, and 0 if not.
+" Important Note: Originally, the first of the 2 expansion conditions listed above
+" worked only if cursor was at the *start* of the visual selection. This approach stopped
+" working when visual mode maps transitioned from using :<c-u> to <cmd>. The problem was
+" that :<c-u>, unlike <cmd>, forcibly sets cursor position to the start of the visual
+" region, whereas <cmd> leaves it unmodified. When visual mode mappings started using
+" <cmd>, cursor position was left at the end of the visual selection, with the result that
+" subsequent `af` commands didn't cause expansion (unless user hit `o` in between).
+" Possible Solutions: One possible solution would be to modify the command wrapper to
+" ensure that we always set cursor to the start of the visual region when executing a
+" visual mode map. However, this feels like a kludge. A better solution is to implement
+" the same expansion logic whether cursor is at start or end of visual selection. The
+" current version of this function takes this approach.
+" Return: Pair: [success, stopiter]
+"         success:  1 if visual marks were set
+"         stopiter: 1 if there's no point in continuing
 function! s:set_marks_around_current_list(mode, offset, allow_expansion)
-    " We may potentially move the cursor.
+    " Save/restore cursor.
     let cursor = getpos('.')
-    let cursor_moved = 0
-
-    " Prepare the entrails
-    let start = s:get_visual_beg_mark()
+    let [error, stopiter] = [0, 0]
     let visual = a:mode ==? 'v'
-    let counting = s:countindex > 0
-    let start_is_valid = start[1] > 0
-    let have_selection = start_is_valid
-        \ && sexp#compare_pos(start, s:get_visual_end_mark()) != 0
-    let expanding = a:allow_expansion && (counting || (visual && have_selection))
+    try
+        " Prepare the entrails
+        let [vs, ve] = s:get_visual_marks()
+        let counting = s:countindex > 0
+        " Note: Historically, single-char visual selection did not permit expansion.
+        " Rationale: Makes sense for non-list elements, as it would allow you to hit `v`
+        " and execute an inner/outer object without worrying about whether the element is
+        " single or multi-char. Not sure it makes as much sense for lists, but that's the
+        " way it's always worked.
+        let have_selection = vs[1] && ve[1] && sexp#compare_pos(vs, ve) != 0
+        " Note: This flag being set doesn't guarantee expansion; it's just a more
+        " restrictive version of the input flag.
+        let expanding = a:allow_expansion && have_selection && (counting || visual)
 
-    " When evaluating via sexp#docount the cursor position will not be updated
-    " to '<, so do it now.
-    if counting && start_is_valid
+        " To prevent unintentional changes to visual selection, make sure we're not in
+        " visual mode before moving cursor.
+        " Note: We'll be in visual mode at this point if we were invoked from the
+        " sexp#docount loop.
         if mode() ==? 'v' | execute "normal! \<Esc>" | endif
-        call s:setcursor(start)
-        let cursor = start
-        let cursor_moved = 1
-    endif
 
-    " Native object selections expand when repeating inner motions as well
-    if expanding
-        \ && a:offset == 1
-        \ && getline(cursor[1])[cursor[2] - 2] =~# s:opening_bracket
-        normal! h
-        let cursor = getpos('.')
-        let cursor_moved = 1
-    endif
-
-    let ignored = s:is_rgn_type('str_com_chr', cursor[1], cursor[2])
-    let char = getline(cursor[1])[cursor[2] - 1]
-
-    if !ignored && char =~# s:opening_bracket
-        if expanding
-            if s:move_to_nearest_bracket(1)[1] > 0
-                let cursor_moved = 1
-                call s:move_to_nearest_bracket(1) " Expansion step
-            endif
-            let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
-            let close = s:pos_with_col_offset(getpos('.'), -a:offset)
+        " Determine innermost containing list.
+        let isl = s:is_list(cursor[1], cursor[2])
+        if isl == 2
+            " Cursor on open
+            let [open, close] = [cursor, s:nearest_bracket(1)]
+        elseif isl == 3
+            " Cursor on close
+            let [open, close] = [s:nearest_bracket(0), cursor]
         else
-            let open = s:pos_with_col_offset(getpos('.'), a:offset)
-            let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
+            " Not on list brackets, so look up.
+            let open = s:nearest_bracket(0)
+            let close = open[1] ? s:nearest_bracket(1) : s:nullpos
         endif
-    elseif !ignored && char =~# s:closing_bracket
-        let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
-        let close = s:pos_with_col_offset(getpos('.'), -a:offset)
-    else
-        let open = s:pos_with_col_offset(s:nearest_bracket(0), a:offset)
-        let close = s:pos_with_col_offset(s:nearest_bracket(1), -a:offset)
-    endif
+        if !open[1]
+            " Not on or in a list; nothing to do.
+            throw 'sexp-error'
+        endif
+        " Note: If we get here, we have something we can select, even if it's not optimal:
+        " i.e., error flag should not be set below.
 
-    let success = 0
+        if expanding && a:offset && (isl == 2 || isl == 3)
+            " Cursor is on a list bracket and we're looking for an *inner* list, so look
+            " higher.
+            call s:setcursor(open)
+            let p = s:move_to_nearest_bracket(0)
+            if p[1]
+                let [open, close] = [p, s:nearest_bracket(1)]
+            else
+                let stopiter = 1
+            endif
+        endif
+        " Determine a *candidate* range: either the containing list or just inside it.
+        " Design Decision: Don't inhibit inner selection here if stopiter was set above.
+        " Rationale: Might as well make the selection inner as requested, even if we would
+        " have preferred to expand: e.g., if on a toplevel list, hitting a sequence of
+        " `af` and `if` should toggle between inner/outer.
+        let s = a:offset ? sexp#offset_char(open, 1, 1) : open
+        let e = a:offset ? sexp#offset_char(close, 0, 1) : close
 
-    " Inner selection on adjacent brackets results in open being one character
-    " past close due to offset calculations
-    if open[1] > 0 && close[1] > 0 && sexp#compare_pos(open, close) < 0
-        call s:set_visual_marks([open, close])
-        let success = 1
-    " Don't erase marks when in visual mode
-    elseif !visual
-        delmarks < >
-    endif
+        " Native object selections expand when repeating inner motions, so we do too.
+        " Attempt expansion only if visual selection includes *all* of candidate range:
+        " i.e., only if selecting the current target would not expand visual selection.
+        if expanding && !stopiter
+            \ && sexp#compare_pos(vs, s) <= 0 && sexp#compare_pos(ve, e) >= 0
+            call s:setcursor(open)
+            let p = s:move_to_nearest_bracket(0)
+            if p[1]
+                " Adjust selection.
+                let [s, e] = [p, s:nearest_bracket(1)]
+                if a:offset
+                    let s = sexp#offset_char(s, 1, 1)
+                    let e = sexp#offset_char(e, 0, 1)
+                endif
+            else
+                let stopiter = 1
+            endif
+        endif
 
-    if cursor_moved
-        call s:setcursor(cursor)
-    endif
-
-    return success
+        if sexp#compare_pos(s, e) > 0
+            " Special Case: Inner selection on adjacent brackets results in s being one
+            " character past e. Handle by reversing range.
+            let [s, e] = [e, s]
+        endif
+        call s:set_visual_marks([s, e])
+    catch /sexp-error/
+        let [error, stopiter] = [1, 1]
+    finally
+        " Don't erase marks when in visual mode. (See note in header.)
+        if error && !visual
+            delmarks < >
+        endif
+        if getpos('.') != cursor
+            call s:setcursor(cursor)
+        endif
+        return [!error, stopiter]
+    endtry
 endfunction
 
 " Set visual marks to the positions of the outermost paired brackets from the
@@ -2909,19 +2963,27 @@ endfunction
 " that selection. Selects current element if cursor is not in a list.
 " -- Optional Args --
 " a:1  list_only - Set to inhibit fallback to element if no list.
+" TODO: Consider reworking commands to set list_only in more cases.
+" Rationale: I don't like the fact that something like daf will delete arbitrary,
+" non-listy forms.
 function! sexp#select_current_list(mode, offset, allow_expansion, ...)
     let list_only = a:0 && !!a:1
-    if !s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
-        \ && !list_only
-        " TODO: I'd really rather hard-code 1 for inner here, but need to
-        " consider backwards-compatability...
-        " FIXME: The thing is, "inner" means something different for lists:
-        " i.e., even outer doesn't select whitespace around the list, so if
-        " we're going to fall back to current element, I think it should be
-        " inner, regardless of a:offset.
-        call s:set_marks_around_current_element(a:mode, 1, 0, 0) "a:offset)
+    let [success, stopiter] =
+        \ s:set_marks_around_current_list(a:mode, a:offset, a:allow_expansion)
+    if !success && !list_only
+        " Fallback to current element (for historical reasons).
+        " Hard-code 1 for inner.
+        " Rationale: "inner" means something different for lists: i.e., even outer
+        " doesn't select whitespace around the list, so if we're going to fall back to
+        " current element, I think it should be inner, regardless of a:offset.
+        let success = !!s:set_marks_around_current_element(a:mode, 1, 0, 0)[0][1]
     endif
-    return s:select_current_marks(a:mode)
+    let success = success && s:select_current_marks(a:mode)
+    if stopiter && get(s:, 'countindex', -1) >= 0
+        " Don't continue sexp#docount() loop.
+        throw "stop-iter"
+    endif
+    return success
 endfunction
 
 " Set visual marks at current outermost list's brackets, then enter visual
@@ -7239,8 +7301,11 @@ function! sexp#docount(count, func, ...)
             let s:countindex = n
             call call(a:func, a:000)
         endfor
+    catch /stop-iter/
+        " Provide a way for funcs to request early termination when they know there's no
+        " point in continuing. So far, only select_current_list takes advantage of this.
     finally
-        let s:countindex = 0
+        let s:countindex = -1
     endtry
 endfunction
 

@@ -140,6 +140,14 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
     let opmode = a:mapmode[0] ==# 'o'
     " Assumption: v:count does not change before this call.
     call sexp#ensure_normal_mode()
+    " Note: This commented block was added to fix a regression that occurred when we
+    " started using <cmd> in lieu of :<c-u> for visual maps, but a refactor of
+    " set_marks_around_current_list() has obviated the need for it. For details, see
+    " 'Important Note' in that function's header.
+    "if a:mapmode[0] =~? '[xv]'
+    "    let p = getpos("'<")
+    "    keepjumps call cursor(p[1], p[2])
+    "endif
     " Caveat: For a sexp operator (e.g., replace_op), the {pre,post}_op wrapper
     " invocations are deferred till operation completion.
     if !a:flags.asexpr

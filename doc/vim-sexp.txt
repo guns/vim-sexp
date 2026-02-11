@@ -1468,24 +1468,24 @@ For details, see |sexp-auto-indent|.
         let g:sexp_auto_indent = -1
 <
                                                     *g:sexp_auto_indent_range*
-One of the following characters indicating how the line range for an
-auto-indent should be calculated:
+Integer determining how the range for an auto-indent is calculated.
 
-  'm'  use algorithm to find the minimal region required to guarantee
+  -1   re-indent top-level form
+   0   use algorithm to find the minimal region required to guarantee
        correctness. (Assumes the indentation was correct before the operation
        that triggered the re-indent.)
-  'p'  re-indent the parent list
-  't'  re-indent the toplevel list
+  >0   re-indent N containing lists
 
-There is an inherent tradeoff between performance and speed, with 'm' yielding
-the best performance and 't' most likely to produce correct indentation. If
-neither |g:sexp_indent_aligns_comments| nor |g:sexp_indent_does_clean| is
-enabled, there's probably little advantage to re-indenting the parent or
-toplevel list. However, since comment alignment works best on non-trivial line
-ranges, some users may wish to accept the performance hit of 't' in order to
-ensure optimal comment alignment. Others may prefer keeping the re-indent
-small (and fast) with 'm', using `sexp_align_comments_top` (`<M-\>`) to
-re-align comments manually only after they've become unacceptably "ragged".
+There is an inherent tradeoff between performance and speed, with 0 yielding
+the best performance and larger values (or -1) least likely to produce
+incorrect indentation. If neither |g:sexp_indent_aligns_comments| nor
+|g:sexp_indent_does_clean| is enabled, there's probably little advantage to
+changing the default of 0. However, since comment alignment works best on
+non-trivial line ranges, some users may wish to accept the performance hit of
+larger values of N in order to ensure optimal comment alignment. Others may
+prefer keeping the re-indent small (and fast) with 0, using
+`sexp_align_comments_top` (`<M-\>`) to re-align comments manually only after
+they've become unacceptably "ragged".
 
                                                     *g:sexp_clone_does_indent*
 Automatically re-indent the target(s) of a multi-line clone operation.

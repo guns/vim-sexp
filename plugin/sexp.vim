@@ -145,8 +145,8 @@ endif
 
 if !exists('g:sexp_auto_indent_range')
     " Rationale: Larger (non-optimized) indent ranges are best when aligning comments, but
-    " toplevel can be noticeably slow for operations on large toplevels.
-    let g:sexp_auto_indent_range = 'mp'
+    " toplevel can be noticeably slow for operations on large functions.
+    let g:sexp_auto_indent_range = 0
 endif
 
 if !exists('g:sexp_aligncom_maxshift')

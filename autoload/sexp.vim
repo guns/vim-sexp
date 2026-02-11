@@ -215,7 +215,7 @@ endfunction
 " Return position representing the bracket that *contains* the cursor position, else
 " nullpos if top-level.
 " Note: Differs from s:nearest_bracket() only when reference pos is *on* bracket of type
-" corresponding to 'closing'.
+" opposite to 'closing'.
 function! s:containing_bracket(closing, ...)
     let save_cursor = getcurpos()
     " TODO: Consider using s:is_list() to determine whether we need to look up a level.
@@ -559,7 +559,11 @@ endfunction
 " TODO: Convert the optional args to a (possibly optional) flags dict.
 function! sexp#nearest_element_terminal(next, tail, ...)
     let cursor = getpos('.')
-    let [pos, has_adj] = [cursor, 0]
+    " By function end, a non-null pos indicates the desired terminal pos iff
+    " !ignore_current OR have_adj.
+    " Rationale: The function logic sets 'pos' optimistically, even in cases where we
+    " ultimately fail to find adjacent.
+    let [pos, has_adj] = [s:nullpos, 0]
     " Cache optional flags.
     let ignore_current = a:0 && a:1
     let nullpos_on_fail = a:0 > 1 && a:1
@@ -616,7 +620,7 @@ function! sexp#nearest_element_terminal(next, tail, ...)
         call s:setcursor(cursor)
         " Note: The bare return statements above work like simple throws; the return value
         " is constructed here.
-        return ignore_current && !has_adj
+        return ignore_current && !has_adj || !pos[1]
             \ ? nullpos_on_fail ? s:nullpos : cursor
             \ : pos
     endtry
@@ -1557,30 +1561,6 @@ function! s:constrained_range(start, end, keep_end)
     return ret
 endfunction
 
-" Return *effective* auto-indent range calculation method, taking g:sexp_auto_indent_range
-" and g:sexp_indent_aligns_comments into account.
-function! s:get_effective_ai_range()
-    " TODO: Better way to keep this in sync with plugin script (and docs)?
-    let def_ai = 'mp'
-    " Note: We normally assume existence of global options at this point (since they're
-    " created as necessary by plugin script), but as long as we're doing processing,
-    " re-creating if necessary doesn't hurt...
-    let ai = get(g:, 'sexp_auto_indent_range', def_ai)
-    if empty(ai)
-        " Accept empty string as natural way to request default explicitly.
-        let ai = def_ai
-    endif
-    if ai != def_ai && (type(ai) != type('') || ai !~ '\v^[mpt]{1,2}$')
-        call sexp#warn#msg_once(
-            \ printf("sexp_auto_indent_range:invalid_format:%s", string(ai)),
-            \ "Ignoring invalid g:sexp_auto_indent_range setting: "
-            \ . string(ai) . ". Defaulting to '" . def_ai . "'")
-        let ai = def_ai
-    endif
-    " If two-char form is used, let align comment enable status pick the char.
-    return len(ai) == 1 ? ai : ai[!!g:sexp_indent_aligns_comments]
-endfunction
-
 " Calculate and return a dict representing the re-indent required for the buffer
 " modification spanning start/end, taking g:sexp_auto_indent_range option into account.
 " Return Dict:
@@ -1590,7 +1570,7 @@ endfunction
 "   cnt:    count argument for sexp#indent() (N/A in explicit range mode)
 function! s:get_reindent_range(s, e)
     let cursor = getpos('.')
-    let ai_range = s:get_effective_ai_range()
+    let ai_range = g:sexp_auto_indent_range
     " Return range may be adjusted below.
     let [s, e] = [a:s, a:e]
     " These will be adjusted later if parent list is to be used in lieu of explicit range.
@@ -1598,26 +1578,29 @@ function! s:get_reindent_range(s, e)
     try
         " Position at start of first element of input range.
         let [s, e] = s:super_range(s, e)
-        " If at top, just use [s,e].
+        " If at top, just use [s,e] with explicit range mode.
         if !s:at_top(s[1], s[2])
-            if ai_range == 'm' && s:is_list_terminal(s, 0)
+            if ai_range == 0 && s:is_list_terminal(s, 0)
                 " Changes to list head can propagate to the end of a list, so force
-                " parent.
-                let ai_range = 'p'
+                " re-indent of parent.
+                let ai_range = 1
             endif
             " Assumption: Containing if guard obviates need to validate bracket searches.
-            " Note: We're on tail end of input end element.
-            if ai_range == 't'
-                " containing top-level form
+            if ai_range < 0
+                " containing top-level form (should be -1, but be permissive)
                 let top = 1
-            elseif ai_range == 'p'
-                " containing form only
-                let top = 0
-                " If start is open bracket, use count of 2 to reindent that list's parent.
+            elseif ai_range > 0
+                " N containing forms
+                let [top, cnt] = [0, ai_range]
+                " If start is open bracket, increment configured count by 1.
+                " Rationale: If start and end are siblings and start is a list, the first
+                " call to select_current_list() will select only the start list, not the
+                " common parent, but it's the common parent that the user would expect to
+                " be selected by an option value of 1.
                 if s:is_list(s[1], s[2]) == 2
-                    let cnt = 2
+                    let cnt += 1
                 endif
-            else " ai_range == 'm'
+            else " ai_range == 0
                 " Calculate impacted range.
                 " Logic: We know s is not list head, so as long as indentation was correct
                 " before the operation, we should be able to keep it so by indenting up to
@@ -2753,10 +2736,10 @@ function! s:get_sel_dir(mode)
     endtry
 endfunction
 
-" TODO: Update this comment to reflect major changes with the handling of counts!!!
 " Set visual marks to the start and end of the current element. If inner is 0, trailing or
 " leading whitespace is included by way of s:terminals_with_whitespace().
 " TODO: Update documentation to reflect changes in s:terminals_with_whitespace logic.
+" TODO: Update this comment to reflect major changes with the handling of counts!!!
 "
 " If cursor is on whitespace that is not in a string or between line comments, the marks
 " are set around the next element if inner is 1, and around the current position and end
@@ -2767,7 +2750,7 @@ endfunction
 " Args:
 "   count   (> 0 means expansion possible)
 "   no_sel  inhibit visual selection (return range only)
-" Return: adjusted position, else null pos
+" Return: adjusted range, else null range
 " FIXME: Consider using try/catch; re-examine the off-nominal handling.
 " Idiosyncrasy: Hitting vie in normal mode on a single-char atom will cause two atoms to
 " be selected! When I first observed this behavior, it was sufficiently disconcerting that
@@ -2816,9 +2799,8 @@ function! s:set_marks_around_current_element(mode, inner, count, no_sel)
     let start = sexp#move_to_current_element_terminal(0)
     if !start[1]
         " We are on whitespace; check for next element
-        let p = getpos('.')
-        let next = sexp#move_to_adjacent_element_terminal(1, 0, 0)
-        if next == p
+        let next = sexp#move_to_adjacent_element_terminal(1, 0, 0, 1)
+        if !next[1]
             " No next element!
             if a:mode !=? 'v'
                 " Inhibit operation.
@@ -2986,6 +2968,49 @@ function! sexp#select_current_list(mode, offset, allow_expansion, ...)
     return success
 endfunction
 
+" Use this function in lieu of sexp#docount('sexp#select_current_list', ...) when you want
+" early termination when the count is too large. The sexp#docount() call will just keep
+" going unconditionally until the count is exhausted, which is problematic since at least
+" one plugin option recommends setting a count to a large number (e.g., 1000) to select
+" "top-level".
+" Another difference is that this function doesn't fall back to current element when not
+" within a list.
+" Note: The allow_expansion arg is omitted, as this function would be pointless without
+" expansion.
+" Return: 1 if a list (not necessarily nth) has been selected, else 0
+" TODO: Refactor of set_marks_around_current_list() has obviated the need for this. Remove
+" after testing...
+function! sexp#select_nth_list(count, mode, offset)
+    try
+        " Maintain prev range so we can detect when expansion stops.
+        let [vs_, ve_] = [s:nullpos, s:nullpos]
+        for i in range(a:count > 0 ? a:count : 1)
+            " Note: Need to set the script-local counter used by sexp#docount because
+            " s:set_marks_around_current_list()'s logic uses it to prevent expansion on
+            " the first (0th) iteration.
+            " TODO: This feels wrong and should probably be changed, but any change there
+            " would entail significant re-validation, so tread carefully...
+            let s:countindex = i
+            " Set optional 'list_only' flag to prevent fallback to nearest element.
+            if !sexp#select_current_list(a:mode, a:offset, 1, 1)
+                " TODO: Decide how best to handle failure. Note that inability to expand
+                " further is not considered failure, and is handled below.
+                return 0
+            endif
+            " Did expansion occur?
+            let [vs, ve] = s:get_visual_marks()
+            if vs_ == vs
+                " No expansion occurred! Short-circuit.
+                break
+            endif
+            let [vs_, ve_] = [vs, ve]
+        endfor
+        return 1
+    finally
+        let s:countindex = -1
+    endtry
+endfunction
+
 " Set visual marks at current outermost list's brackets, then enter visual
 " mode with that selection. Selects current element if cursor is not in a
 " list.
@@ -3008,6 +3033,8 @@ endfunction
 function! sexp#select_current_element(mode, inner, ...)
     let cnt = a:0 && a:1 ? a:1 : 1
     call s:set_marks_around_current_element(a:mode, a:inner, cnt, 0)
+    " TODO: Should this really be called unconditionally, given that
+    " s:set_marks_around_current_element() may have failed and deleted < > marks?
     return s:select_current_marks(a:mode, a:mode ==? 'v' ? b:sexp_cmd_cache.sel_dir : 1)
 endfunction
 
@@ -5790,8 +5817,9 @@ endfunction
 
 " Calculate useful state (primarily target range) for a command that operates on either
 " forms (possibly more than one, as determined by count) or visual range and needs to
-" preserve view and cursor position across the operation: e.g., indent and align. Return a
-" dict containing the calculated state.
+" preserve view and cursor position across the operation: e.g., indent and align.
+" Return: a dict containing the calculated state, else {} if we can't determine a valid
+" range.
 " Note: Currently, this function also handles saving window state, but I'm thinking
 " perhaps that should be pulled out.
 " TODO: Rename this to make it more general...
@@ -5808,9 +5836,12 @@ function! s:pre_align_or_indent(mode, top, count, clean, ps)
     " Rationale: For Normal mode invocation, we use visual selection to perform indent,
     " but this is an implementation detail that should be transparent to user.
     let [vs, ve] = s:get_visual_marks()
+    let [start, end] = [s:nullpos, s:nullpos]
     if a:mode ==? 'n'
         " Move to current list tail since the expansion step of
         " s:set_marks_around_current_list() happens at the tail.
+        " TODO: It's no longer the case that expansion happens only at tail; look at
+        " refactoring this entire block!
         if getline(line)[col - 1] =~ s:closing_bracket
             \ && !s:is_rgn_type('str_com_chr', line, col)
             let pos = [0, line, col, 0]
@@ -5818,11 +5849,17 @@ function! s:pre_align_or_indent(mode, top, count, clean, ps)
             let pos = s:move_to_nearest_bracket(1)
         endif
 
-        normal! v
+        " TODO: Need rationale for this `v`, given that the functions below ensure entry
+        " into visual mode. I'm not sure it's needed, but it's been here a *long* time.
+        "normal! v
         if pos[1] < 1
             let at_top = 1
-            " At top-level. If current (or next) element is list, select it.
-            " Note: When not within list, 'inner' includes brackets.
+            " At top-level. Select current (or next) element.
+            " Note: On list close, the move_to_nearest_bracket() above will return
+            " nullpos, even though we're effectively on a list; in that case, the
+            " following call will select the list, including brackets.
+            " TODO: Consider whether it ever makes sense to select *next* element when
+            " we're not within element or list.
             call sexp#select_current_element('n', 1)
         elseif a:top
             " Inside list. Select topmost list.
@@ -5875,10 +5912,10 @@ function! sexp#align_comments(mode, top, count)
         " comment alignment.
         let state = s:pre_align_or_indent(a:mode, a:top, a:count, 0, [])
         " Don't attempt alignment on null range.
-        if state.start[1] && state.end[1]
+        if !empty(state) && state.start[1] && state.end[1]
             call s:align_comments(state.start, state.end, state.ps)
+            call s:post_align_or_indent(a:mode, state)
         endif
-        call s:post_align_or_indent(a:mode, state)
     finally
         " Re-enable autocmds.
         let &ei = ei_save

@@ -1090,7 +1090,7 @@ Put operator (normal)  ~
         following option settings are assumed:
 
           |g:sexp_regput_tele_motion| >= 1
-          |g:sexp_regput_curpos| == 2
+          |g:sexp_regput_curpos_op| == 2
 >
           (foo (bar)
                (|baz))

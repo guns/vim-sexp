@@ -135,19 +135,25 @@ If `g:sexp_indent_aligns_comments` is set (false by default), the `==` and `=-` 
 
 ### Smart Paste Commands (normal, visual)
 
-A family of register put (paste) commands, optimized for use with S-Expressions.
-The following functionality is supported:
-
-- Put register before/after element at cursor
-- Replace element at cursor or visually-selected element(s) with register
-- Put register before/after `[count]`th child from head/tail of current list
-- Replace `[count]`th child of current list with register
-
-Although most of the commands are mapped to `<Leader>` keybindings, you may wish to remap a few of the builtin put operators for convenience.
-For details...
+A family of commands and operators for pasting or replacing from registers, optimized for use with _S-expressions_.
+Unlike builtin put operators such as `p` and `P`, these commands will keep your Lisp code properly formatted and will never create unbalanced forms.
+In fact, you should rarely need to make any adjustments at all after a smart put.
+This is because the smart paste engine analyzes the target context to determine whether to insert a newline at each end of the put text, and performs an automatic re-indent after the put on the smallest range guaranteed to preserve correct indentation.
+Once you've used the smart paste commands, you will probably not have much use for Vim's builtin put commands in your Lisp buffers, and thus, may wish to replace the default `<LocalLeader>` keybindings with more convenient bindings that override the builtins.
+For an easy way to accomplish this...
 ```
 :help sexp-regput-overriding-builtins
 ```
+
+The smart-paste commands come in two varieties:
+* Normal and visual mode commands that target the element or list at the cursor position.
+* Normal mode _operators_ whose targets are remote S-expressions, selected with one of the following:
+  * a builtin or sexp _object_
+  * a builtin or sexp _motion_
+  * a target specified with a _telescopic motion_ (`:help sexp-operator-telescopic-motion`)
+
+**Note:** A few of the commands listed below are given intentionally long (3 character) default mappings because they are essentially shortcuts for something that can be accomplished with the more general put/replace operators.
+Feel free to give these commands more convenient mappings if you find them useful, or unmap them altogether if you prefer the operators.
 
 #### Put register before/after (normal)
 * ["x] `<LocalLeader>p` puts `[count]` copies of register `x` after the current element.
@@ -158,21 +164,70 @@ For details...
 :help sexp-regput-behavior-on-bracket
 ```
 
-#### Replace element/selection with register (normal, visual)
-* ["x] `<M-p>` replaces the current element or visual selection with `[count]` copies of register `x`.
+#### Replace selection with register (visual)
+* ["x] `<M-p>` replaces the visual selection with `[count]` copies of register `x`.
 * ["x] `<M-P>` idem, but doesn't update the unnamed register
 
-**Note:** In visual mode, the selection is first expanded to include all of any partially-selected forms.
+#### Replace current element with register (normal)
+* ["x] `<LocalLeader><LocalLeader>p` replaces the current element with `[count]` copies of register `x`.
+* ["x] `<LocalLeader><LocalLeader>P` idem, but doesn't update the unnamed register
 
-#### Put register into list (normal)
-* ["x] `<LocalLeader><p` puts register into current list, just before the `[count]`th child from head.
-* ["x] `<LocalLeader>>p` puts register into current list, just after the `[count]`th child from tail.
+**Note:** Syntactic sugar for applying the replace operator to the current element: e.g., `<LocalLeader><LocalLeader>p` = `<M-p>ie`
 
-#### Replace child with register (normal)
-* ["x] `<LocalLeader>[p` replaces the `[count]`th child from head of current list with register `x`.
-* ["x] `<LocalLeader>[P` idem, but doesn't update the unnamed register
-* ["x] `<LocalLeader>]p` replaces the `[count]`th child from tail of current list with register `x`.
-* ["x] `<LocalLeader>]P` idem, but doesn't update the unnamed register
+#### Put register into current list (normal)
+* ["x] `<LocalLeader>[p` puts register into current list, just before the `[count]`th child from head.
+* ["x] `<LocalLeader>]p` puts register into current list, just after the `[count]`th child from tail.
+
+**Note:** Syntactic sugar for applying the put operator to an _inner child_ object with a `[count]`: e.g., `3<LocalLeader>]p` = `<p2iC`
+
+#### Replace operator (normal)
+* ["x] `<M-p>` replaces the S-expression(s) selected by the operator's motion/object with register `x`.
+* ["x] idem, but doesn't update the unnamed register
+
+#### Put operator (normal)
+* ["x] `<p` puts register `x` before the element selected by the operator's motion/object
+* ["x] `>p` puts register `x` after the element selected by the operator's motion/object
+
+#### Put/Replace Operator Examples
+Although `<LocalLeader>p` and `<LocalLeader>P` will probably be your go-to commands for the most typical use cases, the put/replace _operators_ provide a powerful mechanism for putting and replacing forms _at a distance_.
+The following examples illustrate just a few of the possibilities...
+
+| Command | Result |
+| ------- | ------ |
+| `<M-p>af`  | Replace current list |
+| `<M-P>ie`  | Replace current element without updating unnamed register (`@"`) |
+| `<M-p>2ic` | Replace second child of current list |
+| `<M-p>3E`  | Replace current and next two elements |
+| `<piC`  | Put before final element of current list (equivalent to `2<LocalLeader>]p`) |
+| `>p3E`  | Put after the second element beyond the current element |
+
+#### "Telescopic" Mode Example
+The preceding examples work with the default options.
+The following example (borrowed from the help) requires the following option settings:
+
+```
+" Enable telescopic motion for motions outside current level.
+let g:sexp_regput_tele_motion = 1
+" Put/replace operators preserve original cursor position.
+let g:sexp_regput_curpos_op == 2
+```
+
+          (foo (bar)
+               (|baz))
+
+To swap "foo" and "baz" without moving the cursor (indicated by `|`), execute the following sequence of commands...
+
+| Command | Result |
+| ------- | ------ |
+| yie            | copy current element into unnamed register (`@"`)|
+| <M-p>?foo<CR>  | replace target of backwards search, updating unnamed register (`@"`) |
+| <M-p>ie        | replace current element with unnamed register (`@"`) |
+
+Although use of the unnamed register to swap words is idiomatic Vim, telescopic motions streamline the pattern by obviating the need to move the cursor back and forth between the elements being swapped and by handling any required re-indentation.
+
+```
+:help sexp-operator-telescopic-motion
+```
 
 ### Clone Commands (normal, visual)
 

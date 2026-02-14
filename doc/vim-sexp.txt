@@ -955,7 +955,7 @@ Put register before/after (normal)  ~
         I.e., the register text will be inserted into the head or tail of the
         list at an offset determined by `[count]`. If you prefer that this
         command treat lists just like regular elements, simply set option
-        *g:sexp_regput_bracket_is_target* to 0.
+        |g:sexp_regput_bracket_is_target| to 0.
 
         Note: If there is no current element, the register contents are put
         before or after the cursor position; moreover, there is a subtle
@@ -965,23 +965,25 @@ Put register before/after (normal)  ~
         adjacent element.
 
 
-Replace selection with register (visual)  ~
+Replace with register (normal and visual)  ~
                                                                 *sexp-replace*
-
-["x] <M-p>                                              *<Plug>(sexp_replace)*
-["x] <M-P>                                            *<Plug>(sexp_replace_P)*
+                                 *<Plug>(sexp_replace)* *<Plug>(sexp_replace_P)*
+Visual  ~
+                                                         *sexp-replace-visual*
+["x] <LocalLeader>p
+["x] <LocalLeader>P
         Replace the visually selected element(s) with `[count]` copies of
         register `x`.
 
         To prevent unbalanced forms, the command aborts with a warning if the
         selection endpoints do not lie within the same node of the sexp tree.
 
-        `<M-P>` does not update the unnamed register.
+        `<LocalLeader>P` does not update the unnamed register.
 
-Replace current element with register (normal)  ~
-
-["x] <LocalLeader><LocalLeader>p                        *<Plug>(sexp_replace)*
-["x] <LocalLeader><LocalLeader>P                      *<Plug>(sexp_replace_P)*
+Normal  ~
+                                                         *sexp-replace-normal*
+["x] <LocalLeader><LocalLeader>p
+["x] <LocalLeader><LocalLeader>P
         Replace element at cursor with `[count]` copies of register `x`.
 
         `<M-P>` does not update the unnamed register.
@@ -1180,7 +1182,7 @@ intended).
 with the "." (repeat) operator when using it to repeat a put/replace
 operation.
 
-                                             *sexp-regput-overriding-builtins*
+                                                      *sexp-regput-p-versus-P*
 p versus P (a Motivating Example)  ~
 Although `<M-j>`, `<M-k>`, `<M-h>`, `<M-l>` can be used to swap adjacent
 elements, they're not ideal for swapping non-adjacent elements. For instance,

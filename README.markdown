@@ -165,8 +165,8 @@ Feel free to give these commands more convenient mappings if you find them usefu
 ```
 
 #### Replace selection with register (visual)
-* ["x] `<M-p>` replaces the visual selection with `[count]` copies of register `x`.
-* ["x] `<M-P>` idem, but doesn't update the unnamed register
+* ["x] `<LocalLeader>p` replaces the visual selection with `[count]` copies of register `x`.
+* ["x] `<LocalLeader>P` idem, but doesn't update the unnamed register
 
 #### Replace current element with register (normal)
 * ["x] `<LocalLeader><LocalLeader>p` replaces the current element with `[count]` copies of register `x`.

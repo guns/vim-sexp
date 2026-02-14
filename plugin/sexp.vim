@@ -581,6 +581,10 @@ function! s:sexp_create_mappings()
         for mode in valid_modes_arr
             " Use mode-specific override if it exists, else default, which must exist.
             let lhs = get(gm, mode, get(sm, mode))
+            if empty(lhs)
+                " No lhs mapping for this one, so skip it.
+                continue
+            endif
             " Check for a conflicting map defined for the current buffer.
             " Assumption: maparg() can handle distinct but equivalent forms of lhs (e.g.,
             " <LocalLeader> vs \, <C-...> vs <c-...>, etc...)

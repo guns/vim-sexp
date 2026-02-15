@@ -386,8 +386,8 @@ let s:sexp_mappings = {
     \ 'sexp_replace_P':                    {'x': '<LocalLeader>P', 'n': '<LocalLeader><LocalLeader>P'},
     \ 'sexp_put_before_op':                {'n': '<p'},
     \ 'sexp_put_after_op':                 {'n': '>p'},
-    \ 'sexp_put_at_head':                  {'n': '<LocalLeader>[p'},
-    \ 'sexp_put_at_tail':                  {'n': '<LocalLeader>]p'},
+    \ 'sexp_put_at_head':                  {'n': '<LocalLeader><p'},
+    \ 'sexp_put_at_tail':                  {'n': '<LocalLeader>>p'},
     \ }
 
 if !empty(g:sexp_filetypes)

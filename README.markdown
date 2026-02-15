@@ -175,10 +175,10 @@ Feel free to give these commands more convenient mappings if you find them usefu
 **Note:** Syntactic sugar for applying the replace operator to the current element: e.g., `<LocalLeader><LocalLeader>p` = `<M-p>ie`
 
 #### Put register into current list (normal)
-* ["x] `<LocalLeader>[p` puts register into current list, just before the `[count]`th child from head.
-* ["x] `<LocalLeader>]p` puts register into current list, just after the `[count]`th child from tail.
+* ["x] `<LocalLeader><p` puts register into current list, just before the `[count]`th child from head.
+* ["x] `<LocalLeader>>p` puts register into current list, just after the `[count]`th child from tail.
 
-**Note:** Syntactic sugar for applying the put operator to an _inner child_ object with a `[count]`: e.g., `3<LocalLeader>]p` = `<p2iC`
+**Note:** Syntactic sugar for applying the put operator to an _inner child_ object with a `[count]`: e.g., `3<LocalLeader>>p` = `<p2iC`
 
 #### Replace operator (normal)
 * ["x] `<M-p>` replaces the S-expression(s) selected by the operator's motion/object with register `x`.
@@ -198,7 +198,7 @@ The following examples illustrate just a few of the possibilities...
 | `<M-P>ie`  | Replace current element without updating unnamed register (`@"`) |
 | `<M-p>2ic` | Replace second child of current list |
 | `<M-p>3E`  | Replace current and next two elements |
-| `<piC`  | Put before final element of current list (equivalent to `2<LocalLeader>]p`) |
+| `<piC`  | Put before final element of current list (equivalent to `2<LocalLeader>>p`) |
 | `>p3E`  | Put after the second element beyond the current element |
 
 #### "Telescopic" Mode Example

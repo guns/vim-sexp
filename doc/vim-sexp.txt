@@ -997,11 +997,11 @@ Normal  ~
 
 Put register into current list (normal)  ~
 
-["x] <LocalLeader>[p                                *<Plug>(sexp_put_at_head)*
-["x] <LocalLeader>]p                                *<Plug>(sexp_put_at_tail)*
+["x] <LocalLeader><p                                *<Plug>(sexp_put_at_head)*
+["x] <LocalLeader>>p                                *<Plug>(sexp_put_at_tail)*
         Put register `x` into the current list, just before the `[count]`th
-        child from head (`<LocalLeader>[p`) or after the `[count]`th child
-        from tail (`<LocalLeader>]p`).
+        child from head (`<LocalLeader><p`) or after the `[count]`th child
+        from tail (`<LocalLeader>>p`).
 
         Note: The mapping for this command is intentionally long (and
         inconvenient) since you can get the same behavior with the
@@ -1065,7 +1065,7 @@ Put operator (normal)  ~
 
         Examples:  ~
         1. `<piC`  Put before final element of current list
-                 Note: Equivalent to `2<LocalLeader>]p` (i.e., put into second
+                 Note: Equivalent to `2<LocalLeader>>p` (i.e., put into second
                  slot from tail of list)
         2. `>p3E`  Put after the second element beyond the current element
                  Note: `3E` is used instead of `2W` because the `W` motion is
@@ -2059,8 +2059,8 @@ Note: To unbind a command, simply set its <lhs> to an empty string.
             \                                    'n': '<LocalLeader><LocalLeader>P'},
             \ 'sexp_put_at_head':               '<p',
             \ 'sexp_put_at_tail':               '>p',
-            \ 'sexp_put_at_head':               '<LocalLeader>[p',
-            \ 'sexp_put_at_tail':               '<LocalLeader>]p',
+            \ 'sexp_put_at_head':               '<LocalLeader><p',
+            \ 'sexp_put_at_tail':               '<LocalLeader>>p',
             \ }
 <
 Override Example: ~

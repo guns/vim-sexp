@@ -463,8 +463,10 @@ function! s:mapwarn(plug, msg)
     call s:warn(printf("g:sexp_mappings['%s']: %s", a:plug, a:msg))
 endfunction
 
-" Warn once-only (per buffer) for the specified map conflict.
-function! s:map_conflict_warn_once(lhs, rhs1, rhs2, mode)
+" Warn once-only (per buffer) for the specified map conflict (or ambiguity).
+" -- Optional Args --
+" a:1  ambiguous (not conflict)
+function! s:map_conflict_warn_once(lhs, rhs1, rhs2, mode, ...)
     " Note: Unambiguously order the components of the key to ensure we don't warn twice
     " for the same conflict when s:sexp_create_mappings() is called twice.
     " Explanation: In the initial call, the second map overwrites the first, but then in
@@ -472,8 +474,8 @@ function! s:map_conflict_warn_once(lhs, rhs1, rhs2, mode)
     let s = call(function('sexp#warn#join_hashable'),
                 \ [a:mode, a:lhs] + sort([a:rhs1, a:rhs2]))
     call sexp#warn#msg_once(s, printf(
-        \ "Mapping %s => %s conflicts with existing mapping to %s in mode %s",
-        \ a:lhs, a:rhs2, a:rhs1, a:mode))
+        \ "Mapping %s => %s %s with existing mapping to %s in mode %s",
+        \ a:lhs, a:rhs2, (a:0 ? "is ambiguous" : "conflicts"), a:rhs1, a:mode))
 endfunction
 
 " Convert a single value in the sexp_mappings dict to a denormalized form conducive to use
@@ -538,6 +540,47 @@ function! s:check_for_mapping_preset(plug)
     return {}
 endfunction
 
+" Warn user if the input args represent a mapping that would conflict or be ambiguous with
+" an existing map (either global or buffer).
+" Return:
+"   0  no problem
+"   1  ambiguity
+"   2  conflict
+function! s:check_for_map_conflicts(lhs, mode, plug)
+    let rhs = '<Plug>(' . a:plug . ')'
+    " Assumption: maparg() can handle distinct but equivalent forms of lhs (e.g.,
+    " <LocalLeader> vs \, <C-...> vs <c-...>, etc...)
+    " TODO: Could alternatively check only mappings created by this plugin, but
+    " that would entail canonicalizing lhs and storing in dict of some sort.
+    " Assumption: maparg returns a buffer map before a global one, but in the absence of a
+    " buffer map, will return a global one.
+    " Design Decision: Warn about both buffer and global map conflicts/ambiguities.
+    " Caveat: The check against <plug>(...) ensures we don't warn about our own mapping if
+    " this function is called multiple times.
+    " Note: 'rhs' key won't exist if the rhs is a Lua callback (stored in 'callback').
+    let m = maparg(a:lhs, a:mode, 0, 1)
+    if !empty(m) && has_key(m, 'rhs') && m.rhs !=? '<nop>'
+        \ && m.rhs !=? rhs
+        " Warn before overwriting existing map.
+        " TODO: Consider adding option for this.
+        call s:map_conflict_warn_once(a:lhs, m.rhs, rhs, a:mode)
+        return 2
+    endif
+    " Also check for map ambiguities.
+    let m = mapcheck(a:lhs, a:mode)
+    " Caveat: Don't warn if the ambiguous map appears to be this one, created on an
+    " earlier call to sexp_create_mappings().
+    " Note: Although it should be safe to compare full rhs (including <Plug>(...)
+    " wrapper), Vim docs don't explicitly state that "<Plug>" will appear untranslated in
+    " the rhs returned by mapcheck; thus, to be safe, just compare the plug name itself.
+    if !empty(m) && m !~ '(' . a:plug . ')'
+        " Pass optional 'ambiguous' flag to indicate not true conflict.
+        call s:map_conflict_warn_once(a:lhs, m, rhs, a:mode, 1)
+        return 1
+    endif
+    return 0
+endfunction
+
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 " TODO: Consider moving more of this infrastructure into the plug autoload module.
@@ -576,7 +619,6 @@ function! s:sexp_create_mappings()
                 \ "Invalid format: must be string or dict."
                 \ . " (:help g:sexp_mappings)", string(gentry)))
         endif
-
         " Loop over all modes which are valid for this command.
         for mode in valid_modes_arr
             " Use mode-specific override if it exists, else default, which must exist.
@@ -585,24 +627,7 @@ function! s:sexp_create_mappings()
                 " No lhs mapping for this one, so skip it.
                 continue
             endif
-            " Check for a conflicting map defined for the current buffer.
-            " Assumption: maparg() can handle distinct but equivalent forms of lhs (e.g.,
-            " <LocalLeader> vs \, <C-...> vs <c-...>, etc...)
-            " TODO: Could alternatively check only mappings created by this plugin, but
-            " that would entail canonicalizing lhs and storing in dict of some sort.
-            let m = maparg(lhs, mode, 0, 1)
-            " Assumption: maparg returns a buffer map before a global one, but in the
-            " absence of a buffer map, will return a global one; thus, we must check
-            " buffer flag.
-            " Caveat: The check against <plug>(...) ensures we don't warn about our own
-            " mapping if this function is called twice.
-            if !empty(m) && m.buffer && m.rhs !=? '<nop>'
-                \ && m.rhs !=? '<plug>(' . plug . ')'
-                " Warn before overwriting existing map.
-                " TODO: Consider adding option for this.
-                call s:map_conflict_warn_once(
-                    \ lhs, m.rhs, '<Plug>(' . plug . ')', mode)
-            endif
+            call s:check_for_map_conflicts(lhs, mode, plug)
             " Create the mapping.
             execute mode . 'map <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
         endfor

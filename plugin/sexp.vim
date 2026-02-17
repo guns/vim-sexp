@@ -546,21 +546,29 @@ endfunction
 "   0  no problem
 "   1  ambiguity
 "   2  conflict
+" Design Decision: Warn about only *buffer* conflicts/ambiguities, silently overwriting a
+" global map with the same lhs.
+" Rationale: Buffer maps are typically filetype-specific, and thus, should generally take
+" precedence over global maps.
+" TODO: Decide whether these checks belong in the plugin and remove this function if not.
+" For now, the call to this function has been commented out due to the confusion the
+" warnings caused during smart-paste beta testing. If it's kept at all, the call should
+" probably be guarded by an expert option (disabled by default), which allows the user to
+" enable and customize warnings. Such an option could be enabled while user is attempting
+" to hash out a good set of keybindings.
 function! s:check_for_map_conflicts(lhs, mode, plug)
     let rhs = '<Plug>(' . a:plug . ')'
     " Assumption: maparg() can handle distinct but equivalent forms of lhs (e.g.,
     " <LocalLeader> vs \, <C-...> vs <c-...>, etc...)
     " TODO: Could alternatively check only mappings created by this plugin, but
     " that would entail canonicalizing lhs and storing in dict of some sort.
-    " Assumption: maparg returns a buffer map before a global one, but in the absence of a
-    " buffer map, will return a global one.
-    " Design Decision: Warn about both buffer and global map conflicts/ambiguities.
+    " Assumption: maparg() returns a buffer map before a global one, but in the absence of
+    " a buffer map, will return a global one.
     " Caveat: The check against <plug>(...) ensures we don't warn about our own mapping if
     " this function is called multiple times.
     " Note: 'rhs' key won't exist if the rhs is a Lua callback (stored in 'callback').
     let m = maparg(a:lhs, a:mode, 0, 1)
-    if !empty(m) && has_key(m, 'rhs') && m.rhs !=? '<nop>'
-        \ && m.rhs !=? rhs
+    if !empty(m) && m.buffer && has_key(m, 'rhs') && m.rhs !=? '<nop>' && m.rhs !=? rhs
         " Warn before overwriting existing map.
         " TODO: Consider adding option for this.
         call s:map_conflict_warn_once(a:lhs, m.rhs, rhs, a:mode)
@@ -627,7 +635,8 @@ function! s:sexp_create_mappings()
                 " No lhs mapping for this one, so skip it.
                 continue
             endif
-            call s:check_for_map_conflicts(lhs, mode, plug)
+            " TODO: Decide whether the plugin should warn, or simply override...
+            "call s:check_for_map_conflicts(lhs, mode, plug)
             " Create the mapping.
             execute mode . 'map <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
         endfor

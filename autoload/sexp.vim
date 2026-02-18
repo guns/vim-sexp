@@ -3369,16 +3369,20 @@ function! s:regput__get_context(tgt_info)
             " side. May be nullpos if current range endpoint is at buffer extremity.
             let [outer, outer_is_bra] = [s:nullpos, 0]
             if !ret.is_bra[i]
-                " Attempt to find outer adjacent.
-                call s:setcursor(ret.range[i])
-                let outer = sexp#nearest_element_terminal(i, !i, 1, 1)
-                if !outer[1]
-                    " Pre-position on outside of element to ensure that if element is
-                    " list, nearest_bracket doesn't find its match.
-                    call sexp#move_to_current_element_terminal(i)
-                    let outer = s:nearest_bracket(i)
-                    if outer[1]
-                        let outer_is_bra = 1
+                " No point in looking for adjacent or containing bracket if at BOF.
+                " TODO: Do we also need an EOF check?
+                if i || ret.range[i] != s:BOF
+                    " Attempt to find outer adjacent.
+                    call s:setcursor(ret.range[i])
+                    let outer = sexp#nearest_element_terminal(i, !i, 1, 1)
+                    if !outer[1]
+                        " Pre-position on outside of element to ensure that if element is
+                        " list, nearest_bracket doesn't find its match.
+                        call sexp#move_to_current_element_terminal(i)
+                        let outer = s:nearest_bracket(i)
+                        if outer[1]
+                            let outer_is_bra = 1
+                        endif
                     endif
                 endif
             endif
@@ -4586,6 +4590,8 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
         let [i0, i1] = a:inc
         if i0 == 1 || i1 == 1
             " One side inclusive, the other side some form of exclusive
+            " Rationale: Getting inside the empty range `if' above guarantees at least one
+            " side was exclusive.
             if i0 != 2 && i1 != 2
                 " By convention, empty range with one side inclusive and the other side
                 " normal-exclusive requests a directed put with direction given by the
@@ -4605,11 +4611,17 @@ function! s:yankdel_range__preadjust_range(start, end, del_or_spl, inc)
             endif
         else
             " Both sides some form of exclusive
-            " Handle as directed put from adjusted end.
+            " Handle as directed "put after" from adjusted end, unless adjusted end is
+            " before start of buffer, in which case we need to make it a "put before" from
+            " start.
             " Rationale: Intended use cases of adjacent whitespace-exclusive are such that
-            " when a choice must be made (because adjacent start/end overlap), it's better to
-            " preserve all of the adjacent whitespace at end.
-            let [ret.pos, ret.cmd] = [end, 'p']
+            " when a choice must be made (because adjacent whitespace start/end overlap),
+            " it's better to preserve all of the adjacent whitespace at end. As for
+            " special BOF case, consider that an adjusted end at virtual BOF position will
+            " be forcibly adjusted to [0,1,1,0] before the put, with the result that a
+            " forward put from adjusted end would leave the initial buffer char *before*
+            " the put text, which is definitely not what we want!
+            let [ret.pos, ret.cmd] = end == s:BOF ? [start, 'P'] : [end, 'p']
         endif
     else
         " Adjusted range non-empty; no need to adjust cmd, which is one of [yds]. (All

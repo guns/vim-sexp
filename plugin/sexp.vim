@@ -277,6 +277,10 @@ else
     endif
 endif
 
+if !exists('g:sexp_regput_use_string_parser')
+    let g:sexp_regput_use_string_parser = 0
+endif
+
 " Expert options
 if !exists('g:sexp_inhibit_failsafe')
     let g:sexp_inhibit_failsafe = 0

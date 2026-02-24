@@ -512,11 +512,11 @@ function M.nearest_bracket(closing, open_re, close_re)
   return {0, 0, 0, 0}
 end
 
+---@param tree TSTree
 ---@param codestr string    # string representing lisp form(s) to validate
 ---@param filetype string?  # lisp variant to use for validation
----                         # TODO: Should be unnecessary, as it defaults to current buf
 ---@return ParseResult
-function M.analyze_codestr(codestr, filetype)
+local function analyze_codestr(tree, codestr, filetype)
   ---@local ParseResult
   -- Note: Table structure matches corresponding dict in legacy Vim implementation.
   local ret = {
@@ -536,8 +536,6 @@ function M.analyze_codestr(codestr, filetype)
     ((ERROR) @str
       (#trim! @str 1 1 1 1))
   ]])
-  -- Note: Intentionally parsing raw (unstripped) input string.
-  local tree = vim.treesitter.get_string_parser(codestr, ft):parse()[1]
   local root = tree:root()
   -- Execute query for errors, saving only the first one in return table.
   local _, node = vim.iter(query:iter_captures(root, 0)):next()
@@ -603,6 +601,42 @@ function M.analyze_codestr(codestr, filetype)
     end
   end
   return ret
+end
+
+-- Use Treesitter to analyze the input 'codestr' as filetype 'filetype', returning a
+-- ParseResult, else nil.
+-- Preconditions: If the optional 'strparse' flag is set, attempt to use a string parser;
+-- otherwise, assume caller has already placed us in a buffer with the correct filetype
+-- and contents.
+---@param codestr string    # string representing lisp form(s) to validate
+---@param filetype string?  # lisp variant to use for validation
+---@param strparse boolean? # true if using string parser
+---@return ParseResult?
+---@return string?          # error msg if ParseResult is nil
+function M.analyze_codestr(codestr, filetype, strparse)
+  ---@type vim.treesitter.LanguageTree?
+  local ltree
+  ---@type TSTree?
+  local tree
+  if strparse then
+    -- Note: Intentionally parsing raw (unstripped) input string.
+    ltree = vim.treesitter.get_string_parser(codestr, filetype or vim.bo.ft)
+  else
+    -- Note: For versions < 0.12, error=false is needed to ensure nil,errmsg is returned
+    -- if parser can't be created.
+    -- TODO: Decide whether we want to bother with the 2nd return value (errmsg). The
+    -- problem is that luaeval() doesn't make it easy to obtain; also, the other sexp.ts
+    -- functions just return a single value.
+    ltree = vim.treesitter.get_parser(nil, nil, {error = false})
+  end
+  if not ltree then
+    -- Couldn't get LanguageTree.
+    -- Note: Only get_parser() (not get_string_parser()) can return nil.
+    return nil
+  end
+  -- Attempt the parse.
+  tree = ltree:parse()[1]
+  return tree and analyze_codestr(tree, codestr, filetype) or nil
 end
 
 return M

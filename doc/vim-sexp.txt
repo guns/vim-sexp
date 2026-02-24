@@ -1220,20 +1220,20 @@ telescopic, "put-at-a-distance" feel), set `g:sexp_regput_curpos = 1` and
                                                 *sexp-regput-register-parsing*
 Register Parsing  ~
 Before putting a register into the buffer, vim-sexp attempts to parse its
-contents as lisp code of a dialect corresponding to 'filetype'. The primary
+contents as Lisp code of a dialect corresponding to 'filetype'. The primary
 goal of this parsing is to detect problems such as unbalanced parentheses,
 which could render the code in the buffer malformed. A secondary goal is to
 characterize the register contents in a way that can inform decisions about
 how to separate the put text from the surrounding buffer text: e.g., Does the
 text begin or end with a comment? Does it contain multiple toplevel forms?
-The parsing is straightforward when Treesitter is available; when only the
-legacy syntax engine is available, vim-sexp must put the register contents
-into a hidden buffer where its own syntax-aware functions can be used to
-perform the parsing. In either case, the parsing should be completely
-invisible. With the default configuration, you will be prompted to decide
-whether to proceed with a put of invalid register contents. If you don't like
-this behavior, you can customize it with option
-|g:sexp_regput_invalid_register_action|.
+By default, the parsing is performed in a hidden buffer, using Treesitter if
+it's available, else vim-sexp's own syntax-aware functions. If the parse
+detects potential problems, you will be prompted to determine whether you wish
+to proceed with the put. If you wish to avoid the prompt, you can customize
+the default action with option |g:sexp_regput_invalid_register_action|. With
+Treesitter, it is also possible to request use of a string parser in lieu of
+the hidden buffer parse. See |g:sexp_regput_use_string_parser| for details.
+
 Note: Although it is possible to disable parsing altogether, it is not
 recommended. For details, see |g:sexp_regput_inhibit_regparse|.
 
@@ -1899,32 +1899,6 @@ For additional details, see |sexp-regput-list-shape-preservation|.
         let g:sexp_regput_ignore_list_shape = 0
 <
 
-                                       *g:sexp_regput_invalid_register_action*
-Enumerated value that determines how to handle an attempt to put text that
-fails to parse as valid lisp (of a dialect determined by buffer 'filetype').
-  -1  Present continue/abort prompt to user
-   0  Abort paste with warning
-   1  Paste with warning
-   2  Paste silently
-
->
-        " Default
-        let g:sexp_regput_invalid_register_action = -1
-<
-                                              *g:sexp_regput_inhibit_regparse*
-Set to 1 to inhibit the parsing of register contents described in
-|sexp-regput-register-parsing|. With parsing disabled, vim-sexp uses only
-simplistic, regex-based matching to determine the most critical information
-about the register: e.g., whether it contains comments. However, this approach
-is not able to fully and correctly characterize the register contents and
-makes no attempt to detect errors; thus, unless you're having issues with the
-parser, it's best not to disable it. (And if you do experience issues, please
-create an issue report.)
->
-        " Default
-        let g:sexp_regput_inhibit_regparse = 0
-<
-
                                               *g:sexp_regput_replace_expanded*
 Set to 1 to make the replace operator use partial element selections.
 >
@@ -1940,13 +1914,65 @@ operators use "telescopic mode" rather than traditional Vim motions/objects.
      tree nodes.
   2  Like 1, but always use "telescopic mode" for the put operator.
   3  Always use "telescopic mode".
-
-
-
 >
         " Default
         let g:sexp_regput_tele_motion = 0
 <
+
+                                       *g:sexp_regput_invalid_register_action*
+Enumerated value that determines how to handle an attempt to put text that
+fails to parse as valid lisp (of a dialect determined by buffer 'filetype').
+  -1  Present continue/abort prompt to user
+   0  Abort paste with warning
+   1  Paste with warning
+   2  Paste silently
+
+>
+        " Default
+        let g:sexp_regput_invalid_register_action = -1
+<
+
+                                              *g:sexp_regput_inhibit_regparse*
+Set to 1 to inhibit the parsing of register contents described in
+|sexp-regput-register-parsing|. With parsing disabled, vim-sexp uses only
+simplistic, regex-based matching to determine the most critical information
+about the register: e.g., whether it contains comments. However, this approach
+is not able to fully and correctly characterize the register contents and
+makes no attempt to detect errors; thus, unless you're having issues with the
+parser, it's best not to disable it. (And if you do experience issues, please
+create an issue report.)
+>
+        " Default
+        let g:sexp_regput_inhibit_regparse = 0
+<
+
+                                             *g:sexp_regput_use_string_parser*
+Set to 1 to request use of a Treesitter string parser instead of the default
+buffer parser. Although a string parser has the advantage of not requiring
+creation of a hidden buffer in which to parse the register contents, it has
+one significant drawback: it's more likely to indicate errors than a buffer
+parser. When Treesitter parses a buffer, it sometimes inserts `MISSING` nodes
+in the hope that subsequent user edits will fill in the missing syntactic
+element(s). A string parser, on the other hand, assumes the string represents
+a complete and valid Lisp form and will simply emit an `ERROR` node if that
+assumption is violated. Thus, register content validation performed with a
+string parser is more likely to generate "false positives" than the
+corresponding buffer parse.
+
+As an example, consider an attempt to paste `^String` in a Clojure buffer,
+which generates a warning with the string parser, but not with the buffer
+parser. Although the "reader macro" `^` expects to be followed by both the
+metadata and its target element, the buffer parser is able to recover by
+inserting a `MISSING` node in lieu of the missing metadata target; the string
+parser treats the missing metadata target as an error, triggering a warning
+and prompt.
+
+Caveat: This option is ignored if Treesitter is unavailable.
+>
+        " Default
+        let g:sexp_regput_use_string_parser = 0
+<
+
 Expert options ~
 
                                                      *g:sexp_inhibit_failsafe*

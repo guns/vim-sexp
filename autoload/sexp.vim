@@ -209,7 +209,7 @@ endfunction
 "
 " Accepts alternate beginning and ending patterns as optional parameters.
 function! s:nearest_bracket(closing, ...)
-    return call('s:invoke', ['nearest_bracket', a:closing] + a:000)
+    return call('sexp#invoke', ['nearest_bracket', a:closing] + a:000)
 endfunction
 
 " Return position representing the bracket that *contains* the cursor position, else
@@ -365,7 +365,7 @@ endfu
 " [0, 0, 0, 0] if not currently in an atom. Assumes atoms never span multiple
 " lines.
 function! s:current_atom_terminal(end)
-    return s:invoke('current_atom_terminal', a:end)
+    return sexp#invoke('current_atom_terminal', a:end)
 endfunction
 
 " Returns 1 if character at position is an atom.
@@ -677,7 +677,7 @@ let s:dispatch_warned = {'ts': {}, 'syn': {}}
 " function with the provided arguments, with fallback to the latter if the former returns
 " nil (indicating a missing tree or some other serious issue).
 " Warn user once-only about the following two conditions:
-" 1) We prefer to use Treesitter but the ts.lua method return nil (typically because
+" 1) We prefer to use Treesitter but the ts.lua method returns nil (typically because
 "    there's no language parser, though there could be other reasons).
 " 2) We need legacy syntax but it's not available: i.e., *neither* Treesitter *nor* legacy
 "    syntax.
@@ -688,7 +688,14 @@ let s:dispatch_warned = {'ts': {}, 'syn': {}}
 " checks at the point of individual implementation function invocations. Currently, this
 " approach is complicated by the existence of insert-mode maps, which have nothing
 " analogous to sexp#pre_op() but do invoke methods requiring dispatch.
-fu! s:invoke(fn, ...)
+" TODO: Considered providing mechanism for dispatch to modules other than ts.lua and
+" sexp#autoload; for now, it seems unnecesary.
+" Rationale: ts.lua and sexp#autoload essentially the api for the lua and vim pieces,
+" respectively. If the implementation requires functions in other modules, the
+" corresponding ts.lua or sexp#autoload function can wrap them.
+" Note: This function is part of the API to permit its name to be used as a callback from
+" other modules (currently only in sexp#parse).
+fu! sexp#invoke(fn, ...)
     if s:prefer_treesitter()
         let ret = luaeval(
                     \ "require'sexp.ts'." . a:fn . "(" . 
@@ -700,14 +707,16 @@ fu! s:invoke(fn, ...)
         endif
         " Warn once only.
         call sexp#warn#msg_once('missing_ts',
-            \ "Warning: Falling back to legacy syntax. Have you installed Treesitter parser for " . &filetype . "?")
+            \ "Warning: Falling back to legacy syntax."
+            \ . " Have you installed Treesitter parser for " . &filetype . "?")
     endif
     " Arrival here means we won't or can't use Treesitter. If we don't have legacy syntax,
     " we're going to have a problem, so warn...
     if empty(get(b:, 'current_syntax', ''))
         " Note: Display with error highlighting, as this is more serious than missing
         " Treesitter parser, since we have nothing to fallback to.
-        call sexp#warn#msg_once('missing_syn', "Warning: No syntax available for filetype '" . &filetype . "'", 1)
+        call sexp#warn#msg_once('missing_syn',
+            \ "Warning: No syntax available for filetype '" . &filetype . "'", 1)
         " Fall through to legacy function *without* syntax, since we've no better option.
     endif
     " Use legacy approach.
@@ -759,7 +768,7 @@ fu! s:current_region_terminal_legacy(rgn, dir)
 endfu
 
 fu! s:current_region_terminal(rgn, end)
-    return s:invoke('current_region_terminal', a:rgn, a:end)
+    return sexp#invoke('current_region_terminal', a:rgn, a:end)
 endfu
 
 " Return start of leading (0) or end of trailing (1) whitespace from pos.
@@ -1486,7 +1495,7 @@ function! s:super_range(start, end)
     endif
     " No short-circuit optimization was performed; call the more expensive function to
     " get a possibly expanded range.
-    let [start, end] = s:invoke('super_range', start, end)
+    let [start, end] = sexp#invoke('super_range', start, end)
     if !start[1]
         return s:nullpos_pair
     endif
@@ -1901,7 +1910,7 @@ fu! s:is_rgn_type_legacy(rgn, line, col)
 endfu
 
 fu! s:is_rgn_type(rgn, line, col)
-    return s:invoke('is_rgn_type', a:rgn, a:line, a:col)
+    return sexp#invoke('is_rgn_type', a:rgn, a:line, a:col)
 endfu
 
 """ CURSOR MOVEMENT {{{1
@@ -3110,10 +3119,40 @@ function! s:insert_brackets_around_current_element(bra, ket, at_tail, headspace)
     call s:insert_brackets_around_visual_marks(a:bra, a:ket, a:at_tail, a:headspace)
 endfunction
 
-" Simple pass-through to autoload function that puts the codestr in a temporary buffer for
-" parsing.
-function! s:analyze_codestr_legacy(codestr, filetype)
-    return sexp#parse#analyze_codestr(a:codestr, a:filetype)
+" Pass-through to sexp#parse autoload function, which wraps the call in a temporary parse
+" buffer resource if and only if the 'needbuf' flag is set.
+function! s:analyze_codestr_legacy(codestr, filetype, needbuf)
+    if a:needbuf
+        return sexp#parse#do_in_buf('sexp#parse#analyze_codestr', a:codestr, a:filetype,
+            \ a:codestr, a:filetype)
+    else
+        " Assumption: Already inside the temporary parse buffer
+        return sexp#parse#analyze_codestr(a:codestr, a:filetype)
+    endif
+endfunction
+
+" Parse the input 'codestr' as 'filetype' and return a dictionary whose format is
+" described by ts.lua.ParseResult.
+" Intended Use Case: Use the returned dictionary to validate a register put.
+function! s:analyze_codestr(codestr, filetype)
+    " Note: The final boolean arg to analyze_codestr() has a slightly different meaning
+    " for vim/lua:
+    "   vim: true => need to create the temporary buffer
+    "   lua: true => use string parser
+    if !s:prefer_treesitter() || !g:sexp_regput_use_string_parser
+        " Either we're using legacy syntax, which always uses a temporary buffer for
+        " parsing, or we're using Treesitter and user hasn't set the flag requesting use
+        " of a string parser. In either case, wrap the analyze_codestr invocation in a
+        " function that manages the temporary buffer as an RAII resource (think Python
+        " Context Manager).
+        return sexp#parse#do_in_buf('sexp#invoke', a:codestr, a:filetype,
+            \ 'analyze_codestr', a:codestr, a:filetype, v:false)
+    else
+        " Looks like a Treesitter string parse is in order; however, we still use
+        " sexp#invoke() (rather than calling sexp.ts.analyze_codestr() directly) to permit
+        " fallback in the event of Treesitter failure.
+        return sexp#invoke('analyze_codestr', a:codestr, a:filetype, v:true)
+    endif
 endfunction
 
 " Create and return a context dict with a superset of the keys required by the various
@@ -3146,10 +3185,10 @@ function! s:regput__ctx_init(mode, put_mode, count, ...)
     return ctx
 endfunction
 
-" Note: This version does everything manually, with no parsing.
-" It has been superseded by s:analyze_codestr_legacy(), which delegates the actual parsing
-" to sexp#parse#analyze_codestr(); however, I may allow it to be selected by expert (or
-" even hidden) option.
+" A simplistic version of analyze_codestr(), which performs some rudimentary regex
+" matching in lieu of a full parse. It is used as fallback if the Treesitter/legacy parse
+" fails *or* user has disabled register parsing via option.
+" Return: See sexp#parse#analyze_codestr() or sexp.ts.ParseResult.
 function! s:analyze_codestr_simple(codestr, filetype)
     " Note: Processed text added later.
     " TODO: Some of these fields won't be set properly until we're creating a hidden
@@ -3239,7 +3278,8 @@ function! s:regput__get_reginfo(regname)
         throw "sexp-noop"
     endif
     if !g:sexp_regput_inhibit_regparse
-        let ret = s:invoke('analyze_codestr', regstr, &ft)
+        " Attempt proper parse.
+        let ret = s:analyze_codestr(regstr, &ft)
     endif
     if empty(ret)
         " Either something went wrong or register parsing is inhibited by option.

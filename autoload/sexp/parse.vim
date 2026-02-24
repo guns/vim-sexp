@@ -1,5 +1,11 @@
 " This autoload module contains functions for parsing arbitrary lisp using the
 " legacy syntax engine. It is the legacy Vim counterpart to ts.lua.
+" It also contains sexp#parse#do_in_buf(), which is something like a Python Context
+" Manager for managing the temporary parse buffer as an RAII resource. Because all
+" non-buffer-related logic is confined to a callback, do_in_buf() can be used for a
+" Treesitter-based parse that doesn't require this module's parsing function(s).
+" TODO: Consider moving the buffer-related stuff to its own module (or moving the parse
+" logic back to sexp#autoload).
 
 " Script-local vars facilitating reuse of a vim-sexp parse buffer.
 let s:bufnr = -1
@@ -71,9 +77,57 @@ function! s:exit_parse_buffer()
     endif
 endfunction
 
-function! s:analyze_codestr(ret)
-    " Cache ref to the dict we're responsible for tweaking/filling in.
-    let ret = a:ret
+" This function is a "Context Manager" (in the Python sense), which ensures the provided
+" function is invoked with args '...' within a temporary buffer of type 'filetype'
+" containing text 'buftext'. Care is taken to ensure buffer reuse.
+function! sexp#parse#do_in_buf(fn, buftext, filetype, ...)
+    " Be sure we end up in starting window, with original window layout.
+    let [winnr, wrc] = [winnr(), winrestcmd()]
+    " 'lz' should already be set, but just in case...
+    let lz_save = &lazyredraw
+    try
+        set lz
+        " Make sure we're in a scratch buffer we can use for parsing.
+        call s:enter_parse_buffer()
+        " Note: Inserting with P ensures we won't insert leading blank line if ret.text
+        " ends in newline (thereby triggering a linewise put); however, we currently trim
+        " the surrounding whitespace to simplify logic in s:analyze_codestr(), so either
+        " type of of put would work.
+        if !empty(a:buftext)
+            silent exe "normal! \"=a:buftext\<cr>P"
+        endif
+        " Make sure we have syntax regions for parsing.
+        let &l:ft = a:filetype
+        " Call the wrapped function now that we're in the new buffer.
+        return call(a:fn, a:000)
+    finally
+        " Hide the parse buffer and return to the original window.
+        call s:exit_parse_buffer()
+        exe winnr . 'wincmd w'
+        " Restore window sizes.
+        " Assumption: Open window set is identical to what it was when wrc was captured.
+        exe wrc
+        let &lz = lz_save
+    endtry
+    " Note: Empty dict will be returned on error.
+    return ret
+endfunction
+
+" Parse the *current* buffer and return a dictionary characterizing it.
+" Preconditions: We're in a temporary buffer with provided 'filetype' and contents given
+" by 'codestr'. (This is guaranteed by sexp#parse#do_in_buf().)
+function! sexp#parse#analyze_codestr(codestr, filetype)
+    let ret = {
+        \ 'elem_count': 0,
+        \ 'is_ml': 0,
+        \ 'has_com': 0, 's_is_com': 0, 'e_is_com': 0,
+        \ 'node_ranges': [],
+        \ 'err_loc': s:nullpos, 'err_hint': '',
+        \ 'text': substitute(a:codestr, '^\s*\|\s*$', '', 'g'),
+        \ 'linewise': g:sexp_regput_untrimmed_is_linewise
+            \ ? a:codestr =~ '^\s\|\s$'
+            \ : a:codestr =~ '\n$'
+    \ }
     " Start parsing on first char, which is guaranteed to be non-ws.
     normal! gg0
     let p = getpos('.')
@@ -118,50 +172,6 @@ function! s:analyze_codestr(ret)
     endif
     let ret.is_ml = ret.elem_count > 0
         \ && ret.node_ranges[0][0][1] < ret.node_ranges[-1][1][1]
-    return ret
-endfunction
-
-function! sexp#parse#analyze_codestr(codestr, filetype)
-    " Note: Several fields are initialized to final values here; the ones requiring a
-    " parse are filled in by s:analyze_codestr().
-    let ret = {
-        \ 'elem_count': 0,
-        \ 'is_ml': 0,
-        \ 'has_com': 0, 's_is_com': 0, 'e_is_com': 0,
-        \ 'node_ranges': [],
-        \ 'err_loc': s:nullpos, 'err_hint': '',
-        \ 'text': substitute(a:codestr, '^\s*\|\s*$', '', 'g'),
-        \ 'linewise': g:sexp_regput_untrimmed_is_linewise
-            \ ? a:codestr =~ '^\s\|\s$'
-            \ : a:codestr =~ '\n$'
-    \ }
-    " Be sure we end up in starting window, with original window layout.
-    let [winnr, wrc] = [winnr(), winrestcmd()]
-    " 'lz' should already be set, but just in case...
-    let lz_save = &lazyredraw
-    try
-        set lz
-        " Make sure we're in a scratch buffer we can use for parsing.
-        call s:enter_parse_buffer()
-        " Note: Inserting with P ensures we won't insert leading blank line if ret.text
-        " ends in newline (thereby triggering a linewise put); however, we currently trim
-        " the surrounding whitespace to simplify logic in s:analyze_codestr(), so either
-        " type of of put would work.
-        silent exe "normal! \"=ret.text\<cr>P"
-        " Make sure we have syntax regions for parsing.
-        let &l:ft = a:filetype
-        " Parse the buffer and fill in the return dict.
-        call s:analyze_codestr(ret)
-    finally
-        " Hide the parse buffer and return to the original window.
-        call s:exit_parse_buffer()
-        exe winnr . 'wincmd w'
-        " Restore window sizes.
-        " Assumption: Open window set is identical to what it was when wrc was captured.
-        exe wrc
-        let &lz = lz_save
-    endtry
-    " Note: Empty dict will be returned on error.
     return ret
 endfunction
 

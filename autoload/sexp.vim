@@ -3823,8 +3823,26 @@ function! s:regput__postop(ctx, sep, orig_range)
     return ret
 endfunction
 
-" Perform register put for all 4 command types (put, put_child, replace, replace_child)
-" and afterwards, visual mode restoration and option-dependent cursor repositioning.
+" Perform register put for *all* put modes: i.e.,
+"     put, put_op, put_op_tele, replace, replace_op, replace_op_tele, put_child
+" After the put, implement mode/option-dependent logic for the following:
+"   - visual mode restoration
+"   - cursor positioning
+"   - 'last jump' mark update
+"
+" -- Latest Jump Mark Logic --
+" We can't use the s:defplug() mechanism to update 'last jump' mark because it sets the
+" mark *prior to* the paste, *before* the adjusted position is known; thus, we use
+" Def{oper,plug}N for the regput commands and update the mark here as appropriate.
+" Conditional Logic: Set "latest jump" mark only for combinations of put_mode and 'curpos'
+" option that tend to move cursor a significant distance. Actually, even the put
+" before/after commands *can* move cursor significantly (e.g., if register contents are
+" large and cursor is being placed at far side). But normal Vim put with gp doesn't update
+" '` even for multiline puts and I've elected to treat the basic regput commands
+" analogously. Treat only the put/replace *operators* and put child specially, though even
+" with them, I'm thinking it might make sense to update '` only if movement exceeds a
+" (configurable?) number of lines. For now, however, use minimum of 1 line, just as Vim
+" does for / or ? searches.
 function! s:regput__impl(tgt, count)
     try
         " Analyze the register.
@@ -3868,6 +3886,13 @@ function! s:regput__impl(tgt, count)
         " Since visual mode commands end in normal mode, we can always respect
         " option-configurable desired curpos.
         call s:setcursor(d.curpos)
+        " See note in header for rationale behind the conditions for setting 'latest jump'
+        " mark.
+        if (a:tgt.put_mode =~ '_op' && g:sexp_regput_curpos_op != 2
+            \ || a:tgt.put_mode =~ '_child' && g:sexp_regput_curpos_child != 2)
+            \ && a:tgt.curpos[1] != d.curpos[1]
+            call setpos("'`", a:tgt.curpos)
+        endif
     catch
         " Don't warn about sexp-{abort,noop}, which are expected.
         if v:exception !~ 'sexp-\%(abort\|noop\)'

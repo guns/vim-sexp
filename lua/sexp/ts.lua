@@ -612,7 +612,6 @@ end
 ---@param filetype string?  # lisp variant to use for validation
 ---@param strparse boolean? # true if using string parser
 ---@return ParseResult?
----@return string?          # error msg if ParseResult is nil
 function M.analyze_codestr(codestr, filetype, strparse)
   ---@type vim.treesitter.LanguageTree?
   local ltree

@@ -204,6 +204,7 @@ endfunction
 " addition to carrying information explicitly, it serves as an indication to the wrapper
 " mechanism that a sexp operator is in progress.
 function! s:OP_cleanup()
+    let &report = s:OP.report_save
     let s:OP = {}
     call sexp#warn#dbg("OP_cleanup: mode=%s", mode(1))
     au! SexpTextYankPost
@@ -232,7 +233,11 @@ function! s:OP_setup(Fn, name, cnt)
         \ 'range': [[0,0,0,0],[0,0,0,0]],
         \ 'inclusive': -1,
         \ 'motion': '',
+        \ 'report_save': &report,
     \}
+    " Temporarily set 'report' to something very large to prevent "yanked N lines" msgs.
+    " Caveat: Must ensure original value (saved in s:OP) is restored by cleanup.
+    set report=1000000
     call sexp#warn#dbg("Configuring TYP callback OP=%s", string(s:OP))
     augroup SexpTextYankPost
         au! TextYankPost <buffer> ++once call <SID>OP_TextYankPost()

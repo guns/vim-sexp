@@ -4127,8 +4127,7 @@ function! s:replace__get_tgt(mode, count, tail, P, ...)
             " command execution.
             if !g:sexp_regput_replace_expanded && ret.put_mode =~ 'replace_op'
                 " Make sure original selection contained only complete S-Expressions.
-                if sexp#compare_pos(s, rng[0]) > 0
-                    \ || sexp#compare_pos(e, rng[1]) < 0
+                if sexp#compare_pos(s, rng[0]) > 0 || sexp#compare_pos(e, rng[1]) < 0
                     throw 'sexp-abort: Current setting of g:sexp_regput_replace_expanded prohibits'
                         \ . ' selecting only part of an S-Expression for replacement.'
                         \ . ' :help g:sexp_regput_replace_expanded'
@@ -4221,26 +4220,29 @@ function! s:regput_op__process_motion(ctx, inclusive, motion)
                     let save_curpos = s:nullpos
                     " Record conversion to telescopic mode.
                     let a:ctx.put_mode .= "_tele"
+                    " Note: Always return here if operator handled as telescopic.
                     return
                 endif
             endif
             " Not telescopic mode, but because TextYankPost mechanism was used, we need to
-            " adjust range to account for motion exclusivity.
+            " adjust range to account for motion exclusivity: i.e., adjust range to make
+            " it appear that g@ was used.
             let a:ctx.orange = s:fix_operator_range(a:ctx.orange, a:inclusive)
         endif
         " Not telescopic mode, and any adjustments required for operator range have been
         " performed.
+        let rng = a:ctx.orange
         if a:ctx.put_mode =~ 'put_op'
             " Note: sexp#replace() performs validation on the operator range; however,
             " sexp#put() uses cursor pos, even if it's in whitespace, and we don't want to
-            " allow that for put operator. Also, we don't want to allow selections that
-            " cross list boundaries in non-telescopic mode.
-            if !sexp#is_uniform_range(a:ctx.orange)
+            " allow that for non-telescopic put operator. Also, we don't want to allow
+            " selections that cross list boundaries in non-telescopic mode.
+            if !sexp#is_uniform_range(rng)
                 throw "sexp-abort: put operator requires uniform range."
                     \ . " Did you mean to enable telescopic mode?"
                     \ . " (:help g:sexp_regput_tele_motion)"
             endif
-            if !sexp#range_has_non_ws(a:ctx.orange[0], a:ctx.orange[1], 1)
+            if !sexp#range_has_non_ws(rng[0], rng[1], 1)
                 throw "sexp-abort: put operator requires non-empty range"
             endif
             " Position cursor on target of put, making sure we're on actual sexp.
@@ -4248,8 +4250,14 @@ function! s:regput_op__process_motion(ctx, inclusive, motion)
             let p = sexp#move_to_current_element_terminal(tail)
             if !p[1]
                 " Edge of range lies in whitespace; look inwards.
-                " Assumption: Prior test guarantees success.
+                " Assumption: Prior call to range_has_non_ws() guarantees success.
                 let p = sexp#move_to_adjacent_element_terminal(!tail, tail, 0)
+            elseif sexp#compare_pos(rng[dir], p) < 0
+                " Selection doesn't include terminal of target element in put direction!
+                throw "sexp-abort: put operator object/motion must include"
+                    \ . " target element terminal."
+                    \ . " Did you mean to enable telescopic mode?"
+                    \ . " (:help g:sexp_regput_tele_motion)"
             endif
             " Keep current position.
             let save_curpos = s:nullpos

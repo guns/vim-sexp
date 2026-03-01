@@ -897,14 +897,14 @@ Motivation  ~
 Vim's builtin register put commands (e.g., `p`, `P`, etc.) are useful for
 plain text, but decidedly suboptimal for working with S-expressions. If you've
 ever been annoyed by the need to fix incorrect surrounding whitespace, broken
-alignment, or even unbalanced forms after pasting text into a lisp buffer,
+alignment, or even unbalanced forms after pasting text into a Lisp buffer,
 vim-sexp's "smart paste" commands are for you! The commands are broken into
 disctinct command and operator variants: the commands operate on a target
-determined by the cursor location, whereas the operators give you "cybernetic
-arms", allowing you to put or replace forms at a distance. The feature is
-highly customizable, with options whose names bear the "sexp_regput" prefix.
-Even if you normally stick with plugin defaults, you should definitely look at
-the following sections if you wish to get the most out of this feature:
+determined by the cursor location; the operators give you "cybernetic arms",
+which can put or replace forms at a distance. The feature is highly
+customizable, with option names bearing the "sexp_regput" prefix. Even if you
+normally stick with plugin defaults, you should definitely look at the
+following sections if you wish to get the most out of this feature:
 
         |sexp-regput-telescopic-motion|       replace-at-a-distance
         |sexp-regput-overriding-builtins|     more convenient mappings
@@ -917,8 +917,9 @@ usage is documented with the corresponding command. Commands that replace
 existing elements have distinct `p` and `P` variants: by analogy with builtin
 `p` and `P`, only the former updates the unnamed register (|@"|). By default,
 the cursor is left at the head of the put text, but this can be changed with
-option |g:sexp_regput_curpos| and its command-specific variants. All put
-(paste) commands and operators perform an automatic re-indent on a range whose
+option |g:sexp_regput_curpos| and its command-specific variants
+|g:sexp_regput_curpos_op| and |g:sexp_regput_curpos_child|. All smart-paste
+commands and operators perform an automatic re-indent on a range whose
 size is determined by |g:sexp_auto_indent_range|. By default, vim-sexp
 attempts to validate register contents before pasting them. To learn more
 about this behavior, including how to disable or customize it, see
@@ -927,7 +928,7 @@ about this behavior, including how to disable or customize it, see
 Note: If vim-repeat is installed, all smart-paste commands can be repeated
 with the "." command. Smart-paste operators can be repeated if and only if
 their operand is a sexp object/motion. (This is an inherent limitation, due to
-the fact that Vim's API does not expose the object/motion to the opfunc.)
+the fact that Vim's API does not expose the object/motion to the 'opfunc'.)
 
 Note: Although most users will probably wish to remap the builtin put
 commands to vim-sexp's smarter, Lisp-aware counterparts, the builtins will not
@@ -1031,20 +1032,20 @@ Replace operator (normal)  ~
         any partially selected S-expressions. As with the visual replace
         commands, the motion endpoints must lie within the same node of the
         sexp tree unless you've set |g:sexp_regput_tele_motion| to enable
-        "telescopic mode", as described in |sexp-operator-telescopic-motion|.
+        "telescopic mode", as described in |sexp-regput-telescopic-motion|.
 
-        The commands ending in `P` do not update the unnamed register.
+        The operator ending in `P` does not update the unnamed register.
 
         Examples:  ~
-        1. `<M-p>af`  Replace current list
-        2. `<M-P>ie`  Replace current element without updating `@"`
-        3. `<M-p>2ic` Replace second child of current list
-        4. `<M-p>3E`  Replace current and next two elements
+        1. `<M-p>af`      Replace current list
+        2. `<M-P>ie`      Replace current element without updating `@"`
+        3. `<M-p>2ic`     Replace second child of current list
+        4. `<M-p>3<M-e>`  Replace current and next two elements
 
         ** Important Note **  ~
         For a powerful approach to replacing elements in distant branches of
         the sexp tree, (optionally) without even moving the cursor, see
-        |sexp-operator-telescopic-motion|.
+        |sexp-regput-telescopic-motion|.
 
 Put operator (normal)  ~
                                                            *sexp-put-operator*
@@ -1060,25 +1061,27 @@ Put operator (normal)  ~
         edge of the range corresponding to the put direction matters. As with
         the replace operator, both motion endpoints must lie within the same
         node of the sexp tree, unless you've set |g:sexp_regput_tele_motion|
-        to enable "telescopic mode", as described in
-        |sexp-operator-telescopic-motion|.
+        to enable "telescopic mode" (see |sexp-regput-telescopic-motion|).
+        Additionaly, the selection must include the edge of the target in the
+        direction of the put: i.e., partial selections not allowed.
 
         Examples:  ~
-        1. `<piC`  Put before final element of current list
-                 Note: Equivalent to `2<LocalLeader>>p` (i.e., put into second
-                 slot from tail of list)
-        2. `>p3E`  Put after the second element beyond the current element
-                 Note: `3E` is used instead of `2W` because the `W` motion is
-                 exclusive, and thus, would not include the desired target
-                 element.
+        1. `<piC`      Put before final element of current list
+                     Note: Equivalent to `2<LocalLeader>>p` (i.e., put into
+                     second slot from tail of list)
+        2. `>p3<M-e>`  Put after the second element beyond the current element
+                     Note: `3<M-e>` is used instead of `2<M-w>` because the
+                     `<M-w>` motion is exclusive, and thus, would not include
+                     the desired target element.
 
         ** Important Note **  ~
-        For a powerful approach to putting before/after elements in distant
-        branches of the sexp tree, (optionally) without moving the cursor, see
-        |sexp-operator-telescopic-motion|.
+        In its default mode, this command works best with text/sexp objects.
+        For a more powerful mode of operation that puts into distant branches
+        of the sexp tree, (optionally) without moving the cursor, see
+        |sexp-regput-telescopic-motion|.
 
 "Telescopic" Mode (***Experimental*** - Requires Vim Version >= 8.1) ~
-                                             *sexp-operator-telescopic-motion*
+                     *sexp-regput-tele-motion* *sexp-regput-telescopic-motion*
 
         By default, vim-sexp's put/replace operators will refuse to operate on
         an "unbalanced" region whose endpoints are not both contained within
@@ -1914,6 +1917,7 @@ operators use "telescopic mode" rather than traditional Vim motions/objects.
      tree nodes.
   2  Like 1, but always use "telescopic mode" for the put operator.
   3  Always use "telescopic mode".
+See |sexp-regput-telescopic-motion| for details...
 >
         " Default
         let g:sexp_regput_tele_motion = 0
@@ -1959,13 +1963,12 @@ assumption is violated. Thus, register content validation performed with a
 string parser is more likely to generate "false positives" than the
 corresponding buffer parse.
 
-As an example, consider an attempt to paste `^String` in a Clojure buffer,
-which generates a warning with the string parser, but not with the buffer
-parser. Although the "reader macro" `^` expects to be followed by both the
-metadata and its target element, the buffer parser is able to recover by
-inserting a `MISSING` node in lieu of the missing metadata target; the string
-parser treats the missing metadata target as an error, triggering a warning
-and prompt.
+As an example, an attempt to paste `^String` in a Clojure buffer will generate
+a warning with the string parser, but not with the buffer parser. Although the
+"reader macro" `^` expects to be followed by both the metadata and its target
+element, the buffer parser is able to recover by inserting a `MISSING` node in
+lieu of the missing metadata target; the string parser treats the missing
+metadata target as an error, triggering a warning and prompt.
 
 Caveat: This option is ignored if Treesitter is unavailable.
 >

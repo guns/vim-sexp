@@ -133,13 +133,20 @@ endfunction
 "   mode before completing an operator-pending command so that the cursor
 "   returns to its original position after an = command.
 " RE: v:count
-"   Currently, the count arg is captured before this function escapes to normal mode (if
-"   it does). In particular, neither <cmd> nor :<c-u> (even from visual mode) reset
-"   v:count, so we should never need to use v:prevcount.
-function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
+"   This function needs to determine command count from either v:count or v:prevcount.
+"   Since neither <cmd> nor :<c-u> (even from visual mode) reset v:count, I was originally
+"   taking a snapshot of it before the call to sexp#ensure_normal_mode(). However, this
+"   approach breaks when the popular which-key plugin is in use; the reason, apparently,
+"   is that which-key's mapping exits and restores visual mode before this wrapper gets a
+"   chance to run, with the result that v:count has already been zeroed and its count
+"   transferred to v:prevcount.
+"   Solution: If we defer the snapshot till *after* ensuring exit to normal mode, we can use
+"   v:prevcount for visual maps and v:count otherwise.
+function! sexp#plug#wrapper(flags, mapmode, name, rhs)
     let opmode = a:mapmode[0] ==# 'o'
-    " Assumption: v:count does not change before this call.
     call sexp#ensure_normal_mode()
+    " Note: See note in header on v:count logic.
+    let cnt = a:mapmode[0] ==# 'x' ? v:prevcount : v:count
     " Note: This commented block was added to fix a regression that occurred when we
     " started using <cmd> in lieu of :<c-u> for visual maps, but a refactor of
     " set_marks_around_current_list() has obviated the need for it. For details, see
@@ -169,15 +176,15 @@ function! sexp#plug#wrapper(flags, mapmode, name, count, rhs)
         " (since Vim doesn't provide it), and will simply discard the repeat information
         " without ever calling repeat#set().
         if !a:flags.asexpr && a:flags.repeat && s:have_repeat_set
-            call s:configure_repeat(a:name, opmode, a:count)
+            call s:configure_repeat(a:name, opmode, cnt)
         endif
         " Note: v:count may already have been reset (and transferred to v:prevcount), but
-        " we snapshotted it in the call to this function, so use that.
+        " cnt contains the value we want to use.
         " TODO: Remove 'prev' from the pattern now that it's been removed from cmd defs.
-        let rhs = substitute(a:rhs, '\<v:\%(prev\)\?count\>', a:count, 'g')
+        let rhs = substitute(a:rhs, '\<v:\%(prev\)\?count\>', cnt, 'g')
         if a:flags.asexpr
             " Let opfunc decide what the mapping looks like (i.e., g@ or *yv).
-            return call('s:opfunc', [a:mapmode[0], a:name, a:count, rhs])
+            return call('s:opfunc', [a:mapmode[0], a:name, cnt, rhs])
         else
             " Not an operator: no need for deferred execution
             exe 'call' rhs

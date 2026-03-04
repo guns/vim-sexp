@@ -442,7 +442,7 @@ function! s:defplug(flags, mapmode, name, ...)
     " and sexp operators.
     " Note: %s intentionally used to serialize the 'flags' dict.
     execute prefix . printf(
-        \ '%s sexp#plug#wrapper(%s, "%s", "%s", v:count, "%s")%s',
+        \ '%s sexp#plug#wrapper(%s, "%s", "%s", "%s")%s',
         \ asexpr ? '' : (s:have_cmd ? ' <cmd>' : ' :<c-u>') . ' call',
         \ a:flags, a:mapmode, a:name, rhs,
         \ (!asexpr ? '<cr>' : ''))

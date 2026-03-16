@@ -938,12 +938,11 @@ be overridden without an explicit request via one of the methods discussed in
 Put register before/after (normal)  ~
                                                                     *sexp-put*
 
-["x] <LocalLeader>p                                   *<Plug>(sexp_put_after)*
-["x] <LocalLeader>P                                  *<Plug>(sexp_put_before)*
-        Put `[count]` copies of register x before (`<LocalLeader>P`) or after
-        (`<LocalLeader>p`) the current element; alternatively, works like "put
-        register into list" when the conditions in the following paragraph are
-        met.
+["x] p                                                *<Plug>(sexp_put_after)*
+["x] P                                                *<Plug>(sexp_put_before)*
+        Put `[count]` copies of register x before (`P`) or after (`p`) the
+        current element; alternatively, works like "put register into list"
+        when the conditions in the following paragraph are met.
 
                                             *sexp-regput-behavior-on-bracket*
         Special Behavior on List Brackets  ~
@@ -951,8 +950,8 @@ Put register before/after (normal)  ~
         bracket (or the macro chars preceding an open), and the put direction
         is towards the list interior, it will be handled as the corresponding
         "put register into list" command:
-                <LocalLeader>p ==> |<Plug>(sexp_put_at_head)|
-                <LocalLeader>P ==> |<Plug>(sexp_put_at_tail)|
+                p ==> |<Plug>(sexp_put_at_head)|
+                P ==> |<Plug>(sexp_put_at_tail)|
         I.e., the register text will be inserted into the head or tail of the
         list at an offset determined by `[count]`. If you prefer that this
         command treat lists just like regular elements, simply set option
@@ -960,10 +959,9 @@ Put register before/after (normal)  ~
 
         Note: If there is no current element, the register contents are put
         before or after the cursor position; moreover, there is a subtle
-        difference between `<LocalLeader>p` and `<LocalLeader>P` in this case:
-        in particular, putting *away from* an adjacent element on the same
-        line as the cursor forces a line break between the put text and the
-        adjacent element.
+        difference between `p` and `P` in this case: in particular, putting
+        *away from* an adjacent element on the same line as the cursor forces
+        a line break between the put text and the adjacent element.
 
 
 Replace with register (normal and visual)  ~
@@ -971,29 +969,28 @@ Replace with register (normal and visual)  ~
                                  *<Plug>(sexp_replace)* *<Plug>(sexp_replace_P)*
 Visual  ~
                                                          *sexp-replace-visual*
-["x] <LocalLeader>p
-["x] <LocalLeader>P
+["x] p
+["x] P
         Replace the visually selected element(s) with `[count]` copies of
         register `x`.
 
         To prevent unbalanced forms, the command aborts with a warning if the
         selection endpoints do not lie within the same node of the sexp tree.
 
-        `<LocalLeader>P` does not update the unnamed register.
+        `P` does not update the unnamed register.
 
 Normal  ~
                                                          *sexp-replace-normal*
-["x] <LocalLeader><LocalLeader>p
-["x] <LocalLeader><LocalLeader>P
+["x] gp
+["x] gP
         Replace element at cursor with `[count]` copies of register `x`.
 
-        `<M-P>` does not update the unnamed register.
+        `gP` does not update the unnamed register.
 
-        Note: The mapping for this command is intentionally long (and
-        inconvenient) since you can get the same behavior with the
-        corresponding replace operator: e.g., `<M-p>ie`
+        Note: This command is syntactic sugar for the corresponding replace
+        operator: e.g., `<M-p>ie`
 
-        Feel free to unmap (or provide a more convenient mapping) in
+        Feel free to unmap (or provide a different mapping) in
         |g:sexp_mappings|.
 
 Put register into current list (normal)  ~
@@ -1152,28 +1149,45 @@ Put operator (normal)  ~
         (or vim-sexp object) was used as the target of the operator.
 
 
-Overriding Builtin Put Commands  ~
-                                             *sexp-regput-overriding-builtins*
-You may not have much need for Vim's builtin put commands once you become
-comfortable with vim-sexp's "smart paste" commands and operators. Since the
-default mappings are not as convenient as builtins, you may wish to remap
-Vim's builtin put operators to vim-sexp smart paste commands. If so, either
-copy the following snippet into your |g:sexp_mappings| list to serve as a
-basis for further customization or simply set
-|g:sexp_regput_override_builtins| to use it as-is.
->
-    \ 'sexp_put_before':                   'P',
-    \ 'sexp_put_after':                    'p',
-    \ 'sexp_replace':                      {'x': 'p', 'n': '<LocalLeader>p'},
-    \ 'sexp_replace_P':                    {'x': 'P', 'n': '<LocalLeader>P'},
-    \ 'sexp_put_at_head':                  '[p',
-    \ 'sexp_put_at_tail':                  ']p',
-<
-Note: The put/replace operators are omitted from the override because their
-default mappings are fairly convenient; however, feel free to customize them
-as well.
-
 REGISTER PUT (SMART-PASTE) (ADDITIONAL DETAILS...)
+
+Override of Builtin Operators  ~
+                                               *sexp-regput-builtin-overrides*
+
+By default, this feature assigns the following builtin commands to
+"smart-paste" functions:
+        `p` and `P`      (normal and visual mode)
+        `gp` and `gP`    (normal mode only)
+
+If you wish to be able to use the builtin versions of these commands in Lisp
+buffers, you have two options:
+
+1. Specify custom mappings for the "smart-paste" commands to avoid overriding
+   the builtins: e.g.,
+>
+    let g:sexp_mappings = {
+        \ 'sexp_put_before': '<LocalLeader>P',
+        \ 'sexp_put_after':  '<LocalLeader>p',
+        \ 'sexp_replace':    {'x': '<LocalLeader>p',
+        \                     'n': '<LocalLeader><LocalLeader>p'},
+        \ 'sexp_replace_P':  {'x': '<LocalLeader>P',
+        \                     'n': '<LocalLeader><LocalLeader>P'},
+    \ }
+<
+    Recommendation: Use this approach if you plan to use builtin paste more
+    than vim-sexp "smart-paste" (not recommended).
+
+2. Add "aliases" for the overridden builtins to your map customizations: e.g.,
+>
+    let g:sexp_mappings = {
+        \ 'p':   '<LocalLeader>p',
+        \ 'P':   '<LocalLeader>p',
+        \ 'gp':  '<LocalLeader>gp',
+        \ 'gP':  '<LocalLeader>gP',
+    \ }
+<
+    Recommendation: Use this approach if you will mostly use "smart-paste",
+    but may occasionally still require builtin paste.
 
                                                  *sexp-regput-operator-counts*
 Put/Replace Operator Counts  ~
@@ -2078,16 +2092,14 @@ Note: To unbind a command, simply set its <lhs> to an empty string.
             \ 'sexp_emit_tail_element':         '<M-S-k>',
             \ 'sexp_capture_prev_element':      '<M-S-h>',
             \ 'sexp_capture_next_element':      '<M-S-l>',
-            \ 'sexp_put_before':                '<LocalLeader>P',
-            \ 'sexp_put_after':                 '<LocalLeader>p',
+            \ 'sexp_put_before':                'P',
+            \ 'sexp_put_after':                 'p',
+            \ 'sexp_put_before_op':             '<p',
+            \ 'sexp_put_after_op':              '>p',
+            \ 'sexp_replace':                   {'x': 'p', 'n': 'gp'},
+            \ 'sexp_replace_P':                 {'x': 'P', 'n': 'gP'},
             \ 'sexp_replace_op':                '<M-p>',
             \ 'sexp_replace_op_P':              '<M-P>',
-            \ 'sexp_replace':                   {'x': '<LocalLeader>p',
-            \                                    'n': '<LocalLeader><LocalLeader>p'},
-            \ 'sexp_replace_P':                 {'x': '<LocalLeader>P',
-            \                                    'n': '<LocalLeader><LocalLeader>P'},
-            \ 'sexp_put_at_head':               '<p',
-            \ 'sexp_put_at_tail':               '>p',
             \ 'sexp_put_at_head':               '<LocalLeader><p',
             \ 'sexp_put_at_tail':               '<LocalLeader>>p',
             \ }

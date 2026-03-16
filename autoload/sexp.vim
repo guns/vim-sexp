@@ -142,6 +142,8 @@ function! sexp#post_op(mode, name)
     " Restore original 'virtualedit' setting.
     " Assumption: This is called from finally block.
     let &ve = s:sexp_ve_save
+    " Perform once-per-session new feature notification iff appropriate.
+    call sexp#feat#notify_maybe(a:mode, a:name)
     " This is done last to ensure no redraws can be queue after msgs are echoed.
     call sexp#warn#echo_queued_msgs()
     " Caveat: Make sure the queue is used only when we're inside {pre,post}_op() calls
@@ -706,17 +708,19 @@ fu! sexp#invoke(fn, ...)
             return ret
         endif
         " Warn once only.
-        call sexp#warn#msg_once('missing_ts',
+        call sexp#warn#msg(
             \ "Warning: Falling back to legacy syntax."
-            \ . " Have you installed Treesitter parser for " . &filetype . "?")
+            \ . " Have you installed Treesitter parser for " . &filetype . "?",
+            \ {'once': 'missing_ts'})
     endif
     " Arrival here means we won't or can't use Treesitter. If we don't have legacy syntax,
     " we're going to have a problem, so warn...
     if empty(get(b:, 'current_syntax', ''))
         " Note: Display with error highlighting, as this is more serious than missing
         " Treesitter parser, since we have nothing to fallback to.
-        call sexp#warn#msg_once('missing_syn',
-            \ "Warning: No syntax available for filetype '" . &filetype . "'", 1)
+        call sexp#warn#msg(
+            \ "Warning: No syntax available for filetype '" . &filetype . "'",
+            \ {'once': 'missing_syn', 'err': 1})
         " Fall through to legacy function *without* syntax, since we've no better option.
     endif
     " Use legacy approach.
@@ -3247,10 +3251,11 @@ function! s:regput__get_curpos_opt(put_mode)
     if !(type(ret) == type(0) && ret >=0 && ret <= 2)
         " User provided invalid value!
         let def = get(optdefs, optname)
-        call sexp#warn#msg_once(optname,
+        call sexp#warn#msg(
             \ printf("sexp-warning: Ignoring invalid option setting: %s=%s."
                 \ . " Defaulting to %d",
-                \ optname, string(ret), def))
+                \ optname, string(ret), def)
+            \ {'once': optname})
         let ret = def
     endif
     return ret

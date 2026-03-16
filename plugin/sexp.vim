@@ -49,6 +49,7 @@ function! s:deprecate_options(optnames, obsolete, helphint)
     endif
 endfunction
 
+" Caveat: This must be called *prior to* option/mapping processing.
 call sexp#feat#record_user_awareness()
 
 " Note: The following options were introduced by PR #34 and removed in PR #51. Hopefully,
@@ -138,7 +139,6 @@ if !exists('g:sexp_cleanup_join_backwards')
     let g:sexp_cleanup_join_backwards = 1
 endif
 
-" TODO: Consider encapsulating related options in a dict.
 if !exists('g:sexp_indent_aligns_comments')
     let g:sexp_indent_aligns_comments = 0
 endif
@@ -216,10 +216,6 @@ if !exists('g:sexp_aligncom_optlevel')
     let g:sexp_aligncom_optlevel = 2
 endif
 
-if !exists('g:sexp_regput_override_builtins')
-    let g:sexp_regput_override_builtins = 0
-endif
-
 if !exists('g:sexp_regput_bracket_is_target')
     let g:sexp_regput_bracket_is_target = 1
 endif
@@ -281,6 +277,10 @@ if !exists('g:sexp_regput_use_string_parser')
     let g:sexp_regput_use_string_parser = 0
 endif
 
+if !exists('g:sexp_regput_silence_notification')
+    let g:sexp_regput_silence_notification = 0
+endif
+
 " Expert options
 if !exists('g:sexp_inhibit_failsafe')
     let g:sexp_inhibit_failsafe = 0
@@ -289,29 +289,6 @@ endif
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
-
-" Keymap Presets
-" Motivation: Give user an easy way to enable a (usually feature-specific) set of mappings
-" we don't dare create without permission (usually because they override builtin maps). A
-" keymap preset is selected by a user option: e.g.,
-"   let g:sexp_regput_override_builtins = 1
-" From all such options, logic in sexp_create_mappings() determines a list of enabled
-" presets, each of which causes a dict by the name of s:sexp_mapping_preset__{feat-name},
-" with the same format as s:sexp_mappings, to be searched for overrides.
-" Constraint: A given plug rhs should never belong to multiple presets, as this would give
-" rise to ambiguity when both presets were enabled.
-" Note: Currently, a preset entry completely *replaces* the corresponding plugin-defined
-" command entry.
-" TODO: Decide whether it should be merged with it instead...
-" TODO: Decide whether the normal mode replace commands should have default mappings.
-let s:sexp_mapping_preset__regput = {
-    \ 'sexp_put_before':                   {'n': 'P'},
-    \ 'sexp_put_after':                    {'n': 'p'},
-    \ 'sexp_replace':                      {'x': 'p', 'n': '<LocalLeader>p'},
-    \ 'sexp_replace_P':                    {'x': 'P', 'n': '<LocalLeader>P'},
-    \ 'sexp_put_at_head':                  {'n': '[p'},
-    \ 'sexp_put_at_tail':                  {'n': ']p'},
-\ }
 
 let s:sexp_mappings = {
     \ 'sexp_outer_list':                   {'xo': 'af'},
@@ -382,16 +359,20 @@ let s:sexp_mappings = {
     \ 'sexp_emit_tail_element':            {'nx': '<M-S-k>'},
     \ 'sexp_capture_prev_element':         {'nx': '<M-S-h>'},
     \ 'sexp_capture_next_element':         {'nx': '<M-S-l>'},
-    \ 'sexp_put_before':                   {'n': '<LocalLeader>P'},
-    \ 'sexp_put_after':                    {'n': '<LocalLeader>p'},
-    \ 'sexp_replace_op':                   {'n': '<M-p>'},
-    \ 'sexp_replace_op_P':                 {'n': '<M-P>'},
-    \ 'sexp_replace':                      {'x': '<LocalLeader>p', 'n': '<LocalLeader><LocalLeader>p'},
-    \ 'sexp_replace_P':                    {'x': '<LocalLeader>P', 'n': '<LocalLeader><LocalLeader>P'},
-    \ 'sexp_put_before_op':                {'n': '<p'},
-    \ 'sexp_put_after_op':                 {'n': '>p'},
-    \ 'sexp_put_at_head':                  {'n': '<LocalLeader><p'},
-    \ 'sexp_put_at_tail':                  {'n': '<LocalLeader>>p'},
+    \ 'sexp_put_before':                   {'n':  'P'},
+    \ 'sexp_put_after':                    {'n':  'p'},
+    \ 'sexp_put_before_op':                {'n':  '<p'},
+    \ 'sexp_put_after_op':                 {'n':  '>p'},
+    \ 'sexp_replace':                      {'x':  'p', 'n': 'gp'},
+    \ 'sexp_replace_P':                    {'x':  'P', 'n': 'gP'},
+    \ 'sexp_replace_op':                   {'n':  '<M-p>'},
+    \ 'sexp_replace_op_P':                 {'n':  '<M-P>'},
+    \ 'sexp_put_at_head':                  {'n':  '<LocalLeader><p'},
+    \ 'sexp_put_at_tail':                  {'n':  '<LocalLeader>>p'},
+    \ 'p':                                 {'nx': ''},
+    \ 'P':                                 {'nx': ''},
+    \ 'gp':                                {'n':  ''},
+    \ 'gP':                                {'n':  ''},
     \ }
 
 if !empty(g:sexp_filetypes)
@@ -448,25 +429,6 @@ function! s:defplug(flags, mapmode, name, ...)
         \ (!asexpr ? '<cr>' : ''))
 endfunction
 
-" Display warning with requested highlighting.
-function! s:warn(msg, ...)
-    let hl = a:0 ? a:1 : 'WarningMsg'
-    try
-        exe 'echohl' hl
-        echomsg a:msg
-    finally
-        echohl None
-    endtry
-endfunction
-
-" Simplify warning displays for mappings.
-" -- Args --
-"   plug: command name specified as the ... in <plug>(...)
-"   msg:  warning msg
-function! s:mapwarn(plug, msg)
-    call s:warn(printf("g:sexp_mappings['%s']: %s", a:plug, a:msg))
-endfunction
-
 " Warn once-only (per buffer) for the specified map conflict (or ambiguity).
 " -- Optional Args --
 " a:1  ambiguous (not conflict)
@@ -475,73 +437,11 @@ function! s:map_conflict_warn_once(lhs, rhs1, rhs2, mode, ...)
     " for the same conflict when s:sexp_create_mappings() is called twice.
     " Explanation: In the initial call, the second map overwrites the first, but then in
     " the second call, the first map will overwrite the second.
-    let s = call(function('sexp#warn#join_hashable'),
-                \ [a:mode, a:lhs] + sort([a:rhs1, a:rhs2]))
-    call sexp#warn#msg_once(s, printf(
+    let uniq_key = [a:mode, a:lhs] + sort([a:rhs1, a:rhs2]))
+    call sexp#warn#msg(printf(
         \ "Mapping %s => %s %s with existing mapping to %s in mode %s",
-        \ a:lhs, a:rhs2, (a:0 ? "is ambiguous" : "conflicts"), a:rhs1, a:mode))
-endfunction
-
-" Convert a single value in the sexp_mappings dict to a denormalized form conducive to use
-" in map creation.
-" Args:
-"   plug:         command name (i.e., the ... in <Plug>(...))
-"   entry:        lhs specification in one of the following forms:
-"   entry:        '<lhs>'
-"                 | {'<modes1>': '<lhs1>', ..., '<modesN>': '<lhsN>'}
-"   valid_modes:  string of chars in [nxo] constraining the modes for this command
-"                 default: 'nox'
-"                 override: subset of modes defined by default
-function! s:parse_map_entry(plug, entry, valid_modes)
-    let maps = {}
-    let valid_modes = empty(a:valid_modes) ? 'novx' : a:valid_modes
-    for [modes, lhs] in items(a:entry)
-        " Convert v to x: e.g., 'nvo' => 'nxo'
-        let modes = substitute(modes, 'v', 'x', 'g')
-        " Collapse multiple occurrences of same mode: e.g., {'x': ..., 'xo': ...}.
-        let modes = substitute(
-            \ join(sort(split(modes, '\zs')), ''), '\v(.)\1+', '\1', 'g')
-        " Loop over sorted/uniquified mode chars.
-        for mode in split(modes, '\zs')
-            " TODO: Distinguish between defaults and user here?
-            if mode !~ '[' . valid_modes . ']'
-                call s:mapwarn(a:plug, printf("Unrecognized mode %s", mode))
-                continue
-            endif
-            " We have a valid mode, but has it already been specified for this plug?
-            if has_key(maps, mode)
-                " TODO: Consider just ignoring malformed entry altogether since this is
-                " effectively UB without ordered keys.
-                call s:mapwarn(a:plug, printf(
-                    \ "Conflicting lhs specifications for mode %s: old=%s new=%s",
-                    \ mode, maps[mode], lhs))
-                continue
-            endif
-            " We have a valid mode that hasn't appeared in another key.
-            let maps[mode] = lhs
-        endfor
-    endfor
-    return maps
-endfunction
-
-" Return preset mapping override for specified plug, else {}.
-" See note on Keymap Presets.
-function! s:check_for_mapping_preset(plug)
-    " TODO: Add more preset groups as necessary.
-    let feats = {'regput': g:sexp_regput_override_builtins}
-    for [feat, enable] in items(feats)
-        if enable
-            " Get preset dict whose format is same as s:sexp_mappings[].
-            let o = s:sexp_mapping_preset__{feat}
-            " Does this preset group define an override for this plug?
-            if has_key(o, a:plug)
-                " Replace the default with the enabled override.
-                " Note: A plug should never be represented in 2 distinct feature sets.
-                return o[a:plug]
-            endif
-        endif
-    endfor
-    return {}
+        \ a:lhs, a:rhs2, (a:0 ? "is ambiguous" : "conflicts"), a:rhs1, a:mode),
+        \ {'once': uniq_key})
 endfunction
 
 " Warn user if the input args represent a mapping that would conflict or be ambiguous with
@@ -597,41 +497,42 @@ endfunction
 " s:sexp_mappings
 " TODO: Consider moving more of this infrastructure into the plug autoload module.
 function! s:sexp_create_mappings()
-    call sexp#feat#create_notifications()
+    if sexp#parse#in_buf()
+        " Skip map creation in the special parse buffer.
+        return
+    endif
     " Note: {s,g}entry stand for {s,g}:sexp_mappings entry, respectively.
     for [plug, sentry] in items(s:sexp_mappings)
-        " Check for preset override.
-        let override = s:check_for_mapping_preset(plug)
-        if !empty(override)
-            let sentry = override
-        endif
         " Get corresponding user override if it exists.
         let gentry = get(g:sexp_mappings, plug, {})
         " Parse entry into a flat dict of modechar => lhs: e.g.,
         " {'nx': '\s', 'o': '\t'} => {'n': '\s', 'x': '\s', 'o': \t'}
-        let sm = s:parse_map_entry(plug, sentry, '')
+        let [sm, _] = sexp#plug#parse_map_entry(plug, sentry, '')
         " Default map determines the valid keys.
         let valid_modes_arr = sort(keys(sm))
         let valid_modes_str = join(valid_modes_arr, '')
-        " Now parse any user-defined override
+        " Now parse any user-defined override.
+        " Note: We'll want gm to be empty in exception scenario.
         let gm = {}
-        if type(gentry) == type({})
-            " Empty dict indicates no user-override.
-            if !empty(gentry)
-                let gm = s:parse_map_entry(plug, gentry, valid_modes_str)
+        try
+            let [gm, invalid_modes_str] =
+                \ sexp#plug#parse_map_entry(plug, gentry, valid_modes_str)
+            if !empty(invalid_modes_str)
+                call sexp#warn#msg(printf("Ignoring unexpected modes in"
+                    \ . " user map override: `%s'", invalid_modes_str),
+                    \ {'once': [plug, gentry]})
             endif
-        elseif type(gentry) == type('')
-            " Create dict that uses specified lhs for all valid modes.
-            for mode in valid_modes_arr
-                let gm[mode] = gentry
-            endfor
-        else
+        catch /sexp-error/
             " Note: Leave gm empty to ensure default is used.
-            call s:mapwarn(sprintf(
-                \ "Invalid format: must be string or dict."
-                \ . " (:help g:sexp_mappings)", string(gentry)))
-        endif
+            call sexp#warn#msg(printf("Ignoring invalid user map override: %s: %s",
+                    \ string(gentry),
+                    \ substitute(v:exception, '^sexp-error:\s*', '', '')),
+                    \ {'once': [plug, gentry]})
+        endtry
         " Loop over all modes which are valid for this command.
+        " Design Decision: To simplify the merge, distinct modes within sm/gm are stored
+        " as keys, rather than list elements; an implication of this (probably good) is
+        " that user can't specify multiple LHS per mode.
         for mode in valid_modes_arr
             " Use mode-specific override if it exists, else default, which must exist.
             let lhs = get(gm, mode, get(sm, mode))
@@ -642,7 +543,16 @@ function! s:sexp_create_mappings()
             " TODO: Decide whether the plugin should warn, or simply override...
             "call s:check_for_map_conflicts(lhs, mode, plug)
             " Create the mapping.
-            execute mode . 'map <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            if plug !~ '^sexp_'
+                " A builtin override, which needs to be "noremapped" to prevent triggering
+                " a first-level sexp map.
+                " Note: This special case is implemented to provide a convenient way for
+                " user to create aliases to overridden builtins.
+                execute mode . 'noremap <silent><buffer> ' . lhs . ' ' . plug
+            else
+                " A true plug mapping
+                execute mode . 'map <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            endif
         endfor
     endfor
 

@@ -10,6 +10,7 @@
 " Script-local vars facilitating reuse of a vim-sexp parse buffer.
 let s:bufnr = -1
 let s:parsebuf_name = "vim-sexp-parser-playground"
+let s:in_parse_buf = 0
 
 " Symbolic constants
 let s:nullpos = [0,0,0,0]
@@ -58,10 +59,12 @@ function! s:enter_parse_buffer()
         silent exe "new" s:parsebuf_name
         setlocal buftype=nofile bufhidden=hide noswapfile
         let s:bufnr = bufnr()
+        let s:in_parse_buf = 1
     endif
 endfunction
 
 function! s:exit_parse_buffer()
+    let s:in_parse_buf = 0
     " Note: This is being overly cautious; we should always be in the parse buffer at this
     " point.
     if s:is_valid_parse_buffer(s:bufnr)
@@ -75,6 +78,11 @@ function! s:exit_parse_buffer()
             \ . " because it's in an unexpected state."
             \ . " If warning persists, please open an issue.")
     endif
+endfunction
+
+" Return 1 iff we're in the parse buffer.
+function! sexp#parse#in_buf()
+    return s:in_parse_buf
 endfunction
 
 " This function is a "Context Manager" (in the Python sense), which ensures the provided

@@ -35,12 +35,12 @@ function! s:configure_repeat(plug_name, opmode, count)
         " operator alone. If we didn't permit this, there would be no way to provide a
         " count to the sexp object in a custom mapping whose rhs looked like this:
         " <sexp_op> <sexp_object>.
-        call sexp#warn#msg_once('operator counts',
+        call sexp#warn#msg(
             \ "Warning: Separate counts have been provided to a sexp operator and"
             \ . " its operand. This is unlikely to work the way you expect: vim-sexp's"
             \ . " operators do not support counts and Vim multiplies the motion/object"
             \ . " count by the operator count. It's best to provide counts only to"
-            \ . " motion/object commands.")
+            \ . " motion/object commands.", {'once': 'operator counts'})
         call sexp#warn#dbg("Counts mismatch: operator: %d operand: %d", op_info.cnt, a:count)
     endif
     " If sexp operator in progress, use cached v:register.
@@ -325,6 +325,78 @@ function! s:repeat_set(buf, count)
                     \ endif |
                     \ let g:repeat_tick = b:changedtick | autocmd! sexp_repeat
     augroup END
+endfunction
+
+" Validate and convert a single value in the sexp_mappings dict to a denormalized form
+" conducive to use in map creation.
+" Args:
+"   plug:         command name (i.e., the ... in <Plug>(...))
+"   entry:        lhs specification in one of the following forms:
+"                 '<lhs>'
+"                 | {'<modes1>': '<lhs1>', ..., '<modesN>': '<lhsN>'}
+"   valid_modes:  string of chars in [nxo] constraining the modes for this command
+"                 default: 'nox'
+" Return: A pair representing the denormalized map and a string of ignored modes: e.g.,
+"   [{'x': <lhs>, 'n': <lhs>, ...}, 'o']
+" Exception: throw 'sexp-error' with appropriate message if entry format is irremediably
+" invalid. If, OTOH, the problem is merely valid Vim modes that aren't in a:valid_modes,
+" don't throw exception, but add the ignored modes to the string returned as second
+" element of pair.
+" Examples:
+"   entry:         {'xn': 'lhs'}
+"   valid_modes:   'x'
+"   => [{'x': 'lhs'}, 'n']
+"   entry:         {'xn': 'lhs1', 'o': 'lhs2'}
+"   valid_modes:   'xo'
+"   => [{'x': 'lhs1', 'o': 'lhs2'}, 'n'}
+" TODO: Consider returning 2 denormalized maps: i.e., [valid_map, ignored_map].
+function! sexp#plug#parse_map_entry(plug, entry, valid_modes)
+    " Initialize return values.
+    let [maps, ignored_modes] = [{}, '']
+    let valid_modes = empty(a:valid_modes) ? 'novx' : a:valid_modes
+    let entry = type(a:entry) == type({})
+        \ ? a:entry
+        \ : type(a:entry) == type('')
+        \ ? {valid_modes: a:entry}
+        \ : v:null
+    if entry is v:null
+        throw "sexp-error: Invalid user map entry: must be string or dict"
+    endif
+    " At this point, we have a dict, which may or may not be usable as a map override.
+    for [modes, lhs] in items(entry)
+        if type(modes) != type('')
+            throw "sexp-error: Invalid mode string: " . string(modes)
+        endif
+        " Convert v to x: e.g., 'nvo' => 'nxo'
+        let modes = substitute(modes, 'v', 'x', 'g')
+        " Collapse multiple occurrences of same mode: e.g., {'x': ..., 'xo': ...}.
+        let modes = substitute(
+            \ join(sort(split(modes, '\zs')), ''), '\v(.)\1+', '\1', 'g')
+        " Loop over sorted/uniquified mode chars.
+        for mode in split(modes, '\zs')
+            if mode !~ '[' . valid_modes . ']'
+                " Differentiate between weird mode and one that's simply not valid for
+                " this command: e.g., 'w' is not a valid mode for *any* sexp commands, but
+                " 'x' may or may not be valid for this particular command.
+                if mode !~ '[xno]'
+                    throw printf("sexp-error: Invalid mode `%s'", mode)
+                endif
+                if stridx(ignored_modes, mode) < 0
+                    let ignored_modes .= mode
+                endif
+            endif
+            " We have a valid mode, but has it already been specified for this plug?
+            " Design Decision: Treat only a conflicting specification (i.e., different
+            " LHS's) as error.
+            if has_key(maps, mode) && lhs != maps[mode]
+                throw printf("sexp-error: Conflicting LHSs for mode %s: old=%s new=%s",
+                    \ mode, maps[mode], lhs)
+            endif
+            " We have a valid, non-conflicting mode spec.
+            let maps[mode] = lhs
+        endfor
+    endfor
+    return [maps, ignored_modes]
 endfunction
 
 " vim:ts=4:sw=4:et:tw=90

@@ -3,8 +3,8 @@
 " larger autoload/sexp.
 " TODO: Consider renaming this autoload module to ui or some such.
 
-" Note: Do not uncomment the luaeval in this function, as it requires a logging module
-" that's not currently part of the plugin.
+" Caveat: Do not set g:sexp_enable_debug_output in release contexts, as the luaeval
+" requires a logging module that's not currently part of the plugin.
 " TODO: Eventually, remove it and all commented calls to it.
 fu! sexp#warn#dbg(...)
     if get(g:, 'sexp_enable_debug_output', 0)
@@ -12,15 +12,13 @@ fu! sexp#warn#dbg(...)
     endif
 endfu
 
-" UTILITIES
 " Return a composite string that contains all the inputs and preserves the boundaries
 " between them: e.g., H("foo", "bar") is different from H("fo", "obar"), etc...
+" TODO: Refactor of sexp#warn#msg() obviates need for this. Remove...
 function! sexp#warn#join_hashable(...)
     " Separate elements with *untranslated* Ctrl-A.
     return join(map(a:000[:], "strtrans(v:val)"), "\x01")
 endfunction
-
-""" USER INTERFACE {{{1
 
 " Display warning with requested highlighting.
 function! s:warnmsg_impl(s, hl)
@@ -32,16 +30,17 @@ function! s:warnmsg_impl(s, hl)
     endtry
 endfunction
 
-" Called by client to display warning to user via echomsg with appropriate highlighting
-" (WarningMsg unless optional error flag is provided, in which case, use ErrorMsg).
-" If we're inside {pre,post}_op() calls, there will be an active message queue, and we
-" simply add the msg to it; otherwise (e.g., called from insert-mode command, which
-" currently doesn't use the {pre,post}_op() mechanism), we echo the msg immediately.
+" Display warning to user via echomsg (using message queue if active) with appropriate
+" highlighting (ErrorMsg if optional error flag is provided, else WarningMsg).
+" Message Queue Logic: If we're inside {pre,post}_op() calls, there will be an active
+" message queue, and we simply add the msg to it, thereby deferring its display till
+" command has completed; otherwise (e.g., called from insert-mode command, which currently
+" doesn't use the {pre,post}_op() mechanism), we echo the msg immediately.
 " Rationale: Deferring the echomsg call is preferable because it greatly increases the
 " probability it will be seen by the user before being overwritten (e.g., by an already
 " pending redraw).
 " TODO: Support printf-style formatting.
-function! sexp#warn#msg(s, ...)
+function! s:display_msg(s, ...)
     let hl = a:0 && a:1 ? 'ErrorMsg' : 'WarningMsg'
     if exists('s:msg_q')
         " Add to queue.
@@ -52,20 +51,43 @@ function! sexp#warn#msg(s, ...)
     endif
 endfunction
 
-" Wrapper for sexp#warn#msg(), which takes an arbitrary key representing the warning and
-" ensures the warning is displayed only once per buffer.
-" TODO: Consider making the key optional, defaulting to msg itself.
-" -- Optional Arg(s) --
-" a:1  1 if warning should be displayed with error highlighting
-fu! sexp#warn#msg_once(key, msg, ...)
-    let b:sexp_did_warn = get(b:, 'sexp_did_warn', {})
-    if get(b:sexp_did_warn, a:key, 0)
-        " Already warned! Do nothing.
-        return
+" Display provided message with :echomsg, taking flags in options dict into account.
+" -- Option Dict Keys --
+" once:    either explicit enable/disable requesting "once-only" msg display (in which
+"          case, the msg itself is used as uniqueness key) or an object used to generate
+"          uniqueness key.
+"          Logic: Treat things that look like explicit enable/disable flags (e.g.,
+"          boolean/null/0/1) specially. Also, since empty things aren't effective
+"          uniqueness keys, treat them as false.
+"          Design Decision: 0 and 1 are the only numbers treated as boolean.
+"          Rationale: Legacy (pre v:{true,false}) usage
+" session: (applies only in "once-only" mode) true for once-per-session, false (or
+"          omitted) for once-per-buffer
+" err:     true requests ErrorMsg highlighting
+fu! sexp#warn#msg(msg, ...)
+    let opts = extend(
+        \ {'once': v:null, 'session': 0, 'err': 0},
+        \ a:0 ? a:1 : {}, "force")
+    let key =
+        \ empty(opts.once) || opts.once is v:null || opts.once is v:false
+        \ ? v:null
+        \ : opts.once is v:true || opts.once is 1
+        \ ? msg
+        \ : string(opts.once)
+    " Assumption: A non-empty key implies once-only.
+    if !empty(key)
+        let scope = opts.session ? s: : b:
+        " Auto-vivify if necessary.
+        let scope.sexp_did_warn = get(scope, 'sexp_did_warn', {})
+        if get(scope.sexp_did_warn, key, 0)
+            " Already warned! Do nothing.
+            return
+        endif
+        " Make sure we don't display this one again for this buffer.
+        let scope.sexp_did_warn[key] = 1
     endif
-    call sexp#warn#msg(a:msg, a:0 && !!a:1)
-    " Make sure we don't display this one again for this buffer.
-    let b:sexp_did_warn[a:key] = 1
+    " Arrival here means we're not skipping output due to "once-only" mechanism.
+    call s:display_msg(a:msg, opts.err)
 endfu
 
 " Display to user any messages queued during command execution.

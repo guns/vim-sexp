@@ -139,10 +139,11 @@ A family of commands and operators for pasting or replacing from registers, opti
 Unlike builtin put operators such as `p` and `P`, these commands will keep your Lisp code properly formatted and will never create unbalanced forms.
 In fact, you should rarely need to make any adjustments at all after a smart put.
 This is because the smart paste engine analyzes the target context to determine whether to insert a newline at each end of the put text, and performs an automatic re-indent after the put on the smallest range guaranteed to preserve correct indentation.
-Once you've used the smart paste commands, you will probably not have much use for Vim's builtin put commands in your Lisp buffers, and thus, may wish to replace the default `<LocalLeader>` keybindings with more convenient bindings that override the builtins.
-For an easy way to accomplish this...
+By default, vim-sexp overrides the following builtin put commands: `p`, `P`, `gp`, `gP`.
+Once you've used the smart paste commands, you will probably not have much use for Vim's builtin put commands in your Lisp buffers.
+However, if you wish to preserve access to the builtin commands, the help file outlines two distinct approaches you can take, depending on your expected use case:
 ```
-:help sexp-regput-overriding-builtins
+:help sexp-regput-builtin-overrides
 ```
 
 The smart-paste commands come in two varieties:
@@ -150,14 +151,14 @@ The smart-paste commands come in two varieties:
 * Normal mode _operators_ whose targets are remote S-expressions, selected with one of the following:
   * a builtin or sexp _object_
   * a builtin or sexp _motion_
-  * a target specified with a _telescopic motion_ (`:help sexp-operator-telescopic-motion`)
+  * a target specified with a _telescopic motion_ (`:help sexp-regput-telescopic-motion`)
 
 **Note:** A few of the commands listed below are given intentionally long (3 character) default mappings because they are essentially shortcuts for something that can be accomplished with the more general put/replace operators.
 Feel free to give these commands more convenient mappings if you find them useful, or unmap them altogether if you prefer the operators.
 
 #### Put register before/after (normal)
-* ["x] `<LocalLeader>p` puts `[count]` copies of register `x` after the current element.
-* ["x] `<LocalLeader>P` puts `[count]` copies of register `x` before the current element.
+* ["x] `p` puts `[count]` copies of register `x` after the current element.
+* ["x] `P` puts `[count]` copies of register `x` before the current element.
 
 **Note:** It is possible to configure whether these commands put _into_ or _around_ a list whose bracket is _under_ the cursor.
 ```
@@ -165,14 +166,14 @@ Feel free to give these commands more convenient mappings if you find them usefu
 ```
 
 #### Replace selection with register (visual)
-* ["x] `<LocalLeader>p` replaces the visual selection with `[count]` copies of register `x`.
-* ["x] `<LocalLeader>P` idem, but doesn't update the unnamed register
+* ["x] `p` replaces the visual selection with `[count]` copies of register `x`.
+* ["x] `P` idem, but doesn't update the unnamed register
 
 #### Replace current element with register (normal)
-* ["x] `<LocalLeader><LocalLeader>p` replaces the current element with `[count]` copies of register `x`.
-* ["x] `<LocalLeader><LocalLeader>P` idem, but doesn't update the unnamed register
+* ["x] `gp` replaces the current element with `[count]` copies of register `x`.
+* ["x] `gP` idem, but doesn't update the unnamed register
 
-**Note:** Syntactic sugar for applying the replace operator to the current element: e.g., `<LocalLeader><LocalLeader>p` = `<M-p>ie`
+**Note:** Syntactic sugar for applying the replace operator to the current element: e.g., `gp` = `<M-p>ie`
 
 #### Put register into current list (normal)
 * ["x] `<LocalLeader><p` puts register into current list, just before the `[count]`th child from head.
@@ -189,7 +190,7 @@ Feel free to give these commands more convenient mappings if you find them usefu
 * ["x] `>p` puts register `x` after the element selected by the operator's motion/object
 
 #### Put/Replace Operator Examples
-Although `<LocalLeader>p` and `<LocalLeader>P` will probably be your go-to commands for the most typical use cases, the put/replace _operators_ provide a powerful mechanism for putting and replacing forms _at a distance_.
+Although `p` and `P` will probably be your go-to commands for the most common use cases, the put/replace _operators_ provide a powerful mechanism for putting and replacing forms _at a distance_.
 The following examples illustrate just a few of the possibilities...
 
 | Command | Result |
@@ -197,9 +198,9 @@ The following examples illustrate just a few of the possibilities...
 | `<M-p>af`  | Replace current list |
 | `<M-P>ie`  | Replace current element without updating unnamed register (`@"`) |
 | `<M-p>2ic` | Replace second child of current list |
-| `<M-p>3E`  | Replace current and next two elements |
+| `<M-p>3<M-e>`  | Replace current and next two elements |
 | `<piC`  | Put before final element of current list (equivalent to `2<LocalLeader>>p`) |
-| `>p3E`  | Put after the second element beyond the current element |
+| `>p3<M-e>`  | Put after the second element beyond the current element |
 
 #### "Telescopic" Mode Example
 The preceding examples work with the default options.
@@ -210,10 +211,11 @@ The following example (borrowed from the help) requires the following option set
 let g:sexp_regput_tele_motion = 1
 " Put/replace operators preserve original cursor position.
 let g:sexp_regput_curpos_op == 2
-```
 
           (foo (bar)
                (|baz))
+
+```
 
 To swap "foo" and "baz" without moving the cursor (indicated by `|`), execute the following sequence of commands...
 
@@ -226,7 +228,7 @@ To swap "foo" and "baz" without moving the cursor (indicated by `|`), execute th
 Although use of the unnamed register to swap words is idiomatic Vim, telescopic motions streamline the pattern by obviating the need to move the cursor back and forth between the elements being swapped and by handling any required re-indentation.
 
 ```
-:help sexp-operator-telescopic-motion
+:help sexp-regput-telescopic-motion
 ```
 
 ### Clone Commands (normal, visual)

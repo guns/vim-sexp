@@ -903,11 +903,9 @@ disctinct command and operator variants: the commands operate on a target
 determined by the cursor location; the operators give you "cybernetic arms",
 which can put or replace forms at a distance. The feature is highly
 customizable, with option names bearing the "sexp_regput" prefix. Even if you
-normally stick with plugin defaults, you should definitely look at the
-following sections if you wish to get the most out of this feature:
-
-        |sexp-regput-telescopic-motion|       replace-at-a-distance
-        |sexp-regput-overriding-builtins|     more convenient mappings
+normally stick with plugin defaults, you should definitely read the section
+|sexp-regput-telescopic-motion| to ensure you get the most out of this
+feature.
 
 Overview  ~
 All of the register put (paste) commands and operators accept an optional
@@ -930,10 +928,10 @@ with the "." command. Smart-paste operators can be repeated if and only if
 their operand is a sexp object/motion. (This is an inherent limitation, due to
 the fact that Vim's API does not expose the object/motion to the 'opfunc'.)
 
-Note: Although most users will probably wish to remap the builtin put
-commands to vim-sexp's smarter, Lisp-aware counterparts, the builtins will not
-be overridden without an explicit request via one of the methods discussed in
-|sexp-regput-overriding-builtins|.
+Note: The default vim-sexp configuration assigns smart-paste functionality to
+builtin commands `p`, `P`, `gp` and `gP`, but this is customizable. For
+details, see |sexp-regput-builtin-overrides|.
+
 
 Put register before/after (normal)  ~
                                                                     *sexp-put*
@@ -1809,14 +1807,6 @@ full (level 2) optimization.
 >
         " Default
         let g:sexp_aligncom_density_weight = 5
-<
-                                             *g:sexp_regput_override_builtins*
-When this is set, several of Vim's builtin put operators are remapped to
-vim-sexp's "smart paste" commands.
-For details, see |sexp-regput-overriding-builtins|.
->
-        " Default
-        let g:sexp_regput_override_builtins = 1
 <
                                                         *g:sexp_regput_curpos*
 Determines where cursor is placed after a smart-paste command that targets the

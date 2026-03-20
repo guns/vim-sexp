@@ -901,11 +901,11 @@ alignment, or even unbalanced forms after pasting text into a Lisp buffer,
 vim-sexp's "smart paste" commands are for you! The commands are broken into
 disctinct command and operator variants: the commands operate on a target
 determined by the cursor location; the operators give you "cybernetic arms",
-which can put or replace forms at a distance. The feature is highly
-customizable, with option names bearing the "sexp_regput" prefix. Even if you
-normally stick with plugin defaults, you should definitely read the section
-|sexp-regput-telescopic-motion| to ensure you get the most out of this
-feature.
+which can put or replace forms at a distance using "telescopic mode". The
+feature is highly customizable, with option names bearing the "sexp_regput"
+prefix. Even if you normally use plugin defaults, you should definitely read
+the section |sexp-regput-telescopic-motion| to ensure you get the most out of
+the operators.
 
 Overview  ~
 All of the register put (paste) commands and operators accept an optional
@@ -1024,10 +1024,11 @@ Replace operator (normal)  ~
         The target range may contain multiple S-expressions, but must not
         contain partial S-expressions, unless |g:sexp_regput_replace_expanded|
         is set, in which case, the target will be expanded to include all of
-        any partially selected S-expressions. As with the visual replace
-        commands, the motion endpoints must lie within the same node of the
-        sexp tree unless you've set |g:sexp_regput_tele_motion| to enable
-        "telescopic mode", as described in |sexp-regput-telescopic-motion|.
+        any partial selections. The target can be specified either with a
+        traditional operator-pending motion/object or with a "telescopic
+        motion", as described in section |sexp-regput-telescopic-motion|. If a
+        traditional motion is used, the motion endpoints must lie within the
+        same node of the sexp tree.
 
         The operator ending in `P` does not update the unnamed register.
 
@@ -1052,13 +1053,15 @@ Put operator (normal)  ~
         or last element selected by the operator's motion/object.
 
                                                  *sexp-put-target-constraints*
-        The target may contain multiple elements, but only the element at the
-        edge of the range corresponding to the put direction matters. As with
-        the replace operator, both motion endpoints must lie within the same
-        node of the sexp tree, unless you've set |g:sexp_regput_tele_motion|
-        to enable "telescopic mode" (see |sexp-regput-telescopic-motion|).
-        Additionaly, the selection must include the edge of the target in the
-        direction of the put: i.e., partial selections not allowed.
+        As with the replace operator, the target can be specified with either
+        a traditional operator-pending motion/object or a "telescopic motion"
+        (see |sexp-regput-telescopic-motion|). If a traditional motion is
+        used, the motion endpoints must lie within the same node of the sexp
+        tree, and although the range may contain multiple elements, only the
+        element at the edge of the range corresponding to the put direction
+        matters. Additionaly, the selection must include the edge of the
+        target in the direction of the put: i.e., partial selections not
+        allowed.
 
         Examples:  ~
         1. `<piC`      Put before final element of current list
@@ -1070,27 +1073,24 @@ Put operator (normal)  ~
                      the desired target element.
 
         ** Important Note **  ~
-        In its default mode, this command works best with text/sexp objects.
-        For a more powerful mode of operation that puts into distant branches
-        of the sexp tree, (optionally) without moving the cursor, see
+        For a powerful approach to putting into distant branches of the sexp
+        tree, (optionally) without moving the cursor, see
         |sexp-regput-telescopic-motion|.
 
 "Telescopic" Mode (***Experimental*** - Requires Vim Version >= 8.1) ~
                      *sexp-regput-tele-motion* *sexp-regput-telescopic-motion*
 
-        By default, vim-sexp's put/replace operators will refuse to operate on
-        an "unbalanced" region whose endpoints are not both contained within
-        the same node of the sexp tree. While this is necessary to minimize
-        the risk of creating unbalanced forms, setting option
-        |g:sexp_regput_tele_motion| enables an alternative interpretation of
-        operator motions, which gives them meaning even when they reach across
-        tree levels: rather than selecting the forms "moved over", a
-        "telescopic" motion selects the form "reached" by the motion search.
-        The concept is best illustrated with an example, for which the
-        following option settings are assumed:
-
-          |g:sexp_regput_tele_motion| >= 1
-          |g:sexp_regput_curpos_op| == 2
+        The smart-paste operators support both the traditional type of
+        operator motion/object (e.g., `iw` and `af`) as well as a new type
+        known as "telescopic motion". Rather than selecting the forms "moved
+        over", a telescopic motion treats the operator motion as a regular
+        search, selecting only the form on which the motion "lands". By
+        default, vim-sexp treats motions that look like "objects" (either text
+        objects or sexp objects) in the traditional way. Motions that cross
+        list boundaries are treated as "telescopic". Option
+        |g:sexp_regput_tele_motion| determines whether non-object motions
+        within a single node of the sexp tree are treated as traditional or
+        "telescopic" motions. The concept is best illustrated with an example:
 >
           (foo (bar)
                (|baz))
@@ -1103,21 +1103,28 @@ Put operator (normal)  ~
           <M-p>ie            replace current element with @"
 <
         Although use of the unnamed register to swap words is idiomatic Vim,
-        telescopic motions streamline the pattern by obviating the need to
-        move the cursor back and forth between the elements being swapped and
-        by handling any required re-indentation.
+        using the replace operator in telescopic mode streamlines the pattern
+        by obviating the need to move the cursor back and forth between the
+        elements being swapped and by automating any required re-indentation.
 
         Option Format  ~
                                               *sexp-tele-motion-option-format*
         Note that |g:sexp_regput_tele_motion| is not a simple flag but an
-        enumerated value. Setting it to 1 enables "telescopic mode" only for
-        jumps to other parts of the sexp tree. To enable telescopic mode
-        unconditionally (even within the same sexp tree node), set to 2 or 3:
-        3 if you want telescopic behavior for both put and replace operators,
-        2 if you want it only for the put operator (for which the traditional
-        motion interpretation tends to be less useful than it is for the
-        replace operator). The following example illustrates the difference
-        between conditionally and unconditionally enabled "telescopic mode".
+        enumerated value. Setting it to 1 enables "telescopic mode" only when
+        the endpoints of the motion range lie in different nodes of the sexp
+        tree. Because such motions cross list boundaries, interpreting them as
+        traditional motions/objects risks producing unbalanced forms; in
+        telescopic mode, however, such motions simply designate a distant form
+        as the target of a replacement or a put. Increasing the option value
+        to 2 or 3 permits use of telescopic mode even for motions that do not
+        cross list boundaries:
+          2 makes telescopic mode the default only for the put operator (for
+            which traditional motion interpretation is generally less useful).
+          3 makes telescopic behavior the default for both put and replace
+            operators.
+
+        The following example illustrates the difference between traditional
+        and telescopic modes as default.
 
         With cursor position indicated by `|` in the following form, and
         "blammo" in the unnamed register...
@@ -1129,22 +1136,26 @@ Put operator (normal)  ~
 
         g:sexp_regput_tele_motion == 1  ~
 >
-        (|blammo)
+        => (|blammo)
 <
-        Explanation: Under the traditional motion interpretation, `fz` selects
-        all 3 elements in the list, and thus all 3 elements are replaced by
-        the contents of the unnamed register.
+        Explanation: Since the motion does not cross list boundaries, and an
+        option value of 1 makes traditional mode the default, `fz` is
+        interpreted as a traditional motion selecting all 3 elements in the
+        list for replacement.
 
         g:sexp_regput_tele_motion == 3  ~
 >
-        (|foo bar blammo)
+        => (|foo bar blammo)
 <
-        Explanation: In "telescopic mode", `fz` targets only the final element
-        of the list ("baz"), and thus, only that element is replaced.
-<
+        Explanation: Because the option value makes telescopic mode the
+        default, `fz` targets only the final element of the list ("baz"), and
+        thus, only that element is replaced. Note that we could just as well
+        have selected the final element with `/baz<CR>`: in telescopic mode,
+        it is not necessary to select entire elements.
+
         Note: Regardless of the setting of |g:sexp_regput_tele_motion|,
         telescopic mode is inhibited when vim-sexp can tell that a text object
-        (or vim-sexp object) was used as the target of the operator.
+        (or vim-sexp object) was used.
 
 
 REGISTER PUT (SMART-PASTE) (ADDITIONAL DETAILS...)
@@ -1917,14 +1928,15 @@ Set to 1 to make the replace operator use partial element selections.
 Enumerated value that determines the conditions under which put/replace
 operators use "telescopic mode" rather than traditional Vim motions/objects.
   0  Never use "telescopic mode".
-  1  Use "telescopic mode" for motions whose endpoints lie in different sexp
-     tree nodes.
-  2  Like 1, but always use "telescopic mode" for the put operator.
-  3  Always use "telescopic mode".
+  1  Use "telescopic mode" only for motions whose endpoints lie in different
+     nodes of the sexp tree (i.e., motions that cross list boundaries)
+  2  Make "telescopic mode" the default for the put operator.
+  3  Make "telescopic mode" the default for both put and replace operators.
+
 See |sexp-regput-telescopic-motion| for details...
 >
         " Default
-        let g:sexp_regput_tele_motion = 0
+        let g:sexp_regput_tele_motion = 2
 <
 
                                        *g:sexp_regput_invalid_register_action*

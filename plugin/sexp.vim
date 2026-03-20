@@ -265,7 +265,7 @@ if !exists('g:sexp_regput_replace_expanded')
 endif
 
 if !exists('g:sexp_regput_tele_motion')
-    let g:sexp_regput_tele_motion = 0
+    let g:sexp_regput_tele_motion = 2
 else
     if g:sexp_regput_tele_motion && v:version < 801
         call sexp#warn#msg(

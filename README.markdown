@@ -203,15 +203,8 @@ The following examples illustrate just a few of the possibilities...
 | `>p3<M-e>`  | Put after the second element beyond the current element |
 
 #### "Telescopic" Mode Example
-The preceding examples work with the default options.
-The following example (borrowed from the help) requires the following option settings:
 
 ```
-" Enable telescopic motion for motions outside current level.
-let g:sexp_regput_tele_motion = 1
-" Put/replace operators preserve original cursor position.
-let g:sexp_regput_curpos_op == 2
-
           (foo (bar)
                (|baz))
 

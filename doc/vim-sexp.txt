@@ -973,7 +973,27 @@ wish to activate vim-sexp mappings.
 >
         " Default
         let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel'
+
 <
+                                            *g:sexp_filetype_macro_characters*
+A dictionary listing the macro characters as a string for each of the
+|FileTypes| you wish to configure. The default values for filetypes with
+builtin support are as follows:
+>
+        " Default
+        let g:sexp_filetype_macro_characters = {
+                \ 'clojure': "#'`~@^_=",
+                \ 'scheme':  "#'`,@",
+                \ 'lisp':    "#'`,@",
+                \ 'timl':    "#'`~@^_*",
+                \ 'fennel':  "#'`,@",
+                \ }
+<
+Note: It is best to override only unsupported filetypes (or supported
+filetypes with defaults you believe to be incorrect); copying the default
+dictionary in its entirety could mask future changes to the defaults for
+supported filetypes.
+
                                           *g:sexp_enable_insert_mode_mappings*
 Toggle insert mode mappings in |g:sexp_filetypes|.
 >

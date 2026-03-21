@@ -47,14 +47,14 @@ let s:string_region = '\vstring|regex|pattern'
 let s:ignored_region = s:string_region . '|comment|character'
 let s:match_ignored_region_fn = 's:is_rgn_type("str_com_chr", line("."), col("."))'
 let s:nomatch_ignored_region_fn = '!s:is_rgn_type("str_com_chr", line("."), col("."))'
-let s:macro_filetype_characters = {
+let s:filetype_macro_characters = {
     \ 'clojure': "#'`~@^_=",
     \ 'scheme':  "#'`,@",
     \ 'lisp':    "#'`,@",
     \ 'timl':    "#'`~@^_*",
     \ 'fennel':  "#'`,@",
     \ }
-let s:default_macro_characters = s:macro_filetype_characters['scheme']
+let s:default_macro_characters = s:filetype_macro_characters['scheme']
 let s:pairs = {
     \ '(': ')',
     \ '[': ']',
@@ -101,13 +101,12 @@ let s:use_setpos_for_visual_marks = 1
 " Return macro characters for current filetype. Defaults to Scheme's macro
 " characters if 'lisp' is set, invalid characters otherwise.
 function! s:macro_chars()
-    if has_key(s:macro_filetype_characters, &filetype)
-        return s:macro_filetype_characters[&filetype]
-    elseif &lisp
-        return s:default_macro_characters
-    else
-        return ''
-    endif
+    " Caveat: Allow for possibility that g:sexp_filetype_macro_characters does not exist.
+    return get(
+        \ get(g:, 'sexp_filetype_macro_characters', {}),
+        \ &filetype,
+        \ get(s:filetype_macro_characters, &filetype,
+        \   &lisp ? s:default_macro_characters : ''))
 endfunction
 
 " Make a 'very magic' character class from input characters.

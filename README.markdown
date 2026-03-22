@@ -23,6 +23,25 @@ Vim-sexp brings the Vim philosophy of _precision editing_ to S-expressions.
   Enables use of the `.` command for repeating change operations in vim-sexp,
   as well as repeating builtin operations with vim-sexp's text objects.
 
+## Installation
+
+### Traditional Approach
+
+Download the plugin into your 'runtimepath' (or use a plugin manager that handles this for you).
+```
+:help sexp-installation
+```
+
+### Neovim
+
+Although the traditional plugin load approach can work with Neovim, some Nvim-only plugin managers may require a different approach.
+An example configuration for the popular `Lazy.nvim` plugin manager is provided in the help:
+```
+:help sexp-lazy-install
+```
+If you're using a plugin manager other than `Lazy.nvim`, this configuration might still provide a useful starting point.
+Feel free to report an issue if you encounter any plugin load issues.
+
 ## Treesitter Support
 
 Although Treesitter is not a requirement, vim-sexp will use it to achieve significant performance gains if it's available.

@@ -43,6 +43,7 @@ Note: Treesitter support has been tested by a handful of users, but if you
 notice any issues, please open an issue on Github.
 
 Installation ~
+                                                           *sexp-installation*
 
 Vim-sexp requires no installation beyond downloading the plugin into your
 'runtimepath', which can be done manually or with the aid of a plugin manager.

@@ -234,14 +234,20 @@ function! s:OP_setup(Fn, name, cnt)
         \ 'plug_cmd': a:name,
         \ 'cnt': a:cnt,
         \ 'reg': v:register,
-        \ 'unnamed_reg': @",
-        \ 'z_reg': @z,
+        \ 'unnamed_reg': getreg('"', 1, 1),
+        \ 'z_reg': getreg('z', 1, 1),
         \ 'fn': a:Fn,
         \ 'range': [[0,0,0,0],[0,0,0,0]],
         \ 'inclusive': -1,
         \ 'motion': '',
         \ 'report_save': &report,
     \}
+    if exists('*getreginfo')
+        " Save/restore more complete information if reginfo() available.
+        " Note: setreg() accepts values in various formats.
+        let s:OP.unnamed_reg = getreginfo('"')
+        let s:OP.z_reg = getreginfo('z')
+    endif
     " Temporarily set 'report' to something very large to prevent "yanked N lines" msgs.
     " Caveat: Must ensure original value (saved in s:OP) is restored by cleanup.
     set report=1000000
@@ -267,7 +273,13 @@ endfunction
 " Note: The SafeState autocmd may fire many times (e.g., in command mode) before the yank
 " completes.
 function! s:OP_SafeState()
-    call sexp#warn#dbg("OP_SafeState: mode=%s", mode(1))
+    " Now that the yank is complete, restore all potentially impacted registers to their
+    " pre-yank values.
+    " Note: The unnamed register is clobbered in legacy Vim only, but since this behavior
+    " is undocumented, safest approach is to restore unconditionally for both.
+    call setreg('"', s:OP.unnamed_reg)
+    call setreg('z', s:OP.z_reg)
+    "call sexp#warn#dbg("OP_SafeState: mode=%s", mode(1))
     if mode() == 'n'
         " Yank is either complete or canceled; s:OP_handle() can tell the difference.
         call s:OP_handle()
@@ -279,7 +291,7 @@ function! s:OP_handle()
         " If we get here without a valid range having been set in OP_TextYankPost(), something
         " unexpected happened...
         if !empty(s:OP) && s:OP.range[0][1]
-            call sexp#warn#dbg("OP_handle: Handling op with cached TYP!")
+            "call sexp#warn#dbg("OP_handle: Handling op with cached TYP!")
             " Perform callback.
             let Fn = s:OP.fn
             call Fn('char', s:OP.inclusive)
@@ -290,15 +302,20 @@ function! s:OP_handle()
     endtry
 endfunction
 
-" Cache the yank information and restore the registers clobbered by the yank, letting the
-" operation be performed in the SafeState handler.
+" Cache yank information that will be needed by the operation, which is deferred to the
+" SafeState handler.
 " Rationale: TextYankPost autocmd prohibits buffer modifications.
+" Caveat: Must defer restoration of @" and @z to the SafeState handler.
+" Rationale: Legacy Vim overwrites the @" register with yanked text *after* TextYankPost
+" handler returns; Neovim seems not to update @" at all when another register is the
+" target of the yank, though neither behavior is documented explicitly. To ensure we
+" restore @" to the value it had *before* the yank used to simulate g@, we defer the
+" restore till SafeState fires.
 function! s:OP_TextYankPost()
-    let [@", @z] = [s:OP.unnamed_reg, s:OP.z_reg]
     let s:OP.range = [getpos("'["), getpos("']")]
     let s:OP.inclusive = v:event.inclusive
-    call sexp#warn#dbg("OP_TextYankPost: Cached TYP %s", string(s:OP))
-    call sexp#warn#dbg("OP_TextYankPost: v:event: %s", string(v:event))
+    "call sexp#warn#dbg("OP_TextYankPost: Cached TYP %s", string(s:OP))
+    "call sexp#warn#dbg("OP_TextYankPost: v:event: %s", string(v:event))
 endfunction
 
 " Calls repeat#set() and registers a one-time CursorMoved handler to correctly

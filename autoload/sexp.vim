@@ -225,7 +225,7 @@ function! s:containing_bracket(closing, ...)
         let p = call('s:nearest_bracket', [a:closing] + a:000)
         " Check to see whether this is the matching bracket of input pos.
         call s:setcursor(p)
-        let opos = s:nearest_bracket([!a:closing] + a:000)
+        let opos = call('s:nearest_bracket', [!a:closing] + a:000)
         if !sexp#compare_pos(opos, save_cursor)
             " We found matching bracket. Need to go up a level.
             let p = call('s:nearest_bracket', [a:closing] + a:000)

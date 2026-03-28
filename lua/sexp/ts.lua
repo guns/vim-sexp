@@ -2,11 +2,28 @@ local M = {}
 local ApiPos = require'sexp.pos'
 local ApiRange = require'sexp.range'
 
+---@alias VimPos4Range [VimPos4, VimPos4]
+
+-- This class is used to communicate the results of parsing text as current filetype.
+-- Intended Use Case: Characterize contents of register used as source of put.
+---@class ParseResult
+---@field elem_count integer
+---@field err_loc VimPos4
+---@field err_hint string
+---@field is_ml boolean
+---@field linewise boolean
+---@field has_com boolean
+---@field s_is_com boolean
+---@field e_is_com boolean
+---@field err_ranges VimPos4Range[]
+---@field node_ranges VimPos4Range[]
+---@field text string
+
 --local dbg = require'dp':get('sexp', {enabled=true})
 
-local reltime = vim.fn.reltime
-local reltimefloat = vim.fn.reltimefloat
-local reltimestr = vim.fn.reltimestr
+--local reltime = vim.fn.reltime
+--local reltimefloat = vim.fn.reltimefloat
+--local reltimestr = vim.fn.reltimestr
 
 local bracket = [[\v\(|\)|\[|\]|\{|\}]]
 local delimiter = bracket .. [[|\s]]
@@ -201,7 +218,8 @@ function M.current_region_terminal(rgn, dir)
     dbg:logf("current_region_terminal returning %s",
       dir == 1 and ApiPos:new(node:end_()) or ApiPos:new(node:start()))
       ]]
-    return dir == 1 and ApiPos:new(node:end_()):to_vim4(true) or ApiPos:new(node:start()):to_vim4()
+    return dir == 1 and ApiPos:new(node:end_()):to_vim4(true)
+      or ApiPos:new(node:start()):to_vim4()
   else
     -- Caller is responsible for ensuring this doesn't happen!
     -- Note: Return must permit caller to differentiate between nullpos and no Treesitter
@@ -492,6 +510,132 @@ function M.nearest_bracket(closing, open_re, close_re)
   -- Didn't find matching bracket.
   -- TODO: Decide whether to return nil to force fallback to legacy logic.
   return {0, 0, 0, 0}
+end
+
+---@param tree TSTree
+---@param codestr string    # string representing lisp form(s) to validate
+---@param filetype string?  # lisp variant to use for validation
+---@return ParseResult
+local function analyze_codestr(tree, codestr, filetype)
+  ---@local ParseResult
+  -- Note: Table structure matches corresponding dict in legacy Vim implementation.
+  local ret = {
+    elem_count = 0,
+    err_loc = {0,0,0,0}, err_hint = "",
+    is_ml = false,
+    has_com = false, s_is_com = false, e_is_com = false,
+    node_ranges = {},
+    err_ranges = {},
+    -- Surrounding whitespace is always superseded by builtin separator logic.
+    text = vim.trim(codestr),
+  }
+  -- Construct query used to check text for errors.
+  ---@type string
+  local ft = filetype or vim.bo.ft
+  local query = vim.treesitter.query.parse(ft, [[
+    ((ERROR) @str
+      (#trim! @str 1 1 1 1))
+  ]])
+  local root = tree:root()
+  -- Execute query for errors, saving only the first one in return table.
+  local _, node = vim.iter(query:iter_captures(root, 0)):next()
+  if node then
+    ret.err_loc = ApiPos:new(node:start()):to_vim4()
+    -- TODO: Should we attempt to provide hint?
+    ret.err_hint = ""
+  end
+  -- Accumulate ranges of all (named) top-level nodes and ensure 'has_com' is set
+  -- iff any of the nodes is a comment.
+  ---@type TSNode
+  for n in root:iter_children() do
+    if n:named() then
+      ret.has_com = ret.has_com or is_node_rgn_type(n, 'comment')
+      table.insert(ret.node_ranges,
+        {ApiPos:new(n:start()):to_vim4(), ApiPos:new(n:end_()):to_vim4(true)})
+    end
+  end
+  -- For convenience, also store the child count.
+  ret.elem_count = root:named_child_count()
+  if ret.elem_count > 0 then
+    -- Determine whether first/last children are comments.
+    -- Note: elem_count check precludes possibility of nil return from named_child().
+    local first = root:named_child(0) --[[@as TSNode --]]
+    local last = root:named_child(ret.elem_count - 1) --[[@as TSNode --]]
+    ret.s_is_com = is_node_rgn_type(first, 'comment')
+    ret.e_is_com = is_node_rgn_type(last, 'comment')
+    -- Design Decision: Err on side of caution by using all children for multiline check,
+    -- not just first and last named child.
+    -- Note: Intentionally using children rather than root to preclude possibility of
+    -- leading/trailing whitespace (which should show up only in root) affecting line
+    -- count.
+    first = root:child(0) --[[@as TSNode --]]
+    last = root:child(ret.elem_count - 1) --[[@as TSNode --]]
+    local s, e = ApiPos:new(first:start()):to_vim4(),
+      ApiPos:new(last:end_()):to_vim4(true)
+    -- TODO: Consider storing line count rather than boolean.
+    ret.is_ml = s[2] ~= e[2]
+  end
+  -- Design Decision: Err on side of caution by using entire tree for multiline check, not
+  -- just first and last named child.
+  local s, e = ApiPos:new(root:start()):to_vim4(), ApiPos:new(root:end_()):to_vim4(true)
+  ret.is_ml = s[2] ~= e[2]
+  -- Perform 'linewise' check that takes option into account.
+  -- If trailing newline, no need to check further.
+  -- TODO: I think this check is overkill: in particular, I don't know of any lisps which
+  -- permit forms to end in an ignored whitespace char.
+  ret.linewise = codestr:sub(-1) == "\n"
+  if not ret.linewise and vim.g.sexp_regput_untrimmed_is_linewise ~= 0 then
+    -- One more chance...
+    local s_is_ws, e_is_ws = codestr:sub(1, 1):match("%s"), codestr:sub(-1):match("%s")
+    if s_is_ws or e_is_ws then
+      -- Found leading/trailing whitespace but need to ensure it's not ignored.
+      -- TODO: Is this really necessary? I don't know of any lisps that permit forms to
+      -- end with literal, escaped whitespace; moreover, the legacy Vim parser doesn't
+      -- currently check for it.
+      local erow, ecol = vim.fn.line('$') - 1, vim.fn.col({vim.fn.line('$'), '$'}) - 1
+      local snode = root:named_descendant_for_range(0, 0, 0, 1)
+      local enode = root:named_descendant_for_range(erow, ecol, erow, ecol+1)
+      ret.linewise =
+        s_is_ws and snode and not is_node_rgn_type(snode, "str_com_chr")
+        or e_is_ws and enode and not is_node_rgn_type(enode, "str_com_chr")
+    end
+  end
+  return ret
+end
+
+-- Use Treesitter to analyze the input 'codestr' as filetype 'filetype', returning a
+-- ParseResult, else nil.
+-- Preconditions: If the optional 'strparse' flag is set, attempt to use a string parser;
+-- otherwise, assume caller has already placed us in a buffer with the correct filetype
+-- and contents.
+---@param codestr string    # string representing lisp form(s) to validate
+---@param filetype string?  # lisp variant to use for validation
+---@param strparse boolean? # true if using string parser
+---@return ParseResult?
+function M.analyze_codestr(codestr, filetype, strparse)
+  ---@type vim.treesitter.LanguageTree?
+  local ltree
+  ---@type TSTree?
+  local tree
+  if strparse then
+    -- Note: Intentionally parsing raw (unstripped) input string.
+    ltree = vim.treesitter.get_string_parser(codestr, filetype or vim.bo.ft)
+  else
+    -- Note: For versions < 0.12, error=false is needed to ensure nil,errmsg is returned
+    -- if parser can't be created.
+    -- TODO: Decide whether we want to bother with the 2nd return value (errmsg). The
+    -- problem is that luaeval() doesn't make it easy to obtain; also, the other sexp.ts
+    -- functions just return a single value.
+    ltree = vim.treesitter.get_parser(nil, nil, {error = false})
+  end
+  if not ltree then
+    -- Couldn't get LanguageTree.
+    -- Note: Only get_parser() (not get_string_parser()) can return nil.
+    return nil
+  end
+  -- Attempt the parse.
+  tree = ltree:parse()[1]
+  return tree and analyze_codestr(tree, codestr, filetype) or nil
 end
 
 return M

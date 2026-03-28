@@ -16,12 +16,31 @@ Vim-sexp brings the Vim philosophy of _precision editing_ to S-expressions.
 
 ## Requirements
 
-* Vim 7.3+
+* Vim 8.0+
 
 * [vim-repeat][] (optional)
 
   Enables use of the `.` command for repeating change operations in vim-sexp,
   as well as repeating builtin operations with vim-sexp's text objects.
+
+## Installation
+
+### Traditional Approach
+
+Download the plugin into your 'runtimepath' (or use a plugin manager that handles this for you).
+```
+:help sexp-installation
+```
+
+### Neovim
+
+Although the traditional plugin load approach can work with Neovim, some Nvim-only plugin managers may require a different approach.
+An example configuration for the popular `Lazy.nvim` plugin manager is provided in the help:
+```
+:help sexp-lazy-install
+```
+If you're using a plugin manager other than `Lazy.nvim`, this configuration might still provide a useful starting point.
+Feel free to report an issue if you encounter any plugin load issues.
 
 ## Treesitter Support
 
@@ -132,6 +151,97 @@ If `g:sexp_indent_aligns_comments` is set (false by default), the `==` and `=-` 
 **Note:** Vim-sexp uses a weighted-cost dynamic programming algorithm to perform comment alignment, based on weights and thresholds you can easily customize.
 
 :help sexp-comment-alignment
+
+### Smart Paste Commands (normal, visual)
+
+A family of commands and operators for pasting or replacing from registers, optimized for use with _S-expressions_.
+Unlike builtin put operators such as `p` and `P`, these commands will keep your Lisp code properly formatted and will never create unbalanced forms.
+In fact, you should rarely need to make any adjustments at all after a smart put.
+This is because the smart paste engine analyzes the target context to determine whether to insert a newline at each end of the put text, and performs an automatic re-indent after the put on the smallest range guaranteed to preserve correct indentation.
+By default, vim-sexp overrides the following builtin put commands: `p`, `P`, `gp`, `gP`.
+Once you've used the smart paste commands, you will probably not have much use for Vim's builtin put commands in your Lisp buffers.
+However, if you wish to preserve access to the builtin commands, the help file outlines two distinct approaches you can take, depending on your expected use case:
+```
+:help sexp-regput-builtin-overrides
+```
+
+The smart-paste commands come in two varieties:
+* Normal and visual mode commands that target the element or list at the cursor position.
+* Normal mode _operators_ whose targets are remote S-expressions, selected with one of the following:
+  * a builtin or sexp _object_
+  * a builtin or sexp _motion_
+  * a target specified with a _telescopic motion_ (`:help sexp-regput-telescopic-motion`)
+
+**Note:** A few of the commands listed below are given intentionally long (3 character) default mappings because they are essentially shortcuts for something that can be accomplished with the more general put/replace operators.
+Feel free to give these commands more convenient mappings if you find them useful, or unmap them altogether if you prefer the operators.
+
+#### Put register before/after (normal)
+* ["x] `p` puts `[count]` copies of register `x` after the current element.
+* ["x] `P` puts `[count]` copies of register `x` before the current element.
+
+**Note:** It is possible to configure whether these commands put _into_ or _around_ a list whose bracket is _under_ the cursor.
+```
+:help sexp-regput-behavior-on-bracket
+```
+
+#### Replace selection with register (visual)
+* ["x] `p` replaces the visual selection with `[count]` copies of register `x`.
+* ["x] `P` idem, but doesn't update the unnamed register
+
+#### Replace current element with register (normal)
+* ["x] `gp` replaces the current element with `[count]` copies of register `x`.
+* ["x] `gP` idem, but doesn't update the unnamed register
+
+**Note:** Syntactic sugar for applying the replace operator to the current element: e.g., `gp` = `<M-p>ie`
+
+#### Put register into current list (normal)
+* ["x] `<LocalLeader><p` puts register into current list, just before the `[count]`th child from head.
+* ["x] `<LocalLeader>>p` puts register into current list, just after the `[count]`th child from tail.
+
+**Note:** Syntactic sugar for applying the put operator to an _inner child_ object with a `[count]`: e.g., `3<LocalLeader>>p` = `<p2iC`
+
+#### Replace operator (normal)
+* ["x] `<M-p>` replaces the S-expression(s) selected by the operator's motion/object with register `x`.
+* ["x] idem, but doesn't update the unnamed register
+
+#### Put operator (normal)
+* ["x] `<p` puts register `x` before the element selected by the operator's motion/object
+* ["x] `>p` puts register `x` after the element selected by the operator's motion/object
+
+#### Put/Replace Operator Examples
+Although `p` and `P` will probably be your go-to commands for the most common use cases, the put/replace _operators_ provide a powerful mechanism for putting and replacing forms _at a distance_.
+The following examples illustrate just a few of the possibilities...
+
+| Command | Result |
+| ------- | ------ |
+| `<M-p>af`  | Replace current list |
+| `<M-P>ie`  | Replace current element without updating unnamed register (`@"`) |
+| `<M-p>2ic` | Replace second child of current list |
+| `<M-p>3<M-e>`  | Replace current and next two elements |
+| `<piC`  | Put before final element of current list (equivalent to `2<LocalLeader>>p`) |
+| `>p3<M-e>`  | Put after the second element beyond the current element |
+
+#### "Telescopic" Mode Example
+
+```
+          (foo (bar)
+               (|baz))
+
+```
+
+To swap "foo" and "baz" without moving the cursor (indicated by `|`), execute the following sequence of commands...
+
+| Command | Result |
+| ------- | ------ |
+| yie            | copy current element into unnamed register (`@"`)|
+| <M-p>?foo<CR>  | replace target of backwards search, updating unnamed register (`@"`) |
+| <M-p>ie        | replace current element with unnamed register (`@"`) |
+
+Although use of the unnamed register to swap words is idiomatic Vim, telescopic motions streamline the pattern by obviating the need to move the cursor back and forth between the elements being swapped and by handling any required re-indentation.
+
+```
+:help sexp-regput-telescopic-motion
+```
 
 ### Clone Commands (normal, visual)
 

@@ -49,6 +49,9 @@ function! s:deprecate_options(optnames, obsolete, helphint)
     endif
 endfunction
 
+" Caveat: This must be called *prior to* option/mapping processing.
+call sexp#feat#record_user_awareness()
+
 " Note: The following options were introduced by PR #34 and removed in PR #51. Hopefully,
 " not many users have overridden them, but just in case...
 " TODO: Remove this after a few releases.
@@ -136,9 +139,14 @@ if !exists('g:sexp_cleanup_join_backwards')
     let g:sexp_cleanup_join_backwards = 1
 endif
 
-" TODO: Consider encapsulating related options in a dict.
 if !exists('g:sexp_indent_aligns_comments')
     let g:sexp_indent_aligns_comments = 0
+endif
+
+if !exists('g:sexp_auto_indent_range')
+    " Rationale: Larger (non-optimized) indent ranges are best when aligning comments, but
+    " toplevel can be noticeably slow for operations on large functions.
+    let g:sexp_auto_indent_range = 0
 endif
 
 if !exists('g:sexp_aligncom_maxshift')
@@ -208,6 +216,71 @@ if !exists('g:sexp_aligncom_optlevel')
     let g:sexp_aligncom_optlevel = 2
 endif
 
+if !exists('g:sexp_regput_bracket_is_target')
+    let g:sexp_regput_bracket_is_target = 1
+endif
+
+if !exists('g:sexp_regput_bracket_is_child')
+    let g:sexp_regput_bracket_is_child = 0
+endif
+
+if !exists('g:sexp_regput_allow_comment_append')
+    let g:sexp_regput_allow_comment_append = 0
+endif
+
+if !exists('g:sexp_regput_untrimmed_is_linewise')
+    let g:sexp_regput_untrimmed_is_linewise = 0
+endif
+
+if !exists('g:sexp_regput_linewise_forces_multiline')
+    let g:sexp_regput_linewise_forces_multiline = 1
+endif
+
+if !exists('g:sexp_regput_ignore_list_shape')
+    let g:sexp_regput_ignore_list_shape = 0
+endif
+
+if !exists('g:sexp_regput_curpos')
+    let g:sexp_regput_curpos = 0
+endif
+
+if !exists('g:sexp_regput_curpos_child')
+    let g:sexp_regput_curpos_child = 0
+endif
+
+if !exists('g:sexp_regput_curpos_op')
+    let g:sexp_regput_curpos_op = 2
+endif
+
+if !exists('g:sexp_regput_invalid_register_action')
+    let g:sexp_regput_invalid_register_action = -1
+endif
+
+if !exists('g:sexp_regput_inhibit_regparse')
+    let g:sexp_regput_inhibit_regparse = 0
+endif
+
+if !exists('g:sexp_regput_replace_expanded')
+    let g:sexp_regput_replace_expanded = 0
+endif
+
+if !exists('g:sexp_regput_tele_motion')
+    let g:sexp_regput_tele_motion = 2
+else
+    if g:sexp_regput_tele_motion && v:version < 801
+        call sexp#warn#msg(
+            \ "Warning: Replace operator's telescopic mode requires Vim version >= 8.1.")
+    endif
+endif
+
+if !exists('g:sexp_regput_use_string_parser')
+    let g:sexp_regput_use_string_parser = 0
+endif
+
+if !exists('g:sexp_regput_silence_notification')
+    let g:sexp_regput_silence_notification = 0
+endif
+
 " Expert options
 if !exists('g:sexp_inhibit_failsafe')
     let g:sexp_inhibit_failsafe = 0
@@ -218,74 +291,88 @@ if !exists('g:sexp_mappings')
 endif
 
 let s:sexp_mappings = {
-    \ 'sexp_outer_list':                   'af',
-    \ 'sexp_inner_list':                   'if',
-    \ 'sexp_outer_top_list':               'aF',
-    \ 'sexp_inner_top_list':               'iF',
-    \ 'sexp_outer_string':                 'as',
-    \ 'sexp_inner_string':                 'is',
-    \ 'sexp_outer_element':                'ae',
-    \ 'sexp_inner_element':                'ie',
-    \ 'sexp_outer_child_tail':             'aC',
-    \ 'sexp_outer_child_head':             'ac',
-    \ 'sexp_inner_child_tail':             'iC',
-    \ 'sexp_inner_child_head':             'ic',
-    \ 'sexp_move_to_prev_bracket':         '(',
-    \ 'sexp_move_to_next_bracket':         ')',
-    \ 'sexp_move_to_prev_element_head':    '<M-b>',
-    \ 'sexp_move_to_next_element_head':    '<M-w>',
-    \ 'sexp_move_to_prev_element_tail':    'g<M-e>',
-    \ 'sexp_move_to_next_element_tail':    '<M-e>',
-    \ 'sexp_flow_to_prev_close':           '<M-[>',
-    \ 'sexp_flow_to_next_open':            '<M-]>',
-    \ 'sexp_flow_to_prev_open':            '<M-{>',
-    \ 'sexp_flow_to_next_close':           '<M-}>',
-    \ 'sexp_flow_to_prev_leaf_head':       '<M-S-b>',
-    \ 'sexp_flow_to_next_leaf_head':       '<M-S-w>',
-    \ 'sexp_flow_to_prev_leaf_tail':       '<M-S-g>',
-    \ 'sexp_flow_to_next_leaf_tail':       '<M-S-e>',
-    \ 'sexp_move_to_prev_top_element':     '[[',
-    \ 'sexp_move_to_next_top_element':     ']]',
-    \ 'sexp_select_prev_element':          '[e',
-    \ 'sexp_select_next_element':          ']e',
-    \ 'sexp_indent':                       '==',
-    \ 'sexp_indent_top':                   '=-',
-    \ 'sexp_indent_and_clean':             '<M-=>',
-    \ 'sexp_indent_and_clean_top':         '<M-->',
-    \ 'sexp_align_comments':               '<LocalLeader>a',
-    \ 'sexp_align_comments_top':           '<LocalLeader>A',
-    \ 'sexp_round_head_wrap_list':         '<LocalLeader>i',
-    \ 'sexp_round_tail_wrap_list':         '<LocalLeader>I',
-    \ 'sexp_square_head_wrap_list':        '<LocalLeader>[',
-    \ 'sexp_square_tail_wrap_list':        '<LocalLeader>]',
-    \ 'sexp_curly_head_wrap_list':         '<LocalLeader>{',
-    \ 'sexp_curly_tail_wrap_list':         '<LocalLeader>}',
-    \ 'sexp_round_head_wrap_element':      '<LocalLeader>w',
-    \ 'sexp_round_tail_wrap_element':      '<LocalLeader>W',
-    \ 'sexp_square_head_wrap_element':     '<LocalLeader>e[',
-    \ 'sexp_square_tail_wrap_element':     '<LocalLeader>e]',
-    \ 'sexp_curly_head_wrap_element':      '<LocalLeader>e{',
-    \ 'sexp_curly_tail_wrap_element':      '<LocalLeader>e}',
-    \ 'sexp_insert_at_list_head':          '<LocalLeader>h',
-    \ 'sexp_insert_at_list_tail':          '<LocalLeader>l',
-    \ 'sexp_splice_list':                  '<LocalLeader>@',
-    \ 'sexp_convolute':                    '<LocalLeader>?',
-    \ 'sexp_clone_list':                   '<LocalLeader>c',
-    \ 'sexp_clone_list_sl':                '',
-    \ 'sexp_clone_list_ml':                '',
-    \ 'sexp_clone_element':                '<LocalLeader>C',
-    \ 'sexp_clone_element_sl':             '',
-    \ 'sexp_clone_element_ml':             '',
-    \ 'sexp_raise_list':                   '<LocalLeader>o',
-    \ 'sexp_raise_element':                '<LocalLeader>O',
-    \ 'sexp_swap_list_backward':           '<M-k>',
-    \ 'sexp_swap_list_forward':            '<M-j>',
-    \ 'sexp_swap_element_backward':        '<M-h>',
-    \ 'sexp_swap_element_forward':         '<M-l>',
-    \ 'sexp_emit_head_element':            '<M-S-j>',
-    \ 'sexp_emit_tail_element':            '<M-S-k>',
-    \ 'sexp_capture_prev_element':         '<M-S-h>',
-    \ 'sexp_capture_next_element':         '<M-S-l>',
+    \ 'sexp_outer_list':                   {'xo': 'af'},
+    \ 'sexp_inner_list':                   {'xo': 'if'},
+    \ 'sexp_outer_top_list':               {'xo': 'aF'},
+    \ 'sexp_inner_top_list':               {'xo': 'iF'},
+    \ 'sexp_outer_string':                 {'xo': 'as'},
+    \ 'sexp_inner_string':                 {'xo': 'is'},
+    \ 'sexp_outer_element':                {'xo': 'ae'},
+    \ 'sexp_inner_element':                {'xo': 'ie'},
+    \ 'sexp_outer_child_tail':             {'xo': 'aC'},
+    \ 'sexp_outer_child_head':             {'xo': 'ac'},
+    \ 'sexp_inner_child_tail':             {'xo': 'iC'},
+    \ 'sexp_inner_child_head':             {'xo': 'ic'},
+    \ 'sexp_move_to_prev_bracket':         {'nxo': '('},
+    \ 'sexp_move_to_next_bracket':         {'nxo': ')'},
+    \ 'sexp_move_to_prev_element_head':    {'nxo': '<M-b>'},
+    \ 'sexp_move_to_next_element_head':    {'nxo': '<M-w>'},
+    \ 'sexp_move_to_prev_element_tail':    {'nxo': 'g<M-e>'},
+    \ 'sexp_move_to_next_element_tail':    {'nxo': '<M-e>'},
+    \ 'sexp_flow_to_prev_close':           {'nx': '<M-[>'},
+    \ 'sexp_flow_to_next_open':            {'nx': '<M-]>'},
+    \ 'sexp_flow_to_prev_open':            {'nx': '<M-{>'},
+    \ 'sexp_flow_to_next_close':           {'nx': '<M-}>'},
+    \ 'sexp_flow_to_prev_leaf_head':       {'nx': '<M-S-b>'},
+    \ 'sexp_flow_to_next_leaf_head':       {'nx': '<M-S-w>'},
+    \ 'sexp_flow_to_prev_leaf_tail':       {'nx': '<M-S-g>'},
+    \ 'sexp_flow_to_next_leaf_tail':       {'nx': '<M-S-e>'},
+    \ 'sexp_move_to_prev_top_element':     {'nxo': '[['},
+    \ 'sexp_move_to_next_top_element':     {'nxo': ']]'},
+    \ 'sexp_select_prev_element':          {'nxo': '[e'},
+    \ 'sexp_select_next_element':          {'nxo': ']e'},
+    \ 'sexp_indent':                       {'n': '==', 'x': '='},
+    \ 'sexp_indent_top':                   {'n': '=-'},
+    \ 'sexp_indent_and_clean':             {'n': '<M-=>'},
+    \ 'sexp_indent_and_clean_top':         {'n': '<M-->'},
+    \ 'sexp_align_comments':               {'n': '<LocalLeader>a'},
+    \ 'sexp_align_comments_top':           {'n': '<LocalLeader>A'},
+    \ 'sexp_round_head_wrap_list':         {'nx': '<LocalLeader>i'},
+    \ 'sexp_round_tail_wrap_list':         {'nx': '<LocalLeader>I'},
+    \ 'sexp_square_head_wrap_list':        {'nx': '<LocalLeader>['},
+    \ 'sexp_square_tail_wrap_list':        {'nx': '<LocalLeader>]'},
+    \ 'sexp_curly_head_wrap_list':         {'nx': '<LocalLeader>{'},
+    \ 'sexp_curly_tail_wrap_list':         {'nx': '<LocalLeader>}'},
+    \ 'sexp_round_head_wrap_element':      {'nx': '<LocalLeader>w'},
+    \ 'sexp_round_tail_wrap_element':      {'nx': '<LocalLeader>W'},
+    \ 'sexp_square_head_wrap_element':     {'nx': '<LocalLeader>e['},
+    \ 'sexp_square_tail_wrap_element':     {'nx': '<LocalLeader>e]'},
+    \ 'sexp_curly_head_wrap_element':      {'nx': '<LocalLeader>e{'},
+    \ 'sexp_curly_tail_wrap_element':      {'nx': '<LocalLeader>e}'},
+    \ 'sexp_insert_at_list_head':          {'n': '<LocalLeader>h'},
+    \ 'sexp_insert_at_list_tail':          {'n': '<LocalLeader>l'},
+    \ 'sexp_splice_list':                  {'n': '<LocalLeader>@'},
+    \ 'sexp_convolute':                    {'n': '<LocalLeader>?'},
+    \ 'sexp_clone_list':                   {'nx': '<LocalLeader>c'},
+    \ 'sexp_clone_list_sl':                {'nx': ''},
+    \ 'sexp_clone_list_ml':                {'nx': ''},
+    \ 'sexp_clone_element':                {'nx': '<LocalLeader>C'},
+    \ 'sexp_clone_element_sl':             {'nx': ''},
+    \ 'sexp_clone_element_ml':             {'nx': ''},
+    \ 'sexp_raise_list':                   {'nx': '<LocalLeader>o'},
+    \ 'sexp_raise_element':                {'nx': '<LocalLeader>O'},
+    \ 'sexp_swap_list_backward':           {'nx': '<M-k>'},
+    \ 'sexp_swap_list_forward':            {'nx': '<M-j>'},
+    \ 'sexp_swap_element_backward':        {'nx': '<M-h>'},
+    \ 'sexp_swap_element_forward':         {'nx': '<M-l>'},
+    \ 'sexp_emit_head_element':            {'nx': '<M-S-j>'},
+    \ 'sexp_emit_tail_element':            {'nx': '<M-S-k>'},
+    \ 'sexp_capture_prev_element':         {'nx': '<M-S-h>'},
+    \ 'sexp_capture_next_element':         {'nx': '<M-S-l>'},
+    \ 'sexp_put_before':                   {'n':  'P'},
+    \ 'sexp_put_after':                    {'n':  'p'},
+    \ 'sexp_put_before_op':                {'n':  '<p'},
+    \ 'sexp_put_after_op':                 {'n':  '>p'},
+    \ 'sexp_replace':                      {'x':  'p', 'n': 'gp'},
+    \ 'sexp_replace_P':                    {'x':  'P', 'n': 'gP'},
+    \ 'sexp_replace_op':                   {'n':  '<M-p>'},
+    \ 'sexp_replace_op_P':                 {'n':  '<M-P>'},
+    \ 'sexp_put_at_head':                  {'n':  '<LocalLeader><p'},
+    \ 'sexp_put_at_tail':                  {'n':  '<LocalLeader>>p'},
+    \ 'p':                                 {'nx': ''},
+    \ 'P':                                 {'nx': ''},
+    \ 'gp':                                {'n':  ''},
+    \ 'gP':                                {'n':  ''},
     \ }
 
 if !empty(g:sexp_filetypes)
@@ -295,9 +382,6 @@ if !empty(g:sexp_filetypes)
     augroup END
 endif
 
-" Autoload and detect repeat.vim
-silent! call repeat#set('')
-let s:have_repeat_set = exists('*repeat#set')
 " If it's available, use <Cmd> modifier at the head of command rhs.
 " Rationale: The idiomatic (but now obsolete) `:<c-u>` has the undesirable side-effect of
 " generating a 'CmdlineChanged' autocmd event for *every character* in the command line
@@ -307,170 +391,172 @@ let s:have_repeat_set = exists('*repeat#set')
 let s:have_cmd = has('nvim') || v:version >= 900
 """ Functions {{{1
 
-command! -nargs=+       DEFPLUG  call <SID>defplug('000', <f-args>)
-command! -nargs=+ -bang Defplug  call <SID>defplug('1' . string(!empty('<bang>')) . '0', <f-args>)
-command! -nargs=+ -bang DefplugN call <SID>defplug('1' . string(!empty('<bang>')) . '1', <f-args>)
-
-" Create a <Plug> mapping. The 'flags' faux bitfield dictates behavior:
-"
-"   * flags == 0**: Map rhs as a key sequence
-"   * flags == 100: Map rhs as an expression
-"   * flags == 110: Map rhs as an expression, and setup repeat
-"   * flags == 101: Map rhs as an expression, and do not set '`
-"   * flags == 111: Map rhs as an expression, set up repeat, and do not set '`
-"
-" We don't use an actual bitfield because the bitwise functions and() and or()
-" were not introduced until patch 7.3.377.
-"
-function! s:defplug(flags, mapmode, name, ...)
-    let lhs = a:mapmode . ' <silent> <Plug>(' . a:name . ')'
-    let rhs = join(a:000)
-
-    let asexpr = a:flags[0] == '1'
-    let repeat = a:flags[1] == '1'
-    let nojump = a:flags[2] == '1'
-    let opmode = a:mapmode[0] ==# 'o'
-
-    " Build prefix/postfix for wrapping rhs.
-    let prefix = 'call sexp#pre_op("' . a:mapmode[0] . '", "' . a:name . '")'
-    \ . ' \| try \| '
-    let postfix = ' \| finally'
-    \ . ' \| call sexp#post_op("' . a:mapmode[0] . '", "' . a:name . '")'
-    \ . ' \| endtry'
-
-    " Key sequence
-    if !asexpr
-	" Note: All the DEFPLUGs have been converted to DefplugN to ensure they handle
-	" counts correctly. Since this block has no special v:count handling, it's unlikely
-	" maps defined with DEFPLUG would even work correctly.
-	" TODO: Consider removing DEFPLUG and simplifying this function accordingly: e.g.,
-	" the prefix/postfix assignments could be inlined below.
-        execute lhs . ' ' . rhs
-        return 1
-    endif
-
-    " Common mapping prefix
-    " RE: vv
-    "   Due to a ?bug? in vim, we need to set curwin->w_curswant to the
-    "   current cursor position by entering and exiting character-wise visual
-    "   mode before completing an operator-pending command so that the cursor
-    "   returns to its original position after an = command.
-    " RE: b:sexp_count
-    "   v:count and v:prevcount can change while the concatenated commands are executing.
-    "   To ensure the count passed to functions is the one corresponding to the executed
-    "   map, we cache either v:count or v:prevcount (whichever is present in the raw
-    "   command) just after the cmd leader and replace all references to the vim count
-    "   with references to the cached var.
-    let use_count = rhs =~ 'v:prevcount' && !s:have_cmd ? 'v:prevcount' : 'v:count'
-    let prefix = lhs . ' '
-                 \ . (s:have_cmd ? '<cmd>' : ':<c-u>') . ' let b:sexp_count = ' . use_count
-                 \ . (s:have_cmd ? ' \| call sexp#ensure_normal_mode()' : '') . ' \| '
-                 \ . prefix
-                 \ . (nojump ? '' : 'execute "normal! ' . (opmode ? 'vv' : '') . 'm`" \| ')
-                 \ . 'call ' . substitute(rhs, 'v:\%(prev\)\?count', 'b:sexp_count', 'g')
-    " Expression, non-repeating
-    if !repeat || !s:have_repeat_set
-        execute prefix . postfix . '<CR>'
-    " Expression, repeating, operator-pending mode
-    elseif opmode
-        execute prefix
-                \ . ' \| if v:operator ==? "c" \| '
-                \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')\<lt>C-r>.\<lt>C-Bslash>\<lt>C-n>", b:sexp_count) \| '
-                \ . 'else \| '
-                \ . '  call <SID>repeat_set(v:operator . "\<Plug>(' . a:name . ')", b:sexp_count) \| '
-                \ . 'endif'
-                \ . postfix . '<CR>'
-    " Expression, repeating, non-operator-pending mode
-    else
-        execute prefix . ' \| call <SID>repeat_set("\<Plug>(' . a:name . ')", b:sexp_count)'
-                \ . postfix . '<CR>'
-    endif
+" Convert list of bools to flags dict provided to s:defplug.
+" Rationale: Serializing the dict in the plug function arglist aids in readability.
+" -- Args --
+"   asexpr: create <expr> mapping
+"           TODO: Consider renaming this "asoper" since it's currently meant exclusively
+"           for use with operators.
+"   repeat: set up repeat (if repeat plugin available)
+"   nojump: inhibit set of '`
+function! s:defplug_flags(asexpr, repeat, nojump)
+    return {'asexpr': a:asexpr, 'repeat': a:repeat, 'nojump': a:nojump}
 endfunction
 
-" Calls repeat#set() and registers a one-time CursorMoved handler to correctly
-" set the value of g:repeat_tick.
-"
-" cf. https://github.com/tpope/vim-repeat/issues/8#issuecomment-13951082
-function! s:repeat_set(buf, count)
-    call repeat#set(a:buf, a:count)
-    augroup sexp_repeat
-        autocmd!
-        autocmd CursorMoved <buffer> let g:repeat_tick = b:changedtick | autocmd! sexp_repeat
-    augroup END
+" These commands invoke s:defplug() with arguments that will ensure creation of the
+" desired <Plug> mappings, which in turn, invoke sexp#plug#wrapper() when the map is
+" invoked.
+" Note: Defoper* relies on <expr> maps to define sexp operators.
+command! -nargs=+ -bang Defoper  call <SID>defplug(s:defplug_flags(1, !empty('<bang>'), 0), <f-args>)
+command! -nargs=+ -bang DefoperN call <SID>defplug(s:defplug_flags(1, !empty('<bang>'), 1), <f-args>)
+command! -nargs=+ -bang Defplug  call <SID>defplug(s:defplug_flags(0, !empty('<bang>'), 0), <f-args>)
+command! -nargs=+ -bang DefplugN call <SID>defplug(s:defplug_flags(0, !empty('<bang>'), 1), <f-args>)
+
+" Create a <Plug> mapping. The 'flags' dict provided by the Def* map influences behavior:
+function! s:defplug(flags, mapmode, name, ...)
+    let rhs = join(a:000)
+    let asexpr = a:flags.asexpr
+    let prefix = a:mapmode . (asexpr ? ' <expr>' : '')
+        \ . ' <silent> <Plug>(' . a:name . ')'
+
+    " Note: sexp#plug#wrapper() is called when map is invoked to handle both regular maps
+    " and sexp operators.
+    " Note: %s intentionally used to serialize the 'flags' dict.
+    execute prefix . printf(
+        \ '%s sexp#plug#wrapper(%s, "%s", "%s", "%s")%s',
+        \ asexpr ? '' : (s:have_cmd ? ' <cmd>' : ' :<c-u>') . ' call',
+        \ a:flags, a:mapmode, a:name, rhs,
+        \ (!asexpr ? '<cr>' : ''))
+endfunction
+
+" Warn once-only (per buffer) for the specified map conflict (or ambiguity).
+" -- Optional Args --
+" a:1  ambiguous (not conflict)
+function! s:map_conflict_warn_once(lhs, rhs1, rhs2, mode, ...)
+    " Note: Unambiguously order the components of the key to ensure we don't warn twice
+    " for the same conflict when s:sexp_create_mappings() is called twice.
+    " Explanation: In the initial call, the second map overwrites the first, but then in
+    " the second call, the first map will overwrite the second.
+    let uniq_key = [a:mode, a:lhs] + sort([a:rhs1, a:rhs2]))
+    call sexp#warn#msg(printf(
+        \ "Mapping %s => %s %s with existing mapping to %s in mode %s",
+        \ a:lhs, a:rhs2, (a:0 ? "is ambiguous" : "conflicts"), a:rhs1, a:mode),
+        \ {'once': uniq_key})
+endfunction
+
+" Warn user if the input args represent a mapping that would conflict or be ambiguous with
+" an existing map (either global or buffer).
+" Return:
+"   0  no problem
+"   1  ambiguity
+"   2  conflict
+" Design Decision: Warn about only *buffer* conflicts/ambiguities, silently overwriting a
+" global map with the same lhs.
+" Rationale: Buffer maps are typically filetype-specific, and thus, should generally take
+" precedence over global maps.
+" TODO: Decide whether these checks belong in the plugin and remove this function if not.
+" For now, the call to this function has been commented out due to the confusion the
+" warnings caused during smart-paste beta testing. If it's kept at all, the call should
+" probably be guarded by an expert option (disabled by default), which allows the user to
+" enable and customize warnings. Such an option could be enabled while user is attempting
+" to hash out a good set of keybindings.
+function! s:check_for_map_conflicts(lhs, mode, plug)
+    let rhs = '<Plug>(' . a:plug . ')'
+    " Assumption: maparg() can handle distinct but equivalent forms of lhs (e.g.,
+    " <LocalLeader> vs \, <C-...> vs <c-...>, etc...)
+    " TODO: Could alternatively check only mappings created by this plugin, but
+    " that would entail canonicalizing lhs and storing in dict of some sort.
+    " Assumption: maparg() returns a buffer map before a global one, but in the absence of
+    " a buffer map, will return a global one.
+    " Caveat: The check against <plug>(...) ensures we don't warn about our own mapping if
+    " this function is called multiple times.
+    " Note: 'rhs' key won't exist if the rhs is a Lua callback (stored in 'callback').
+    let m = maparg(a:lhs, a:mode, 0, 1)
+    if !empty(m) && m.buffer && has_key(m, 'rhs') && m.rhs !=? '<nop>' && m.rhs !=? rhs
+        " Warn before overwriting existing map.
+        " TODO: Consider adding option for this.
+        call s:map_conflict_warn_once(a:lhs, m.rhs, rhs, a:mode)
+        return 2
+    endif
+    " Also check for map ambiguities.
+    let m = mapcheck(a:lhs, a:mode)
+    " Caveat: Don't warn if the ambiguous map appears to be this one, created on an
+    " earlier call to sexp_create_mappings().
+    " Note: Although it should be safe to compare full rhs (including <Plug>(...)
+    " wrapper), Vim docs don't explicitly state that "<Plug>" will appear untranslated in
+    " the rhs returned by mapcheck; thus, to be safe, just compare the plug name itself.
+    if !empty(m) && m !~ '(' . a:plug . ')'
+        " Pass optional 'ambiguous' flag to indicate not true conflict.
+        call s:map_conflict_warn_once(a:lhs, m, rhs, a:mode, 1)
+        return 1
+    endif
+    return 0
 endfunction
 
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
+" TODO: Consider moving more of this infrastructure into the plug autoload module.
 function! s:sexp_create_mappings()
-    for plug in ['sexp_outer_list',           'sexp_inner_list',
-               \ 'sexp_outer_top_list',       'sexp_inner_top_list',
-               \ 'sexp_outer_string',         'sexp_inner_string',
-               \ 'sexp_outer_element',        'sexp_inner_element',
-               \ 'sexp_outer_child_tail',     'sexp_outer_child_head',
-               \ 'sexp_inner_child_tail',     'sexp_inner_child_head']
-        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
-        if !empty(lhs)
-            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-            execute 'omap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-        endif
-    endfor
-
-    for plug in ['sexp_move_to_prev_bracket',      'sexp_move_to_next_bracket',
-               \ 'sexp_move_to_prev_element_head', 'sexp_move_to_next_element_head',
-               \ 'sexp_move_to_prev_element_tail', 'sexp_move_to_next_element_tail',
-               \ 'sexp_move_to_prev_top_element',  'sexp_move_to_next_top_element',
-               \ 'sexp_select_prev_element',       'sexp_select_next_element']
-        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
-        if !empty(lhs)
-            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-            execute 'omap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-        endif
-    endfor
-
-    for plug in ['sexp_insert_at_list_head', 'sexp_insert_at_list_tail',
-               \ 'sexp_convolute',           'sexp_splice_list',
-               \ 'sexp_indent_top',          'sexp_indent_and_clean_top',
-               \ 'sexp_align_comments',      'sexp_align_comments_top']
-        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
-        if !empty(lhs)
-            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-        endif
-    endfor
-
-    for plug in ['sexp_round_head_wrap_list',     'sexp_round_tail_wrap_list',
-               \ 'sexp_square_head_wrap_list',    'sexp_square_tail_wrap_list',
-               \ 'sexp_curly_head_wrap_list',     'sexp_curly_tail_wrap_list',
-               \ 'sexp_round_head_wrap_element',  'sexp_round_tail_wrap_element',
-               \ 'sexp_square_head_wrap_element', 'sexp_square_tail_wrap_element',
-               \ 'sexp_curly_head_wrap_element',  'sexp_curly_tail_wrap_element',
-               \ 'sexp_raise_list',               'sexp_raise_element',
-               \ 'sexp_swap_list_backward',       'sexp_swap_list_forward',
-               \ 'sexp_swap_element_backward',    'sexp_swap_element_forward',
-               \ 'sexp_emit_head_element',        'sexp_emit_tail_element',
-               \ 'sexp_capture_prev_element',     'sexp_capture_next_element',
-               \ 'sexp_flow_to_prev_close',       'sexp_flow_to_next_open',
-               \ 'sexp_flow_to_prev_open',        'sexp_flow_to_next_close',
-               \ 'sexp_flow_to_prev_leaf_head',   'sexp_flow_to_next_leaf_head',
-               \ 'sexp_flow_to_prev_leaf_tail',   'sexp_flow_to_next_leaf_tail',
-               \ 'sexp_clone_list',               'sexp_clone_element',
-               \ 'sexp_clone_list_sl',            'sexp_clone_element_sl',
-               \ 'sexp_clone_list_ml',            'sexp_clone_element_ml',
-               \ 'sexp_indent',                   'sexp_indent_and_clean',
-               \ 'sexp_align_comments']
-        let lhs = get(g:sexp_mappings, plug, s:sexp_mappings[plug])
-        if !empty(lhs)
-            execute 'nmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-            if plug =~ '^sexp_indent' && lhs == '=='
-                " Special Case: Just as == overrides Vim's default normal mode
-                " command, = must override Vim's default visual mode command.
-                " Rationale: Prevents ambiguity that leads to map delay.
-                let lhs = '='
+    if sexp#parse#in_buf()
+        " Skip map creation in the special parse buffer.
+        return
+    endif
+    " Note: {s,g}entry stand for {s,g}:sexp_mappings entry, respectively.
+    for [plug, sentry] in items(s:sexp_mappings)
+        " Get corresponding user override if it exists.
+        let gentry = get(g:sexp_mappings, plug, {})
+        " Parse entry into a flat dict of modechar => lhs: e.g.,
+        " {'nx': '\s', 'o': '\t'} => {'n': '\s', 'x': '\s', 'o': \t'}
+        let [sm, _] = sexp#plug#parse_map_entry(plug, sentry, '')
+        " Default map determines the valid keys.
+        let valid_modes_arr = sort(keys(sm))
+        let valid_modes_str = join(valid_modes_arr, '')
+        " Now parse any user-defined override.
+        " Note: We'll want gm to be empty in exception scenario.
+        let gm = {}
+        try
+            let [gm, invalid_modes_str] =
+                \ sexp#plug#parse_map_entry(plug, gentry, valid_modes_str)
+            if !empty(invalid_modes_str)
+                call sexp#warn#msg(printf("Ignoring unexpected modes in"
+                    \ . " user map override: `%s'", invalid_modes_str),
+                    \ {'once': [plug, gentry]})
             endif
-            execute 'xmap <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
-        endif
+        catch /sexp-error/
+            " Note: Leave gm empty to ensure default is used.
+            call sexp#warn#msg(printf("Ignoring invalid user map override: %s: %s",
+                    \ string(gentry),
+                    \ substitute(v:exception, '^sexp-error:\s*', '', '')),
+                    \ {'once': [plug, gentry]})
+        endtry
+        " Loop over all modes which are valid for this command.
+        " Design Decision: To simplify the merge, distinct modes within sm/gm are stored
+        " as keys, rather than list elements; an implication of this (probably good) is
+        " that user can't specify multiple LHS per mode.
+        for mode in valid_modes_arr
+            " Use mode-specific override if it exists, else default, which must exist.
+            let lhs = get(gm, mode, get(sm, mode))
+            if empty(lhs)
+                " No lhs mapping for this one, so skip it.
+                continue
+            endif
+            " TODO: Decide whether the plugin should warn, or simply override...
+            "call s:check_for_map_conflicts(lhs, mode, plug)
+            " Create the mapping.
+            if plug !~ '^sexp_'
+                " A builtin override, which needs to be "noremapped" to prevent triggering
+                " a first-level sexp map.
+                " Note: This special case is implemented to provide a convenient way for
+                " user to create aliases to overridden builtins.
+                execute mode . 'noremap <silent><buffer> ' . lhs . ' ' . plug
+            else
+                " A true plug mapping
+                execute mode . 'map <silent><buffer> ' . lhs . ' <Plug>(' . plug . ')'
+            endif
+        endfor
     endfor
 
+    " Insert-mode mappings
     if g:sexp_enable_insert_mode_mappings
         imap <silent><buffer> (    <Plug>(sexp_insert_opening_round)
         imap <silent><buffer> [    <Plug>(sexp_insert_opening_square)
@@ -486,9 +572,9 @@ endfunction
 """ Text Object Selections {{{1
 
 " Current list (compound FORM)
-Defplug  xnoremap sexp_outer_list sexp#docount(v:prevcount, 'sexp#select_current_list', 'v', 0, 1)
+Defplug  xnoremap sexp_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 0, 1)
 Defplug! onoremap sexp_outer_list sexp#docount(v:count, 'sexp#select_current_list', 'o', 0, 1)
-Defplug  xnoremap sexp_inner_list sexp#docount(v:prevcount, 'sexp#select_current_list', 'v', 1, 1)
+Defplug  xnoremap sexp_inner_list sexp#docount(v:count, 'sexp#select_current_list', 'v', 1, 1)
 Defplug! onoremap sexp_inner_list sexp#docount(v:count, 'sexp#select_current_list', 'o', 1, 1)
 
 " Current top-level list (compound FORM)
@@ -504,28 +590,28 @@ Defplug  xnoremap sexp_inner_string sexp#select_current_string('v', 1)
 Defplug! onoremap sexp_inner_string sexp#select_current_string('o', 1)
 
 " Current element
-Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, v:prevcount)
+Defplug  xnoremap sexp_outer_element sexp#select_current_element('v', 0, v:count)
 Defplug! onoremap sexp_outer_element sexp#select_current_element('o', 0, v:count)
-Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, v:prevcount)
+Defplug  xnoremap sexp_inner_element sexp#select_current_element('v', 1, v:count)
 Defplug! onoremap sexp_inner_element sexp#select_current_element('o', 1, v:count)
 
-Defplug  xnoremap sexp_outer_child_head sexp#select_child('v', v:prevcount, 1, 0)
-Defplug! onoremap sexp_outer_child_head sexp#select_child('o', v:count, 1, 0)
-Defplug  xnoremap sexp_inner_child_head sexp#select_child('v', v:prevcount, 1, 1)
-Defplug! onoremap sexp_inner_child_head sexp#select_child('o', v:count, 1, 1)
+Defplug  xnoremap sexp_outer_child_head sexp#select_child('v', v:count, 0, 0)
+Defplug! onoremap sexp_outer_child_head sexp#select_child('o', v:count, 0, 0)
+Defplug  xnoremap sexp_inner_child_head sexp#select_child('v', v:count, 0, 1)
+Defplug! onoremap sexp_inner_child_head sexp#select_child('o', v:count, 0, 1)
 
-Defplug  xnoremap sexp_outer_child_tail sexp#select_child('v', v:prevcount, 0, 0)
-Defplug! onoremap sexp_outer_child_tail sexp#select_child('o', v:count, 0, 0)
-Defplug  xnoremap sexp_inner_child_tail sexp#select_child('v', v:prevcount, 0, 1)
-Defplug! onoremap sexp_inner_child_tail sexp#select_child('o', v:count, 0, 1)
+Defplug  xnoremap sexp_outer_child_tail sexp#select_child('v', v:count, 1, 0)
+Defplug! onoremap sexp_outer_child_tail sexp#select_child('o', v:count, 1, 0)
+Defplug  xnoremap sexp_inner_child_tail sexp#select_child('v', v:count, 1, 1)
+Defplug! onoremap sexp_inner_child_tail sexp#select_child('o', v:count, 1, 1)
 """ Text Object Motions {{{1
 
 " Nearest bracket
 Defplug  nnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 0)
-DefplugN xnoremap sexp_move_to_prev_bracket sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 0)
+DefplugN xnoremap sexp_move_to_prev_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'v', 0)
 Defplug! onoremap sexp_move_to_prev_bracket sexp#move_to_nearest_bracket('o', 0)
 Defplug  nnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'n', 1)
-DefplugN xnoremap sexp_move_to_next_bracket sexp#docount(v:prevcount, 'sexp#move_to_nearest_bracket', 'v', 1)
+DefplugN xnoremap sexp_move_to_next_bracket sexp#docount(v:count, 'sexp#move_to_nearest_bracket', 'v', 1)
 Defplug! onoremap sexp_move_to_next_bracket sexp#move_to_nearest_bracket('o', 1)
 
 " Adjacent element head
@@ -533,10 +619,10 @@ Defplug! onoremap sexp_move_to_next_bracket sexp#move_to_nearest_bracket('o', 1)
 " Visual mappings must break out of visual mode in order to detect which end
 " the user is using to adjust the selection.
 DefplugN  nnoremap sexp_move_to_prev_element_head sexp#move_to_adjacent_element('n', v:count, 0, 0, 0)
-DefplugN  xnoremap sexp_move_to_prev_element_head sexp#move_to_adjacent_element('v', v:prevcount, 0, 0, 0)
+DefplugN  xnoremap sexp_move_to_prev_element_head sexp#move_to_adjacent_element('v', v:count, 0, 0, 0)
 DefplugN! onoremap sexp_move_to_prev_element_head sexp#move_to_adjacent_element('o', v:count, 0, 0, 0)
 DefplugN  nnoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('n', v:count, 1, 0, 0)
-DefplugN  xnoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('v', v:prevcount, 1, 0, 0)
+DefplugN  xnoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('v', v:count, 1, 0, 0)
 DefplugN! onoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element('o', v:count, 1, 0, 0)
 
 " Adjacent element tail
@@ -544,38 +630,38 @@ DefplugN! onoremap sexp_move_to_next_element_head sexp#move_to_adjacent_element(
 " Inclusive operator pending motions require a visual mode selection to
 " include the last character of a line.
 DefplugN  nnoremap sexp_move_to_prev_element_tail sexp#move_to_adjacent_element('n', v:count, 0, 1, 0)
-DefplugN  xnoremap sexp_move_to_prev_element_tail sexp#move_to_adjacent_element('v', v:prevcount, 0, 1, 0)
+DefplugN  xnoremap sexp_move_to_prev_element_tail sexp#move_to_adjacent_element('v', v:count, 0, 1, 0)
 DefplugN! onoremap sexp_move_to_prev_element_tail sexp#move_to_adjacent_element('o', v:count, 0, 1, 0)
 DefplugN  nnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('n', v:count, 1, 1, 0)
-DefplugN  xnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('v', v:prevcount, 1, 1, 0)
+DefplugN  xnoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('v', v:count, 1, 1, 0)
 DefplugN! onoremap sexp_move_to_next_element_tail sexp#move_to_adjacent_element('o', v:count, 1, 1, 0)
 
 " List flow commands
 Defplug   nnoremap sexp_flow_to_prev_close sexp#list_flow('n', v:count, 0, 1)
-DefplugN  xnoremap sexp_flow_to_prev_close sexp#list_flow('v', v:prevcount, 0, 1)
+DefplugN  xnoremap sexp_flow_to_prev_close sexp#list_flow('v', v:count, 0, 1)
 Defplug   nnoremap sexp_flow_to_prev_open sexp#list_flow('n', v:count, 0, 0)
-DefplugN  xnoremap sexp_flow_to_prev_open sexp#list_flow('v', v:prevcount, 0, 0)
+DefplugN  xnoremap sexp_flow_to_prev_open sexp#list_flow('v', v:count, 0, 0)
 Defplug   nnoremap sexp_flow_to_next_open sexp#list_flow('n', v:count, 1, 0)
-DefplugN  xnoremap sexp_flow_to_next_open sexp#list_flow('v', v:prevcount, 1, 0)
+DefplugN  xnoremap sexp_flow_to_next_open sexp#list_flow('v', v:count, 1, 0)
 Defplug   nnoremap sexp_flow_to_next_close sexp#list_flow('n', v:count, 1, 1)
-DefplugN  xnoremap sexp_flow_to_next_close sexp#list_flow('v', v:prevcount, 1, 1)
+DefplugN  xnoremap sexp_flow_to_next_close sexp#list_flow('v', v:count, 1, 1)
 
 " Leaf flow commands
 DefplugN  nnoremap sexp_flow_to_prev_leaf_head sexp#leaf_flow('n', v:count, 0, 0)
-DefplugN  xnoremap sexp_flow_to_prev_leaf_head sexp#leaf_flow('v', v:prevcount, 0, 0)
+DefplugN  xnoremap sexp_flow_to_prev_leaf_head sexp#leaf_flow('v', v:count, 0, 0)
 DefplugN  nnoremap sexp_flow_to_next_leaf_head sexp#leaf_flow('n', v:count, 1, 0)
-DefplugN  xnoremap sexp_flow_to_next_leaf_head sexp#leaf_flow('v', v:prevcount, 1, 0)
+DefplugN  xnoremap sexp_flow_to_next_leaf_head sexp#leaf_flow('v', v:count, 1, 0)
 DefplugN  nnoremap sexp_flow_to_prev_leaf_tail sexp#leaf_flow('n', v:count, 0, 1)
-DefplugN  xnoremap sexp_flow_to_prev_leaf_tail sexp#leaf_flow('v', v:prevcount, 0, 1)
+DefplugN  xnoremap sexp_flow_to_prev_leaf_tail sexp#leaf_flow('v', v:count, 0, 1)
 DefplugN  nnoremap sexp_flow_to_next_leaf_tail sexp#leaf_flow('n', v:count, 1, 1)
-DefplugN  xnoremap sexp_flow_to_next_leaf_tail sexp#leaf_flow('v', v:prevcount, 1, 1)
+DefplugN  xnoremap sexp_flow_to_next_leaf_tail sexp#leaf_flow('v', v:count, 1, 1)
 
 " Adjacent top element
 Defplug  nnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('n', v:count, 0, 0, 1)
-DefplugN xnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('v', v:prevcount, 0, 0, 1)
+DefplugN xnoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('v', v:count, 0, 0, 1)
 Defplug! onoremap sexp_move_to_prev_top_element sexp#move_to_adjacent_element('o', v:count, 0, 0, 1)
 Defplug  nnoremap sexp_move_to_next_top_element sexp#move_to_adjacent_element('n', v:count, 1, 0, 1)
-DefplugN xnoremap sexp_move_to_next_top_element sexp#move_to_adjacent_element('v', v:prevcount, 1, 0, 1)
+DefplugN xnoremap sexp_move_to_next_top_element sexp#move_to_adjacent_element('v', v:count, 1, 0, 1)
 Defplug! onoremap sexp_move_to_next_top_element sexp#move_to_adjacent_element('o', v:count, 1, 0, 1)
 
 " Adjacent element selection
@@ -583,10 +669,10 @@ Defplug! onoremap sexp_move_to_next_top_element sexp#move_to_adjacent_element('o
 " Unlike the other directional motions, calling this from normal mode places
 " us in visual mode, with the adjacent element as our selection.
 Defplug  nnoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'n', 0)
-Defplug  xnoremap sexp_select_prev_element sexp#docount(v:prevcount, 'sexp#select_adjacent_element', 'v', 0)
+Defplug  xnoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 0)
 Defplug! onoremap sexp_select_prev_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 0)
 Defplug  nnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'n', 1)
-Defplug  xnoremap sexp_select_next_element sexp#docount(v:prevcount, 'sexp#select_adjacent_element', 'v', 1)
+Defplug  xnoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'v', 1)
 Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_adjacent_element', 'o', 1)
 
 """ Commands {{{1
@@ -597,16 +683,16 @@ Defplug! onoremap sexp_select_next_element sexp#docount(v:count, 'sexp#select_ad
 " supported repeat for visual operations, so I guess I'll be consistent for
 " now.
 Defplug! nnoremap sexp_indent                sexp#indent('n', 0, v:count, -1)
-Defplug  xnoremap sexp_indent                sexp#indent('x', 0, v:prevcount, -1)
+Defplug  xnoremap sexp_indent                sexp#indent('x', 0, v:count, -1)
 Defplug! nnoremap sexp_indent_top            sexp#indent('n', 1, v:count, -1)
 Defplug! nnoremap sexp_indent_and_clean      sexp#indent('n', 0, v:count, 1)
-Defplug  xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:prevcount, 1)
+Defplug  xnoremap sexp_indent_and_clean      sexp#indent('x', 0, v:count, 1)
 Defplug! nnoremap sexp_indent_and_clean_top  sexp#indent('n', 1, v:count, 1)
 
 " TODO: Should these have dedicated default mappings, or just default to having it done by
 " indent and let user configure explicit maps if desired?
 Defplug! nnoremap sexp_align_comments        sexp#align_comments('n', 0, v:count)
-Defplug  xnoremap sexp_align_comments        sexp#align_comments('x', 0, v:prevcount)
+Defplug  xnoremap sexp_align_comments        sexp#align_comments('x', 0, v:count)
 Defplug! nnoremap sexp_align_comments_top    sexp#align_comments('n', 1, v:count)
 
 " Wrap list
@@ -643,9 +729,9 @@ Defplug! nnoremap sexp_insert_at_list_tail sexp#insert_at_list_terminal(1)
 
 " Raise list
 Defplug! nnoremap sexp_raise_list    sexp#docount_stateful(v:count, 'sexp#raise', 'n', 'sexp#select_current_list', 'n', 0, 0)
-Defplug  xnoremap sexp_raise_list    sexp#docount_stateful(v:prevcount, 'sexp#raise', 'v', '')
+Defplug  xnoremap sexp_raise_list    sexp#docount_stateful(v:count, 'sexp#raise', 'v', '')
 Defplug! nnoremap sexp_raise_element sexp#docount_stateful(v:count, 'sexp#raise', 'n', 'sexp#select_current_element', 'n', 1)
-Defplug  xnoremap sexp_raise_element sexp#docount_stateful(v:prevcount, 'sexp#raise', 'v', '')
+Defplug  xnoremap sexp_raise_element sexp#docount_stateful(v:count, 'sexp#raise', 'v', '')
 
 " Convolute
 " Note: convolute takes pains to preserve cursor position: hence, 'nojump'.
@@ -653,44 +739,64 @@ DefplugN! nnoremap sexp_convolute sexp#convolute(v:count, 'n')
 
 " Clone list
 DefplugN  nnoremap sexp_clone_list    sexp#clone('n', v:count, 1, 0, '')
-DefplugN  xnoremap sexp_clone_list    sexp#clone('v', v:prevcount, 1, 0, '')
+DefplugN  xnoremap sexp_clone_list    sexp#clone('v', v:count, 1, 0, '')
 DefplugN  nnoremap sexp_clone_list_sl sexp#clone('n', v:count, 1, 0, 's')
-DefplugN  xnoremap sexp_clone_list_sl sexp#clone('v', v:prevcount, 1, 0, 's')
+DefplugN  xnoremap sexp_clone_list_sl sexp#clone('v', v:count, 1, 0, 's')
 DefplugN  nnoremap sexp_clone_list_ml sexp#clone('n', v:count, 1, 0, 'm')
-DefplugN  xnoremap sexp_clone_list_ml sexp#clone('v', v:prevcount, 1, 0, 'm')
+DefplugN  xnoremap sexp_clone_list_ml sexp#clone('v', v:count, 1, 0, 'm')
 
 " Clone element
 DefplugN  nnoremap sexp_clone_element    sexp#clone('n', v:count, 0, 0, '')
-DefplugN  xnoremap sexp_clone_element    sexp#clone('v', v:prevcount, 0, 0, '')
+DefplugN  xnoremap sexp_clone_element    sexp#clone('v', v:count, 0, 0, '')
 DefplugN  nnoremap sexp_clone_element_sl sexp#clone('n', v:count, 0, 0, 's')
-DefplugN  xnoremap sexp_clone_element_sl sexp#clone('v', v:prevcount, 0, 0, 's')
+DefplugN  xnoremap sexp_clone_element_sl sexp#clone('v', v:count, 0, 0, 's')
 DefplugN  nnoremap sexp_clone_element_ml sexp#clone('n', v:count, 0, 0, 'm')
-DefplugN  xnoremap sexp_clone_element_ml sexp#clone('v', v:prevcount, 0, 0, 'm')
+DefplugN  xnoremap sexp_clone_element_ml sexp#clone('v', v:count, 0, 0, 'm')
 
 " Splice list
 Defplug! nnoremap sexp_splice_list sexp#splice_list(v:count)
 
 " Swap list
 Defplug! nnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 1)
-DefplugN xnoremap sexp_swap_list_backward sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 1)
+DefplugN xnoremap sexp_swap_list_backward sexp#docount(v:count, 'sexp#swap_element', 'v', 0, 1)
 Defplug! nnoremap sexp_swap_list_forward  sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 1)
-DefplugN xnoremap sexp_swap_list_forward  sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 1)
+DefplugN xnoremap sexp_swap_list_forward  sexp#docount(v:count, 'sexp#swap_element', 'v', 1, 1)
 
 " Swap element
 Defplug! nnoremap sexp_swap_element_backward sexp#docount(v:count, 'sexp#swap_element', 'n', 0, 0)
-DefplugN xnoremap sexp_swap_element_backward sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 0, 0)
+DefplugN xnoremap sexp_swap_element_backward sexp#docount(v:count, 'sexp#swap_element', 'v', 0, 0)
 Defplug! nnoremap sexp_swap_element_forward  sexp#docount(v:count, 'sexp#swap_element', 'n', 1, 0)
-DefplugN xnoremap sexp_swap_element_forward  sexp#docount(v:prevcount, 'sexp#swap_element', 'v', 1, 0)
+DefplugN xnoremap sexp_swap_element_forward  sexp#docount(v:count, 'sexp#swap_element', 'v', 1, 0)
 
 " Emit/capture element
 Defplug! nnoremap sexp_emit_head_element    sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 0, 0)
-Defplug  xnoremap sexp_emit_head_element    sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 0, 0)
+Defplug  xnoremap sexp_emit_head_element    sexp#docount_stateful(v:count, 'sexp#stackop', 'v', 0, 0)
 Defplug! nnoremap sexp_emit_tail_element    sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 1, 0)
-Defplug  xnoremap sexp_emit_tail_element    sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 1, 0)
+Defplug  xnoremap sexp_emit_tail_element    sexp#docount_stateful(v:count, 'sexp#stackop', 'v', 1, 0)
 Defplug! nnoremap sexp_capture_prev_element sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 0, 1)
-Defplug  xnoremap sexp_capture_prev_element sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 0, 1)
+Defplug  xnoremap sexp_capture_prev_element sexp#docount_stateful(v:count, 'sexp#stackop', 'v', 0, 1)
 Defplug! nnoremap sexp_capture_next_element sexp#docount_stateful(v:count, 'sexp#stackop', 'n', 1, 1)
-Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:prevcount, 'sexp#stackop', 'v', 1, 1)
+Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:count, 'sexp#stackop', 'v', 1, 1)
+
+" Put register before/after
+DefplugN! nnoremap sexp_put_before  sexp#put(v:count, 0)
+DefplugN! nnoremap sexp_put_after   sexp#put(v:count, 1)
+" Replace operator
+DefoperN! nnoremap sexp_replace_op   sexp#regput_op(1, 0)
+DefoperN! nnoremap sexp_replace_op_P sexp#regput_op(1, 1)
+" Replace selection with register
+DefplugN! xnoremap sexp_replace   sexp#replace('v', v:count, 0)
+DefplugN! xnoremap sexp_replace_P sexp#replace('v', v:count, 1)
+" Replace element under cursor with register
+" TODO: Decide whether to map this by default...
+DefplugN! nnoremap sexp_replace   sexp#replace('n', v:count, 0)
+DefplugN! nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
+" Put before/after operators
+DefoperN! nnoremap sexp_put_before_op sexp#regput_op(0, 1)
+DefoperN! nnoremap sexp_put_after_op  sexp#regput_op(0, 0)
+" Put register into list
+DefplugN! nnoremap sexp_put_at_head sexp#put_child(v:count, 0)
+DefplugN! nnoremap sexp_put_at_tail sexp#put_child(v:count, 1)
 
 """ Insert mode mappings {{{1
 
@@ -740,6 +846,7 @@ DefplugI sexp_insert_backspace sexp#backspace_insertion()
 
 delcommand DefplugN
 delcommand Defplug
-delcommand DEFPLUG
+delcommand DefoperN
+delcommand Defoper
 
 " vim:ts=4:sw=4:et:tw=90

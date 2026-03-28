@@ -41,7 +41,7 @@ function! s:configure_repeat(plug_name, opmode, count)
             \ . " operators do not support counts and Vim multiplies the motion/object"
             \ . " count by the operator count. It's best to provide counts only to"
             \ . " motion/object commands.", {'once': 'operator counts'})
-        call sexp#warn#dbg("Counts mismatch: operator: %d operand: %d", op_info.cnt, a:count)
+        "call sexp#warn#dbg("Counts mismatch: operator: %d operand: %d", op_info.cnt, a:count)
     endif
     " If sexp operator in progress, use cached v:register.
     " Design Decision: Always pass register, even if unnamed.
@@ -58,16 +58,16 @@ function! s:configure_repeat(plug_name, opmode, count)
         " Note: If the motion/object for a sexp operator is not a sexp motion/object, we
         " won't get here, so RepFn won't be set and repeat won't be configured. This is an
         " inherent limitation.
-        call sexp#warn#dbg(
-            \ "Setting op_ipg.RepFn for %s with seq=%s reg=%s", a:plug_name, seq, reg)
+        "call sexp#warn#dbg(
+        "    \ "Setting op_ipg.RepFn for %s with seq=%s reg=%s", a:plug_name, seq, reg)
         let op_info.RepFn = RepFn
         " Record the fact that the operator motion/object is provided by sexp, as this
         " has implications for range handling.
         let op_info.motion = a:plug_name
     else
         " No need to defer setting repeat.
-        call sexp#warn#dbg(
-            \ "non-deferred repeat#set on %s with seq=%s reg=%s", a:plug_name, seq, reg)
+        "call sexp#warn#dbg(
+        "    \ "non-deferred repeat#set on %s with seq=%s reg=%s", a:plug_name, seq, reg)
         call RepFn()
     endif
 endfunction
@@ -85,16 +85,15 @@ function! s:opfunc(mode, name, cnt, expr, ...)
         if op[0] == 'g'
             let &opfunc = Fn
             " Cache the operator for repeat mechanism.
-            call sexp#warn#dbg("Caching OP")
+            "call sexp#warn#dbg("Caching OP")
             call s:OP_cache(a:name, a:cnt)
         else
             " Cache operator and configure TextYankPost autocmd.
-            call sexp#warn#dbg("Calling OP_setup()")
+            "call sexp#warn#dbg("Calling OP_setup()")
             call s:OP_setup(Fn, a:name, a:cnt)
         endif
         return op
     endif
-    call sexp#warn#dbg("!!!getpos(\"']\")=%s", string(getpos("']")))
     call sexp#pre_op(a:mode, a:name)
     let op_info = s:OP_get()
     " The callback function that completes the operation was packaged as the first
@@ -106,12 +105,12 @@ function! s:opfunc(mode, name, cnt, expr, ...)
     let inclusive = op[0] == 'g' ? -1 : a:000[3]
     try
         " Note: The Fn callback contains everything it needs but type.
-        call sexp#warn#dbg("Invoking the sexp op callback... %s ']=%s '>=%s",
-            \ string(s:OP), string(getpos("']")), string(getpos("'>")))
+        "call sexp#warn#dbg("Invoking the sexp op callback... %s ']=%s '>=%s",
+        "    \ string(s:OP), string(getpos("']")), string(getpos("'>")))
         call Fn(type, inclusive, op_info.motion)
         let RepFn = get(s:OP, 'RepFn', v:null)
         if type(RepFn) == v:t_func
-            call sexp#warn#dbg("Invoking RepFn()")
+            "call sexp#warn#dbg("Invoking RepFn()")
             call RepFn()
         endif
     finally
@@ -160,7 +159,7 @@ function! sexp#plug#wrapper(flags, mapmode, name, rhs)
     if !a:flags.asexpr
         call sexp#pre_op(a:mapmode[0], a:name)
     endif
-    call sexp#warn#dbg("sexp#plug#wrapper: %s: OP=%s", a:name, string(get(s:, 'OP', {})))
+    "call sexp#warn#dbg("sexp#plug#wrapper: %s: OP=%s", a:name, string(get(s:, 'OP', {})))
     try
         " Caveat: Can't set marks in an <expr> mapping. If it's necessary, the opfunc
         " should save the old '` and restore it at completion of operation.
@@ -213,7 +212,7 @@ endfunction
 function! s:OP_cleanup()
     let &report = s:OP.report_save
     let s:OP = {}
-    call sexp#warn#dbg("OP_cleanup: mode=%s", mode(1))
+    "call sexp#warn#dbg("OP_cleanup: mode=%s", mode(1))
     au! SexpTextYankPost
 endfunction
 
@@ -251,7 +250,7 @@ function! s:OP_setup(Fn, name, cnt)
     " Temporarily set 'report' to something very large to prevent "yanked N lines" msgs.
     " Caveat: Must ensure original value (saved in s:OP) is restored by cleanup.
     set report=1000000
-    call sexp#warn#dbg("Configuring TYP callback OP=%s", string(s:OP))
+    "call sexp#warn#dbg("Configuring TYP callback OP=%s", string(s:OP))
     augroup SexpTextYankPost
         au! TextYankPost <buffer> ++once call <SID>OP_TextYankPost()
         " This one may fire before TYP, but if it fires when we're in normal mode, the

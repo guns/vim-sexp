@@ -202,7 +202,7 @@ Feel free to give these commands more convenient mappings if you find them usefu
 
 #### Replace operator (normal)
 * ["x] `<M-p>` replaces the S-expression(s) selected by the operator's motion/object with register `x`.
-* ["x] idem, but doesn't update the unnamed register
+* ["x] `<M-P>` idem, but doesn't update the unnamed register
 
 #### Put operator (normal)
 * ["x] `<p` puts register `x` before the element selected by the operator's motion/object

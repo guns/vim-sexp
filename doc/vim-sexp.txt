@@ -1191,13 +1191,22 @@ buffers, you have two options:
 >
     let g:sexp_mappings = {
         \ 'p':   '<LocalLeader>p',
-        \ 'P':   '<LocalLeader>p',
+        \ 'P':   '<LocalLeader>P',
         \ 'gp':  '<LocalLeader>gp',
         \ 'gP':  '<LocalLeader>gP',
     \ }
 <
+    Note: Since `p` and `P` are overridden in both normal and visual modes,
+    it's even possible to define mode-specific aliases: e.g.,
+>
+        \ 'p': {'n': '<LocalLeader>p', 'x': ',p'}
+        \ 'P': {'n': '<LocalLeader>P', 'x': ',P'}
+<
+    ...but the simpler form is sufficient if you want the same <lhs> in both
+    supported modes.
     Recommendation: Use this approach if you will mostly use "smart-paste",
     but may occasionally still require builtin paste.
+
 
                                                  *sexp-regput-operator-counts*
 Put/Replace Operator Counts  ~

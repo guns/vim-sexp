@@ -4398,6 +4398,10 @@ function! s:put_child__get_tgt(count, tail, ...)
         \ : s:regput__ctx_init('n', 'put_child', a:count, { 'tail': a:tail })
     try
         let li = s:list_info(a:tail, {'inner_only': g:sexp_regput_bracket_is_child}) 
+        " Make sure there's actually a list target.
+        if !li.brackets[0][1]
+            throw 'sexp-abort: No valid target for put into list'
+        endif
         if li.terminal_range[0][1]
             " Non-empty list
             let r = ret.range
@@ -4442,7 +4446,7 @@ function! s:put_child__get_tgt(count, tail, ...)
             endif
         elseif li.brackets[0][1]
             " Empty list
-            let [s, e] = li.brackets
+            let ret.range = li.brackets
             let ret.is_bra = [1, 1]
             let ret.is_ele = [0, 0]
         endif
@@ -6208,8 +6212,6 @@ endfunction
 "   terminal_range:  pos pair representing extents of terminal element requested by
 "                    a:tail, else nullpos_pair
 "   fallback:        1 iff caller wanted parent of the list represented by brackets[]
-" Exception Handling: Bare returns inside try/finally used to short-circuit remainder of
-" function, with cleanup and return value construction assured by the finally block.
 " TODO: Consider allowing caller to provide count to get non-terminal; let this be a
 " workhorse wrapped by child_range(), etc...
 " Rationale: Sometimes, you need both list info and also specific child; too much
@@ -6255,7 +6257,7 @@ function! s:list_info(tail, ...)
                 let ret.fallback = 1
             else
                 " No current or parent list.
-                return
+                return ret
             endif
         endif
         " Assumption: Arrival here guarantees we're on either open bracket or macro chars,

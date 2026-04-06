@@ -74,13 +74,14 @@ endfunction
 
 function! s:opfunc(mode, name, cnt, expr, ...)
     if !a:0
-        " Let the operator function provide a stateful callback to be invoked to complete
-        " the operation.
-        " Note: Since the arguments required by the callback function are embedded in the
-        " a:expr string, we can't really access them, but we don't really need to, so long
-        " as the initial invocation packages up the required args with function().
+        " Invoke the sexp operator function once now to obtain a stateful callback, which
+        " can be invoked to complete the operation once the motion/yank is complete.
+        " Note: Since the arguments required by the sexp operator function are embedded in
+        " the a:expr string, we can't access them directly, but we don't really need to
+        " because the returned partial binds the args it will need to complete the
+        " operation.
         let [op, SexpFn] = eval(a:expr)
-        " Note: Both 'opfunc' and TextYankPost handler will use this function as callback.
+        " Note: Either 'opfunc' or TextYankPost handler will use this Partial as callback.
         let Fn = function('s:opfunc', [a:mode, a:name, a:cnt, a:expr, op, SexpFn])
         if op[0] == 'g'
             let &opfunc = Fn
@@ -94,20 +95,20 @@ function! s:opfunc(mode, name, cnt, expr, ...)
         endif
         return op
     endif
+    " We get here only on the completing invocation.
     call sexp#pre_op(a:mode, a:name)
     let op_info = s:OP_get()
-    " The callback function that completes the operation was packaged as the first
-    " variadic arg in the rhs of the assignment to &opfunc above. The type flag is
-    " provided by Vim's opfunc engine.
-    " Caveat: Only when called by opfunc mechanism will we receive 3rd vararg
-    " ('type').
-    let [op, Fn, type] = a:000[0:2]
-    let inclusive = op[0] == 'g' ? -1 : a:000[3]
+    " Extract the partial needed to complete the operation from the variadic args.
+    " Note: The leading args were bound by function() above but the type flag is provided
+    " either by Vim's opfunc engine or by the TextYankPost handler.
+    let [op, SexpFn, type] = a:000[0:2]
+    let [inclusive, visual] = op[0] == 'g' ? [-1, -1] : [op_info.inclusive, op_info.visual]
     try
-        " Note: The Fn callback contains everything it needs but type.
+        " Several args were bound when the partial was created, and several more must be
+        " supplied now.
         "call sexp#warn#dbg("Invoking the sexp op callback... %s ']=%s '>=%s",
         "    \ string(s:OP), string(getpos("']")), string(getpos("'>")))
-        call Fn(type, inclusive, op_info.motion)
+        call SexpFn(type, inclusive, visual, op_info.motion)
         let RepFn = get(s:OP, 'RepFn', v:null)
         if type(RepFn) == v:t_func
             "call sexp#warn#dbg("Invoking RepFn()")
@@ -238,6 +239,7 @@ function! s:OP_setup(Fn, name, cnt)
         \ 'fn': a:Fn,
         \ 'range': [[0,0,0,0],[0,0,0,0]],
         \ 'inclusive': -1,
+        \ 'visual': -1,
         \ 'motion': '',
         \ 'report_save': &report,
     \}
@@ -293,7 +295,7 @@ function! s:OP_handle()
             "call sexp#warn#dbg("OP_handle: Handling op with cached TYP!")
             " Perform callback.
             let Fn = s:OP.fn
-            call Fn('char', s:OP.inclusive)
+            call Fn('char')
         endif
     finally
         " Kill the autocmd unconditionally to eliminate possibility of endless error loops.
@@ -312,7 +314,7 @@ endfunction
 " restore till SafeState fires.
 function! s:OP_TextYankPost()
     let s:OP.range = [getpos("'["), getpos("']")]
-    let s:OP.inclusive = v:event.inclusive
+    let [s:OP.inclusive, s:OP.visual] = [v:event.inclusive, v:event.visual]
     "call sexp#warn#dbg("OP_TextYankPost: Cached TYP %s", string(s:OP))
     "call sexp#warn#dbg("OP_TextYankPost: v:event: %s", string(v:event))
 endfunction

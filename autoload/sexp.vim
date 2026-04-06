@@ -4160,9 +4160,10 @@ function! s:fix_operator_range_from_opfunc(rng, inclusive)
     return ret
 endfunction
 
-" Assuming the input range represents '[ and '] after a yank, and the inclusive flag was
-" extracted from the TextYankPost autocmd event, return an adjusted range representing the
-" actual yank range, which may include one additional character: e.g., after a yw, the
+" Assuming the input range represents '[ and '] after a yank, and the inclusive/visual
+" flags were extracted from the TextYankPost autocmd v:event, return an adjusted range
+" representing the actual yank range, which may include one additional character: e.g.,
+" after a yvw, the
 " input range would not include the first char of the subsequent word but the returned
 " range would.
 " Motivation: Regput "telescopic" operators need to know what was actually searched for
@@ -4170,12 +4171,12 @@ endfunction
 " on the inclusivity of the motion that triggered the opfunc. Thus, we use a yank in lieu
 " of g@, explicitly invoking what would have been the 'opfunc' in the TextYankPost
 " handler where we have access to v:event.inclusive, which is passed to this function.
-function! s:fix_operator_range(rng, inclusive)
+function! s:fix_operator_range(rng, inclusive, visual)
     " Note: Deepcopy not really necessary, but doesn't hurt.
     let ret = deepcopy(a:rng)
-    if !a:inclusive
+    if !a:visual && a:inclusive
         " Offset final position in range.
-        let ret[1] = sexp#offset_char(ret[1], -1)
+        let ret[1] = sexp#offset_char(ret[1], 0)
     endif
     return ret
 endfunction
@@ -4189,7 +4190,7 @@ endfunction
 "   put_mode
 "   orange
 " See s:regput_op__handle() for parameter descriptions.
-function! s:regput_op__process_motion(ctx, inclusive, motion)
+function! s:regput_op__process_motion(ctx, inclusive, visual, motion)
     " Initial curpos used to determine whether motion may have been used.
     let [curpos, rng] = [a:ctx.curpos, a:ctx.orange]
     " Sexp objects inhibit telescopic mode.
@@ -4231,7 +4232,7 @@ function! s:regput_op__process_motion(ctx, inclusive, motion)
             " Not telescopic mode, but because TextYankPost mechanism was used, we need to
             " adjust range to account for motion exclusivity: i.e., adjust range to make
             " it appear that g@ was used.
-            let a:ctx.orange = s:fix_operator_range(a:ctx.orange, a:inclusive)
+            let a:ctx.orange = s:fix_operator_range(a:ctx.orange, a:inclusive, a:visual)
         endif
         " Not telescopic mode, and any adjustments required for operator range have been
         " performed.
@@ -4279,12 +4280,13 @@ endfunction
 " account.
 " -- Args --
 " ctx:        context dict (see get_context() header for format)
-" inclusive:  indicates inclusivity of motion/object (-1 if unknown)
+" inclusive:  flag from v:event indicating inclusivity of motion/object (-1 if unknown)
 "             Note: If opfunc mechanism (rather than TextYankPost autocmd) was used,
 "             inclusive flag is set to -1 to reflect fact that Vim has normalized the
 "             operator range without telling us whether the motion was inclusive.
+" visual:     flag from v:event indicating selection is visual (not from motion)
 " motion:     name of sexp plug command if motion/object provided by sexp, else ""
-function! s:regput_op__handle(ctx, inclusive, motion)
+function! s:regput_op__handle(ctx, inclusive, visual, motion)
     " Cached 'orange' reflects '[ '] at the time operator was invoked; update to reflect
     " operand.
     let a:ctx.orange = [getpos("'["), getpos("']")]
@@ -4292,7 +4294,7 @@ function! s:regput_op__handle(ctx, inclusive, motion)
     " behavior, we delegate to non-operator-specific functions that handle both operator
     " and non-operator commands the same way. First, however, we must ensure the function
     " will see the correct cursor position and/or range.
-    call s:regput_op__process_motion(a:ctx, a:inclusive, a:motion)
+    call s:regput_op__process_motion(a:ctx, a:inclusive, a:visual, a:motion)
     if a:ctx.put_mode =~ 'replace'
         " Replace operator
         call sexp#replace('n', 1, a:ctx.P, a:ctx)
@@ -4301,8 +4303,29 @@ function! s:regput_op__handle(ctx, inclusive, motion)
     endif
 endfunction
 
-" Note: This function used for both replace_op and put_op and "P" has meaning (albeit
+" Note: This function is used for both replace_op and put_op and "P" has meaning (albeit
 " different meaning) for both.
+" Important Note: Originally, telescopic searches used a bare `y` operator, but this
+" resulted in an ambiguity involving the two special cases discussed in the section on
+" exclusive and inclusive motions (:help inclusive). One way to eliminate the ambiguity is
+" to use `yv` to force characterwise motion, thereby inhibiting the special case logic
+" capable of making the motion linewise. Unfortunately, use of `v` has the side-effect of
+" toggling inclusivity. When telescopic motion is ultimately selected, inclusivity is
+" irrelevant because the range is all we care about and it's always inclusive. However, if
+" we end up converting the yank to a traditional (non-telescopic) motion, we need to know
+" whether the *original* motion was inclusive so that we can ensure the range provided to
+" the vim-sexp operator is consistent with the user's intent. You might assume we could
+" simply take the complement of v:event.inclusive to determine the inclusivity of the
+" motion/object; unfortunately, this won't work because operator-pending commands that use
+" visual mode to delineate the region cause v:event.inclusive to be set, even when an
+" inclusivity-toggling operator such as `yv` is used. The following two examples
+" illustrate the ambiguity:
+" 1. <operator> iw => v:event.inclusive == false
+" 2. <operator> ie => v:event.inclusive == true
+" To resolve the ambiguity, we must also consider v:event.visual, which will be set in the
+" second case but not the first.
+" Rationale: A visual selection in the operator-pending command effectively overrides the
+" effect of `yv` on inclusivity.
 function! sexp#regput_op(is_replace, P, ...)
     " Sexp operators don't use counts.
     " TODO: Currently, warning is given by plug wrapper, but consider creating a
@@ -4311,7 +4334,9 @@ function! sexp#regput_op(is_replace, P, ...)
     " TODO: Consider whether the aforementioned warning would be best coming before or
     " after the motion/object.
     if !a:0
-        " Initial call (invoked explicitly, not via Vim's opfunc engine)
+        " This initial call is made by wrapper function helper s:opfunc, not Vim's opfunc
+        " engine. When the completing call is made by either vim's 'opfunc' or the
+        " TextYankPost mechanism, this if block will be skipped.
         " Note: Set tail to -1 for inherently non-directional replace op; otherwise, determine
         " its value from the P flag (P=before p=after - note the inversion).
         " TODO: Consider an init function that creates these for everyone, with default
@@ -4323,25 +4348,25 @@ function! sexp#regput_op(is_replace, P, ...)
         " Important Note: Ideally, we'd use the black hole register for this, but we need
         " TextYankPost to fire, and it doesn't for the black hole register; thus, use z
         " register and ensure the handlers save/restore both it and the unnamed register.
+        " Note: See note in header for rationale behind use of yv.
         " TODO: Consider just returning boolean flag indicating the mode to use and
         " letting opfunc handle the details?
-        let op = v:version >= 801 && g:sexp_regput_tele_motion ? '"zy' : 'g@'
+        let op = v:version >= 801 && g:sexp_regput_tele_motion ? '"zyv' : 'g@'
         " The call via 'opfunc' or TextYankPost will get the original args + the context
         " dict and the operator itself.
         return [op, function('sexp#regput_op', [a:is_replace, a:P, ctx, op])]
     endif
     try
         " We've been invoked by our opfunc wrapper, called either as true 'opfunc' or in
-        " response to a TextYankPost: in either case, we're not invoked directly by
-        " sexp#plug_runtime()).
-        let [ctx, op, type, inclusive, motion] = a:000
+        " response to a TextYankPost.
+        let [ctx, op, type, inclusive, visual, motion] = a:000
         if type != 'char'
             call sexp#warn#msg("sexp#replace_op:"
                 \ " Invalid use of mode '" . type . "' with replace operator."
                 \ " Only charwise mode supported")
             return
         endif
-        call s:regput_op__handle(ctx, inclusive, motion)
+        call s:regput_op__handle(ctx, inclusive, visual, motion)
     catch /sexp-\%(warning\|abort\):/
         call sexp#warn#msg(v:exception)
     catch

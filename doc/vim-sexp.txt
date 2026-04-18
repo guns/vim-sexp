@@ -2049,8 +2049,10 @@ Supported flags:  ~
 Note: For visual replace, this option applies if either of the selection
 endpoints lies within the comment/string.
 
-An empty string disables target-based fallback. This option affects only the
-contextual commands; the explicit `_smart` commands always bypass fallback.
+An empty string disables target-based fallback to builtin put, but does not
+disable the special smart-paste behavior at comment/string boundaries. This
+option affects only the contextual commands; the explicit `_smart` commands
+always bypass fallback.
 
 Comment and String Edge Cases:  ~
 Just as `P` and `p` behave specially on list open and close, respectively, special

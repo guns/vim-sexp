@@ -140,12 +140,10 @@ function! s:regput_should_use_builtin(plug_name, mode)
         \ 'sexp_regput_fallback_source', g:sexp_regput_fallback_source)
     let target_flags = s:regput__get_flag_opt(
         \ 'sexp_regput_fallback_target', g:sexp_regput_fallback_target)
-    let target_decision = empty(target_flags)
-        \ ? 0
-        \ : s:regput_target_decision(a:plug_name, a:mode, target_flags)
-    if target_decision < 0
+    if s:regput_force_smart_target(a:plug_name, a:mode)
         return 0
-    elseif target_decision > 0
+    endif
+    if !empty(target_flags) && s:regput_target_prefers_builtin(a:plug_name, a:mode, target_flags)
         return 1
     endif
     let reg = v:register
@@ -207,25 +205,14 @@ function! s:regput_puts_forward(plug_name)
     return a:plug_name !~# '_P\>' && a:plug_name !~# '_before\>'
 endfunction
 
-" Evaluate target-based fallback at a single target position.
-" Return:
-"   -1  force smart paste
-"    0  no target-based decision
-"    1  force builtin paste
-" Rationale: Outward puts from comment/string boundaries are treated as structural
-" smart-paste cases and therefore override source-based fallback.
-function! s:regput_point_target_decision(plug_name, mode, pos, flags)
+" Return 1 iff the target position is a comment/string boundary from which the command
+" puts outward, in which case smart paste is forced regardless of fallback flags.
+function! s:regput_point_forces_smart_target(plug_name, mode, pos)
     if !a:pos[1]
         return 0
     endif
 
     if a:mode ==# 'x'
-        if stridx(a:flags, 'c') >= 0 && sexp#is_comment(a:pos[1], a:pos[2])
-            return 1
-        endif
-        if stridx(a:flags, 's') >= 0 && s:is_rgn_type('string', a:pos[1], a:pos[2])
-            return 1
-        endif
         return 0
     endif
 
@@ -234,24 +221,18 @@ function! s:regput_point_target_decision(plug_name, mode, pos, flags)
     try
         call s:setcursor(a:pos)
 
-        if stridx(a:flags, 'c') >= 0 && sexp#is_comment(a:pos[1], a:pos[2])
+        if sexp#is_comment(a:pos[1], a:pos[2])
             let head = sexp#current_element_terminal(0)
-            if sexp#compare_pos(a:pos, head) == 0 && !forward
-                return -1
-            else
-                return 1
-            endif
+            return sexp#compare_pos(a:pos, head) == 0 && !forward
         endif
 
-        if stridx(a:flags, 's') >= 0 && s:is_rgn_type('string', a:pos[1], a:pos[2])
+        if s:is_rgn_type('string', a:pos[1], a:pos[2])
             let start = sexp#current_element_terminal(0)
             let end = sexp#current_element_terminal(1)
             if sexp#compare_pos(a:pos, start) == 0
-                return forward ? 1 : -1
+                return !forward
             elseif sexp#compare_pos(a:pos, end) == 0
-                return !forward ? 1 : -1
-            else
-                return 1
+                return forward
             endif
         endif
     finally
@@ -261,20 +242,41 @@ function! s:regput_point_target_decision(plug_name, mode, pos, flags)
     return 0
 endfunction
 
-" Evaluate target-based fallback across all positions relevant to the current command.
-" For visual replace, both selection endpoints are considered; otherwise, the cursor
-" position alone is used.
-" Return:
-"   -1  force smart paste
-"    0  no target-based decision
-"    1  force builtin paste
-function! s:regput_target_decision(plug_name, mode, flags)
+" Return 1 iff any target position relevant to the current command is a hard smart-paste
+" boundary case. For visual replace, no such cases are recognized.
+function! s:regput_force_smart_target(plug_name, mode)
     let points = a:mode ==# 'x' ? [getpos("'<"), getpos("'>")] : [getpos('.')]
     for pos in points
-        let decision = s:regput_point_target_decision(a:plug_name, a:mode, pos, a:flags)
-        if decision < 0
-            return -1
-        elseif decision > 0
+        if s:regput_point_forces_smart_target(a:plug_name, a:mode, pos)
+            return 1
+        endif
+    endfor
+    return 0
+endfunction
+
+" Return 1 iff the target fallback flags prefer builtin paste at any target position
+" relevant to the current command. Unlike the hard smart-boundary rule, this behavior is
+" enabled only when the corresponding flags are present in g:sexp_regput_fallback_target.
+function! s:regput_target_prefers_builtin(plug_name, mode, flags)
+    let points = a:mode ==# 'x' ? [getpos("'<"), getpos("'>")] : [getpos('.')]
+    for pos in points
+        if !pos[1]
+            continue
+        endif
+        if a:mode ==# 'x'
+            if stridx(a:flags, 'c') >= 0 && sexp#is_comment(pos[1], pos[2])
+                return 1
+            endif
+            if stridx(a:flags, 's') >= 0 && s:is_rgn_type('string', pos[1], pos[2])
+                return 1
+            endif
+            continue
+        endif
+
+        if stridx(a:flags, 'c') >= 0 && sexp#is_comment(pos[1], pos[2])
+            return 1
+        endif
+        if stridx(a:flags, 's') >= 0 && s:is_rgn_type('string', pos[1], pos[2])
             return 1
         endif
     endfor

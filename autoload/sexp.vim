@@ -86,6 +86,239 @@ let s:aligncom_weights = {
     \ 'density':   {'default': 25, 'adjust': 0.20},
 \ }
 
+" Cache for yank/delete metadata: keyed by register name.
+" Each entry contains:
+"   is_complete_sexp_in_buffer: 1 if yanked/deleted text is a complete sexp, 0 otherwise
+"   from_sexp_object:           1 if yank/delete came from sexp object command, 0 otherwise
+let s:yank_metadata = {}
+let s:regput_internal_typ_depth = 0
+
+" Temporary hint created when sexp object command executes.
+" Used by TextYankPost handler to validate whether subsequent yank/delete came from
+" that sexp object. Structure:
+"   time:       reltime() value when hint was created
+"   start:      position [bufnr, lnum, col, off] of start of selection
+"   end:        position [bufnr, lnum, col, off] of end of selection
+"   text:       the selected text as a string
+"   changedtick: b:changedtick when hint was created (used to validate yank case)
+" Empty dict {} means no active hint.
+let s:sexp_object_yank_hint = {}
+
+" Normalize regcontents to a string, joining list-form register contents with NL.
+function! s:regcontents_to_text(regcontents)
+    return type(a:regcontents) == type([]) ? join(a:regcontents, "\n") : a:regcontents
+endfunction
+
+" The following pair of functions suppresses the TextYankPost handler used to update
+" yank_metadata when a vim-sexp function is in progress.
+" Rationale: Only user initiated yanks/deletes (not those initiated by internal plugin
+" logic) should cause metadata update. Failure to apply this constraint can result in the
+" spurious clearing of metadata flags like 'is_complete_sexp_in_buffer'.
+function! s:regput__begin_internal_typ()
+    let s:regput_internal_typ_depth += 1
+endfunction
+
+function! s:regput__end_internal_typ()
+    let s:regput_internal_typ_depth = max([0, s:regput_internal_typ_depth - 1])
+endfunction
+
+" Determine whether a regput command should fall back to builtin paste.
+" Args:
+"   plug_name: the sexp plug command name (e.g., 'sexp_put_after')
+"   mode: the mode the command is being invoked from
+" Return:
+"   1 if should use builtin, 0 if should use smart paste
+function! s:regput_should_use_builtin(plug_name, mode)
+    " Don't use builtin if this isn't even a command/mode with an associated builtin.
+    let regput_builtin_commands = sexp#data#get_regput_builtin_commands()
+    if !has_key(regput_builtin_commands, a:plug_name)
+        \ || stridx(regput_builtin_commands[a:plug_name].modes, a:mode) < 0
+        return 0
+    endif
+
+    let source_flags = s:regput__get_flag_opt(
+        \ 'sexp_regput_fallback_source', g:sexp_regput_fallback_source)
+    let target_flags = s:regput__get_flag_opt(
+        \ 'sexp_regput_fallback_target', g:sexp_regput_fallback_target)
+    let target_decision = empty(target_flags)
+        \ ? 0
+        \ : s:regput_target_decision(a:plug_name, a:mode, target_flags)
+    if target_decision < 0
+        return 0
+    elseif target_decision > 0
+        return 1
+    endif
+    let reg = v:register
+    let metadata = get(s:yank_metadata, reg, {})
+
+    if !empty(source_flags)
+        " Check register metadata against flags
+        if stridx(source_flags, 's') >= 0
+            " Single-character register (handle multi-byte correctly)
+            let reg_lines = getreg(reg, 1, 1)
+            if len(reg_lines) == 1 && strcharlen(reg_lines[0]) == 1
+                return 1  " Single-char register, use builtin
+            endif
+        endif
+
+        if stridx(source_flags, 'l') >= 0
+            " Linewise register
+            let reg_type = getregtype(reg)
+            if reg_type[0] ==# 'V'
+                return 1  " Linewise register, use builtin
+            endif
+        endif
+
+        if stridx(source_flags, 'c') >= 0
+            " Non-complete-sexp-in-buffer register (incomplete sexp)
+            if !get(metadata, 'is_complete_sexp_in_buffer', 0)
+                return 1  " Incomplete sexp, use builtin
+            endif
+        endif
+
+        if stridx(source_flags, 'o') >= 0
+            " Register captured via sexp object - use smart paste (NOT builtin)
+            if !get(metadata, 'from_sexp_object', 0)
+                return 1  " Not from sexp object, use builtin
+            endif
+        endif
+    endif
+
+    return 0  " Doesn't match any flags, use smart paste
+endfunction
+
+" Validate a flag-string regput option, warning once and returning empty string if the
+" configured value is not a string.
+function! s:regput__get_flag_opt(optname, value)
+    if type(a:value) == type('')
+        return a:value
+    endif
+    call sexp#warn#msg(
+        \ printf("sexp-warning: Ignoring invalid option setting: %s=%s."
+            \ . " Expected string value.",
+            \ a:optname, string(a:value)),
+        \ {'once': a:optname})
+    return ''
+endfunction
+
+" Return 1 iff the contextual regput command named by plug_name puts text "forward"
+" relative to the cursor/target: i.e., like `p` rather than `P`.
+function! s:regput_puts_forward(plug_name)
+    return a:plug_name !~# '_P\>' && a:plug_name !~# '_before\>'
+endfunction
+
+" Evaluate target-based fallback at a single target position.
+" Return:
+"   -1  force smart paste
+"    0  no target-based decision
+"    1  force builtin paste
+" Rationale: Outward puts from comment/string boundaries are treated as structural
+" smart-paste cases and therefore override source-based fallback.
+function! s:regput_point_target_decision(plug_name, mode, pos, flags)
+    if !a:pos[1]
+        return 0
+    endif
+
+    if a:mode ==# 'x'
+        if stridx(a:flags, 'c') >= 0 && sexp#is_comment(a:pos[1], a:pos[2])
+            return 1
+        endif
+        if stridx(a:flags, 's') >= 0 && s:is_rgn_type('string', a:pos[1], a:pos[2])
+            return 1
+        endif
+        return 0
+    endif
+
+    let cursor = getpos('.')
+    let forward = s:regput_puts_forward(a:plug_name)
+    try
+        call s:setcursor(a:pos)
+
+        if stridx(a:flags, 'c') >= 0 && sexp#is_comment(a:pos[1], a:pos[2])
+            let head = sexp#current_element_terminal(0)
+            if sexp#compare_pos(a:pos, head) == 0 && !forward
+                return -1
+            else
+                return 1
+            endif
+        endif
+
+        if stridx(a:flags, 's') >= 0 && s:is_rgn_type('string', a:pos[1], a:pos[2])
+            let start = sexp#current_element_terminal(0)
+            let end = sexp#current_element_terminal(1)
+            if sexp#compare_pos(a:pos, start) == 0
+                return forward ? 1 : -1
+            elseif sexp#compare_pos(a:pos, end) == 0
+                return !forward ? 1 : -1
+            else
+                return 1
+            endif
+        endif
+    finally
+        call s:setcursor(cursor)
+    endtry
+
+    return 0
+endfunction
+
+" Evaluate target-based fallback across all positions relevant to the current command.
+" For visual replace, both selection endpoints are considered; otherwise, the cursor
+" position alone is used.
+" Return:
+"   -1  force smart paste
+"    0  no target-based decision
+"    1  force builtin paste
+function! s:regput_target_decision(plug_name, mode, flags)
+    let points = a:mode ==# 'x' ? [getpos("'<"), getpos("'>")] : [getpos('.')]
+    for pos in points
+        let decision = s:regput_point_target_decision(a:plug_name, a:mode, pos, a:flags)
+        if decision < 0
+            return -1
+        elseif decision > 0
+            return 1
+        endif
+    endfor
+    return 0
+endfunction
+
+" Get the fallback builtin command for a regput command if appropriate.
+" Returns the builtin command to execute, or empty string if should use smart paste.
+function! sexp#regput_get_fallback_cmd(plug_name, mode)
+    if s:regput_should_use_builtin(a:plug_name, a:mode)
+        " Look up builtin from sexp_mappings
+        let sexp_mappings = sexp#data#get_sexp_mappings()
+        let builtin_map = get(sexp_mappings, a:plug_name, {})
+        let builtin_cmd = get(builtin_map, a:mode, '')
+        if empty(builtin_cmd)
+            call sexp#warn#msg(printf(
+                \ "Warning: Could not find builtin keybinding for %s in mode %s",
+                \ a:plug_name, a:mode))
+            return ''
+        endif
+        return builtin_cmd
+    endif
+    return ''
+endfunction
+
+" Execute the builtin put command corresponding to the contextual regput command if the
+" current fallback logic selects builtin behavior. Return 1 iff builtin was executed.
+function! sexp#regput_maybe_execute_builtin(plug_name, mode, count, regname)
+    let cmd = sexp#regput_get_fallback_cmd(a:plug_name, a:mode)
+    if empty(cmd)
+        return 0
+    endif
+    " Make sure builtin uses any provided register/count.
+    let prefix = (a:regname ==# '' || a:regname ==# '"' ? '' : ('"' . a:regname))
+        \ . (a:count > 0 ? a:count : '')
+    if a:mode ==# 'x'
+        " TODO: Verify that we can always trust range here.
+        execute 'normal! gv' . prefix . cmd
+    else
+        execute 'normal! ' . prefix . cmd
+    endif
+    return 1
+endfunction
+
 let s:nullpos = [0,0,0,0]
 let s:nullpos_pair = [s:nullpos, s:nullpos]
 let s:BOF = [0, 1, -1, 0]
@@ -128,6 +361,7 @@ function! s:make_cache(mode, name)
 endfunction
 
 function! sexp#pre_op(mode, name)
+    call s:regput__begin_internal_typ()
     let s:sexp_ve_save = &ve
     set ve=onemore
     " Create the msg queue used by sexp#warn#msg().
@@ -138,16 +372,20 @@ function! sexp#pre_op(mode, name)
 endfunction
 
 function! sexp#post_op(mode, name)
-    " Restore original 'virtualedit' setting.
-    " Assumption: This is called from finally block.
-    let &ve = s:sexp_ve_save
-    " Perform once-per-session new feature notification iff appropriate.
-    call sexp#feat#notify_maybe(a:mode, a:name)
-    " This is done last to ensure no redraws can be queue after msgs are echoed.
-    call sexp#warn#echo_queued_msgs()
-    " Caveat: Make sure the queue is used only when we're inside {pre,post}_op() calls
-    " (i.e., not within insert-mode commands).
-    call sexp#warn#destroy_msg_q()
+    try
+        " Restore original 'virtualedit' setting.
+        " Assumption: This is called from finally block.
+        let &ve = s:sexp_ve_save
+        " Perform once-per-session new feature notification iff appropriate.
+        call sexp#feat#notify_maybe(a:mode, a:name)
+        " This is done last to ensure no redraws can be queue after msgs are echoed.
+        call sexp#warn#echo_queued_msgs()
+        " Caveat: Make sure the queue is used only when we're inside {pre,post}_op() calls
+        " (i.e., not within insert-mode commands).
+        call sexp#warn#destroy_msg_q()
+    finally
+        call s:regput__end_internal_typ()
+    endtry
 endfunction
 
 " Return 1 iff we're in one of the visual modes.
@@ -4489,6 +4727,273 @@ function! sexp#put_child(count, tail, ...)
     call s:regput__impl(tgt, 1)
 endfunction
 
+" Analyze a string to determine if it represents complete S-expression(s).
+" Args:
+"   text: the string to analyze
+" Returns:
+"   dict with keys:
+"     is_complete: 1 if text parses as one or more complete sexps, 0 otherwise
+"     error_msg:   error message if parsing failed, empty string otherwise
+function! s:regput__analyze_sexp_string(text)
+    try
+        " Use the normal analyze_codestr wrapper so missing Treesitter string parsers
+        " still fall back to the hidden-buffer parse path.
+        let result = s:analyze_codestr(a:text, &ft)
+        
+        " Check if parse was successful and represents complete sexp(s).
+        " Complete means:
+        " - No parsing errors
+        " - At least one top-level element (elem_count >= 1)
+        " - No MISSING nodes or unbalanced brackets
+        if get(result, 'elem_count', 0) >= 1 && !get(result, 'err_loc', s:nullpos)[1]
+            return {'is_complete': 1, 'error_msg': ''}
+        else
+            let err_hint = get(result, 'err_hint', 'unknown parse error')
+            return {'is_complete': 0, 'error_msg': err_hint}
+        endif
+    catch
+        " If sexp#invoke() throws, treat as parse failure.
+        return {'is_complete': 0, 'error_msg': v:exception}
+    endtry
+endfunction
+
+" Record that a sexp object command has selected a range.
+" Called by sexp object commands (e.g., sexp_inner_element) to create a hint
+" for the TextYankPost handler.
+" Args:
+"   start: position [bufnr, lnum, col, off]
+"   end:   position [bufnr, lnum, col, off]
+function! sexp#regput__set_object_yank_hint(start, end)
+    let s:sexp_object_yank_hint = {
+        \ 'bufnr': bufnr('%'),
+        \ 'start': a:start,
+        \ 'end': a:end,
+        \ 'text': s:extract_text_from_range(a:start, a:end),
+        \ 'changedtick': b:changedtick,
+    \ }
+endfunction
+
+" Check if the sexp object hint is still valid and matches the current yank/delete.
+" Validation relies on content matching plus range matching.
+" Args:
+"   is_delete: 1 if this is a delete event, 0 if yank
+"   regcontents: v:event.regcontents (the yanked/deleted text)
+"   start_pos: position [bufnr, lnum, col, off] from '['
+"   end_pos:   position [bufnr, lnum, col, off] from ']'
+" Returns: 1 if hint is valid and matches, 0 otherwise
+function! s:regput__match_object_hint(is_delete, regcontents, start_pos, end_pos)
+    if empty(s:sexp_object_yank_hint)
+        return 0  " No active hint
+    endif
+
+    let hint = s:sexp_object_yank_hint
+    let regtext = s:regcontents_to_text(a:regcontents)
+
+    if bufnr('%') != get(hint, 'bufnr', -1)
+        return 0
+    endif
+
+    " Check content match
+    if regtext !=# hint.text
+        return 0  " Content mismatch
+    endif
+
+    " Verified: For a delete, '[ '] range in TextYankPost is pre-delete range.
+    if a:start_pos[1:2] !=# hint.start[1:2] || a:end_pos[1:2] !=# hint.end[1:2]
+        return 0  " Range mismatch
+    endif
+
+    if !a:is_delete && b:changedtick != hint.changedtick
+        return 0  " Buffer was modified before yank completed
+    endif
+
+    return 1
+endfunction
+
+" Clear the sexp object yank hint (call after use or timeout).
+function! s:regput__clear_object_hint()
+    let s:sexp_object_yank_hint = {}
+endfunction
+
+" Extract text from a range in the current buffer.
+" Args:
+"   start: position [bufnr, lnum, col, off]
+"   end:   position [bufnr, lnum, col, off]
+" Returns: string containing text from start to end (inclusive)
+function! s:extract_text_from_range(start, end)
+    let [start_lnum, start_col] = [a:start[1], a:start[2]]
+    let [end_lnum, end_col] = [a:end[1], a:end[2]]
+    
+    " Handle single-line case
+    if start_lnum == end_lnum
+        let line = getline(start_lnum)
+        return strpart(line, start_col - 1, end_col - start_col + 1)
+    endif
+    
+    " Multi-line case: extract lines and join
+    let lines = getline(start_lnum, end_lnum)
+    
+    " Trim first line to start_col
+    let lines[0] = strpart(lines[0], start_col - 1)
+    
+    " Trim last line to end_col
+    let lines[-1] = strpart(lines[-1], 0, end_col)
+    
+    return join(lines, "\n")
+endfunction
+
+" Calculate byte offset from position pos1 to pos2 within current buffer.
+" Args:
+"   pos1: position [bufnr, lnum, col, off]
+"   pos2: position [bufnr, lnum, col, off]
+" Returns: byte offset (or -1 if pos2 < pos1)
+function! s:calculate_offset(pos1, pos2)
+    let [lnum1, col1] = [a:pos1[1], a:pos1[2]]
+    let [lnum2, col2] = [a:pos2[1], a:pos2[2]]
+    
+    if lnum2 < lnum1 || (lnum2 == lnum1 && col2 < col1)
+        return -1  " pos2 is before pos1
+    endif
+
+    if lnum1 == lnum2
+        return col2 - col1
+    endif
+
+    " Add bytes from pos1 to end of its line, plus the intervening newline.
+    let offset = strlen(getline(lnum1)) - (col1 - 1) + 1
+
+    " Add bytes for all complete lines between lnum1 and lnum2.
+    for lnum in range(lnum1 + 1, lnum2 - 1)
+        let offset += strlen(getline(lnum)) + 1
+    endfor
+
+    " Add bytes in the final line before pos2.
+    let offset += col2 - 1
+    return offset
+endfunction
+
+" Trim leading/trailing whitespace from a range and return the resulting [start, end]
+" positions. Return a pair of null positions if the range contains only whitespace.
+function! s:trim_range_to_non_ws(start_pos, end_pos)
+    let text = s:extract_text_from_range(a:start_pos, a:end_pos)
+    let lead = match(text, '\S')
+    if lead < 0
+        return s:nullpos_pair
+    endif
+
+    let trail = match(text, '\s*$')
+    let start_byte = s:pos2byte(a:start_pos) + lead
+    let end_byte = s:pos2byte(a:start_pos) + trail - 1
+    return [s:byte2pos(start_byte), s:byte2pos(end_byte)]
+endfunction
+
+" Return 1 iff the range spans one or more complete sibling elements, allowing
+" surrounding whitespace only outside the trimmed range.
+function! s:range_covers_whole_elements(start_pos, end_pos)
+    let cursor = getpos('.')
+    try
+        call s:setcursor(a:start_pos)
+        let start_term = sexp#current_element_terminal(0)
+        if start_term !=# a:start_pos
+            return 0
+        endif
+
+        let end_term = sexp#move_to_current_element_terminal(1)
+        while 1
+            let cmp = sexp#compare_pos(end_term, a:end_pos)
+            if cmp == 0
+                return 1
+            elseif cmp > 0
+                return 0
+            endif
+
+            let next_start = sexp#move_to_adjacent_element_terminal(1, 0, 0, 1)
+            if !next_start[1] || sexp#compare_pos(next_start, a:end_pos) > 0
+                return 0
+            endif
+
+            let end_term = sexp#move_to_current_element_terminal(1)
+        endwhile
+    finally
+        call s:setcursor(cursor)
+    endtry
+endfunction
+
+" Compute the is_complete_sexp_in_buffer metadata flag for a yank/delete event, using the
+" live TextYankPost range and permitting surrounding whitespace outside complete elements.
+function! s:regput__compute_complete_metadata(is_delete, start_pos, end_pos, regcontents)
+    " Verified: In TextYankPost, delete events still expose the pre-delete buffer state,
+    " so we can validate both yanks and deletes directly against the live range.
+    let [trimmed_start, trimmed_end] = s:trim_range_to_non_ws(a:start_pos, a:end_pos)
+    if !trimmed_start[1]
+        return 0
+    endif
+
+    return s:range_covers_whole_elements(trimmed_start, trimmed_end)
+endfunction
+
+" Store yank/delete metadata for the destination register and, when appropriate, for the
+" unnamed register as well.
+function! s:regput__store_yank_metadata(regname, metadata)
+    if a:regname ==# '' || a:regname ==# '"'
+        let s:yank_metadata['"'] = a:metadata
+        return
+    endif
+
+    let s:yank_metadata[a:regname] = a:metadata
+    let reg_info = getreginfo(a:regname)
+    if get(reg_info, 'isunnamed')
+        let s:yank_metadata['"'] = a:metadata
+    endif
+endfunction
+
+" TextYankPost autocmd handler for capturing yank/delete metadata.
+" This runs on every yank and delete in sexp-enabled buffers.
+" Populates s:yank_metadata[regname] with metadata for subsequent smart-paste decisions.
+function! sexp#regput__TextYankPost()
+    try
+        if s:regput_internal_typ_depth > 0
+            return
+        endif
+        if sexp#plug#typ_op_ipg()
+            " Ignore the synthetic yank used by the sexp operator mechanism.
+            call s:regput__clear_object_hint()
+            return
+        endif
+
+        let regname = v:event.regname
+        if v:event.operator !~# '^[yd]$'
+            call s:regput__clear_object_hint()
+            return
+        endif
+
+        let is_delete = v:event.operator ==# 'd'
+        let regcontents = v:event.regcontents
+        
+        " Determine if '[ and '] marks represent a valid range
+        let start_pos = getpos("'[")
+        let end_pos = getpos("']")
+        
+        if empty(start_pos) || empty(end_pos) || start_pos[1] == 0
+            " Invalid range; skip
+            return
+        endif
+        
+        let is_complete = s:regput__compute_complete_metadata(
+            \ is_delete, start_pos, end_pos, regcontents)
+        let from_sexp_object = s:regput__match_object_hint(
+            \ is_delete, regcontents, start_pos, end_pos)
+        let metadata = {
+            \ 'is_complete_sexp_in_buffer': is_complete,
+            \ 'from_sexp_object': from_sexp_object,
+        \ }
+        call s:regput__store_yank_metadata(regname, metadata)
+        call s:regput__clear_object_hint()
+    catch
+        " Silently catch errors; TextYankPost handler shouldn't disrupt normal workflow
+    endtry
+endfunction
+
 " Swap current visual selection with adjacent element. If pairwise is true,
 " swaps with adjacent pair of elements. If mode is 'v', the newly moved
 " selection is reselected.
@@ -6314,6 +6819,54 @@ function! s:list_info(tail, ...)
         return ret
     finally
         " Restore original position.
+        call s:setcursor(save_cursor)
+    endtry
+endfunction
+
+" Return the boundaries of the current/containing list.
+" -- Optional Dict --
+"   pos                position to test, defaults to curpos
+"   inner_only         if set, current list must contain (in bracket-exclusive sense) the
+"                      test position; defaults to 0
+" Return:
+"   [macro_start, open_bracket, close_bracket]
+"   where macro_start is nullpos if there are no leading macro chars.
+function! s:containing_list_bounds(...)
+    let save_cursor = getpos('.')
+    let ret = [s:nullpos, s:nullpos, s:nullpos]
+    try
+        let inner_only = a:0 ? get(a:1, 'inner_only', 0) : 0
+        let pos = a:0 ? get(a:1, 'pos', s:nullpos) : s:nullpos
+        if pos[1]
+            call s:setcursor(pos)
+        endif
+
+        let p = sexp#move_to_current_element_terminal(0)
+        let isl = p[1] ? s:is_list(p[1], p[2]) : 0
+        if !isl || inner_only
+            let pb = s:move_to_nearest_bracket(0)
+            if pb[1]
+                let p = sexp#move_to_current_element_terminal(0)
+                if p != pb
+                    let ret[0] = p
+                    call s:setcursor(pb)
+                endif
+                let isl = 2
+            elseif !isl
+                return ret
+            endif
+        endif
+
+        if isl == 1
+            let ret[0] = p
+            call s:setcursor(s:current_macro_character_terminal(1))
+            call s:move_char(1)
+        endif
+
+        let ret[1] = getpos('.')
+        let ret[2] = s:nearest_bracket(1)
+        return ret
+    finally
         call s:setcursor(save_cursor)
     endtry
 endfunction

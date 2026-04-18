@@ -42,6 +42,8 @@ let s:feat_notify = {
             \ 'regput_untrimmed_is_linewise',
             \ 'regput_linewise_forces_multiline',
             \ 'regput_ignore_list_shape',
+            \ 'regput_fallback_source',
+            \ 'regput_fallback_target',
             \ 'regput_curpos', 'regput_curpos_child', 'regput_curpos_op',
             \ 'regput_invalid_register_action',
             \ 'regput_inhibit_regparse',

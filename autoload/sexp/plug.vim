@@ -119,6 +119,27 @@ function! s:opfunc(mode, name, cnt, expr, ...)
     endtry
 endfunction
 
+function! s:maybe_set_regput_object_hint(mapmode, plug_name)
+    if a:mapmode !~# '[xo]' || a:plug_name !~# 'sexp_\(outer\|inner\)_'
+        return
+    endif
+    try
+        let start_pos = getpos("'<")
+        let end_pos = getpos("'>")
+        if !empty(start_pos) && !empty(end_pos) && start_pos[1] != 0
+            call sexp#regput__set_object_yank_hint(start_pos, end_pos)
+        endif
+    catch
+        call sexp#warn#msg("Failed to set sexp object yank hint: " . v:exception)
+    endtry
+endfunction
+
+" Return 1 iff plug_name names a contextual regput command subject to builtin fallback.
+function! s:is_contextual_regput_command(plug_name)
+    let regput_builtin_commands = sexp#data#get_regput_builtin_commands()
+    return has_key(regput_builtin_commands, a:plug_name)
+endfunction
+
 " This function is a wrapper for sexp <Plug> commands used to ensure common boilerplate
 " runs at the appropriate time. It is invoked by the <Plug> mappings defined by
 " s:defplug() in the plugin script; thus, it will not force load of this autoload file
@@ -187,8 +208,16 @@ function! sexp#plug#wrapper(flags, mapmode, name, rhs)
             return call('s:opfunc', [a:mapmode[0], a:name, cnt, rhs])
         else
             " Not an operator: no need for deferred execution
+            " Contextual regput commands may fall back to builtin.
+            if s:is_contextual_regput_command(a:name)
+                " Builtin is overridden. Give fallback a chance to happen.
+                if sexp#regput_maybe_execute_builtin(a:name, a:mapmode[0], cnt, v:register)
+                    return
+                endif
+            endif
             exe 'call' rhs
         endif
+        call s:maybe_set_regput_object_hint(a:mapmode, a:name)
     finally
         if !a:flags.asexpr
             call sexp#post_op(a:mapmode[0], a:name)
@@ -204,6 +233,11 @@ endfunction
 " Return true iff sexp operator is in progress.
 function! s:OP_ipg()
     return !empty(get(s:, 'OP', {}))
+endfunction
+
+" Return true iff the TextYankPost-based sexp operator mechanism is active.
+function! sexp#plug#typ_op_ipg()
+    return s:OP_ipg() && has_key(s:OP_get(), 'fn')
 endfunction
 
 " Remove all autocmds used as part of the TextYankPost-based mechanism for handling

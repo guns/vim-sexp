@@ -240,6 +240,10 @@ if !exists('g:sexp_regput_ignore_list_shape')
     let g:sexp_regput_ignore_list_shape = 0
 endif
 
+if !exists('g:sexp_regput_fallback_target')
+    let g:sexp_regput_fallback_target = ''
+endif
+
 if !exists('g:sexp_regput_curpos')
     let g:sexp_regput_curpos = 0
 endif
@@ -290,90 +294,17 @@ if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
 
-let s:sexp_mappings = {
-    \ 'sexp_outer_list':                   {'xo': 'af'},
-    \ 'sexp_inner_list':                   {'xo': 'if'},
-    \ 'sexp_outer_top_list':               {'xo': 'aF'},
-    \ 'sexp_inner_top_list':               {'xo': 'iF'},
-    \ 'sexp_outer_string':                 {'xo': 'as'},
-    \ 'sexp_inner_string':                 {'xo': 'is'},
-    \ 'sexp_outer_element':                {'xo': 'ae'},
-    \ 'sexp_inner_element':                {'xo': 'ie'},
-    \ 'sexp_outer_child_tail':             {'xo': 'aC'},
-    \ 'sexp_outer_child_head':             {'xo': 'ac'},
-    \ 'sexp_inner_child_tail':             {'xo': 'iC'},
-    \ 'sexp_inner_child_head':             {'xo': 'ic'},
-    \ 'sexp_move_to_prev_bracket':         {'nxo': '('},
-    \ 'sexp_move_to_next_bracket':         {'nxo': ')'},
-    \ 'sexp_move_to_prev_element_head':    {'nxo': '<M-b>'},
-    \ 'sexp_move_to_next_element_head':    {'nxo': '<M-w>'},
-    \ 'sexp_move_to_prev_element_tail':    {'nxo': 'g<M-e>'},
-    \ 'sexp_move_to_next_element_tail':    {'nxo': '<M-e>'},
-    \ 'sexp_flow_to_prev_close':           {'nx': '<M-[>'},
-    \ 'sexp_flow_to_next_open':            {'nx': '<M-]>'},
-    \ 'sexp_flow_to_prev_open':            {'nx': '<M-{>'},
-    \ 'sexp_flow_to_next_close':           {'nx': '<M-}>'},
-    \ 'sexp_flow_to_prev_leaf_head':       {'nx': '<M-S-b>'},
-    \ 'sexp_flow_to_next_leaf_head':       {'nx': '<M-S-w>'},
-    \ 'sexp_flow_to_prev_leaf_tail':       {'nx': '<M-S-g>'},
-    \ 'sexp_flow_to_next_leaf_tail':       {'nx': '<M-S-e>'},
-    \ 'sexp_move_to_prev_top_element':     {'nxo': '[['},
-    \ 'sexp_move_to_next_top_element':     {'nxo': ']]'},
-    \ 'sexp_select_prev_element':          {'nxo': '[e'},
-    \ 'sexp_select_next_element':          {'nxo': ']e'},
-    \ 'sexp_indent':                       {'n': '==', 'x': '='},
-    \ 'sexp_indent_top':                   {'n': '=-'},
-    \ 'sexp_indent_and_clean':             {'n': '<M-=>'},
-    \ 'sexp_indent_and_clean_top':         {'n': '<M-->'},
-    \ 'sexp_align_comments':               {'n': '<LocalLeader>a'},
-    \ 'sexp_align_comments_top':           {'n': '<LocalLeader>A'},
-    \ 'sexp_round_head_wrap_list':         {'nx': '<LocalLeader>i'},
-    \ 'sexp_round_tail_wrap_list':         {'nx': '<LocalLeader>I'},
-    \ 'sexp_square_head_wrap_list':        {'nx': '<LocalLeader>['},
-    \ 'sexp_square_tail_wrap_list':        {'nx': '<LocalLeader>]'},
-    \ 'sexp_curly_head_wrap_list':         {'nx': '<LocalLeader>{'},
-    \ 'sexp_curly_tail_wrap_list':         {'nx': '<LocalLeader>}'},
-    \ 'sexp_round_head_wrap_element':      {'nx': '<LocalLeader>w'},
-    \ 'sexp_round_tail_wrap_element':      {'nx': '<LocalLeader>W'},
-    \ 'sexp_square_head_wrap_element':     {'nx': '<LocalLeader>e['},
-    \ 'sexp_square_tail_wrap_element':     {'nx': '<LocalLeader>e]'},
-    \ 'sexp_curly_head_wrap_element':      {'nx': '<LocalLeader>e{'},
-    \ 'sexp_curly_tail_wrap_element':      {'nx': '<LocalLeader>e}'},
-    \ 'sexp_insert_at_list_head':          {'n': '<LocalLeader>h'},
-    \ 'sexp_insert_at_list_tail':          {'n': '<LocalLeader>l'},
-    \ 'sexp_splice_list':                  {'n': '<LocalLeader>@'},
-    \ 'sexp_convolute':                    {'n': '<LocalLeader>?'},
-    \ 'sexp_clone_list':                   {'nx': '<LocalLeader>c'},
-    \ 'sexp_clone_list_sl':                {'nx': ''},
-    \ 'sexp_clone_list_ml':                {'nx': ''},
-    \ 'sexp_clone_element':                {'nx': '<LocalLeader>C'},
-    \ 'sexp_clone_element_sl':             {'nx': ''},
-    \ 'sexp_clone_element_ml':             {'nx': ''},
-    \ 'sexp_raise_list':                   {'nx': '<LocalLeader>o'},
-    \ 'sexp_raise_element':                {'nx': '<LocalLeader>O'},
-    \ 'sexp_swap_list_backward':           {'nx': '<M-k>'},
-    \ 'sexp_swap_list_forward':            {'nx': '<M-j>'},
-    \ 'sexp_swap_element_backward':        {'nx': '<M-h>'},
-    \ 'sexp_swap_element_forward':         {'nx': '<M-l>'},
-    \ 'sexp_emit_head_element':            {'nx': '<M-S-j>'},
-    \ 'sexp_emit_tail_element':            {'nx': '<M-S-k>'},
-    \ 'sexp_capture_prev_element':         {'nx': '<M-S-h>'},
-    \ 'sexp_capture_next_element':         {'nx': '<M-S-l>'},
-    \ 'sexp_put_before':                   {'n':  'P'},
-    \ 'sexp_put_after':                    {'n':  'p'},
-    \ 'sexp_put_before_op':                {'n':  '<p'},
-    \ 'sexp_put_after_op':                 {'n':  '>p'},
-    \ 'sexp_replace':                      {'x':  'p', 'n': 'gp'},
-    \ 'sexp_replace_P':                    {'x':  'P', 'n': 'gP'},
-    \ 'sexp_replace_op':                   {'n':  '<M-p>'},
-    \ 'sexp_replace_op_P':                 {'n':  '<M-P>'},
-    \ 'sexp_put_at_head':                  {'n':  '<LocalLeader><p'},
-    \ 'sexp_put_at_tail':                  {'n':  '<LocalLeader>>p'},
-    \ 'p':                                 {'nx': ''},
-    \ 'P':                                 {'nx': ''},
-    \ 'gp':                                {'n':  ''},
-    \ 'gP':                                {'n':  ''},
-    \ }
+if !exists('g:sexp_regput_fallback_source')
+    let g:sexp_regput_fallback_source = 'slc'
+endif
+
+" Initialize buffer-local dict for tracking regput customizations
+" (done at buffer level since g:sexp_mappings can change between calls)
+function! s:init_regput_customization_tracking()
+    if !exists('b:sexp_regput_user_customized')
+        let b:sexp_regput_user_customized = {}
+    endif
+endfunction
 
 if !empty(g:sexp_filetypes)
     augroup sexp_filetypes
@@ -493,6 +424,31 @@ function! s:check_for_map_conflicts(lhs, mode, plug)
     return 0
 endfunction
 
+" Determine the final lhs for a regput command, considering smart-paste option.
+" FIXME: Need better name.
+function! s:regput_decide_lhs(plug, mode, lhs, gm)
+    return a:lhs
+endfunction
+
+" Prepare the final lhs for a regput mapping and update the buffer-local record of
+" contextual regput commands the user explicitly customized via g:sexp_mappings.
+function! s:regput_prepare_mapping(plug, mode, lhs, gm)
+    let lhs = s:regput_decide_lhs(a:plug, a:mode, a:lhs, a:gm)
+    if empty(lhs)
+        return ''
+    endif
+
+    let regput_builtin_commands = sexp#data#get_regput_builtin_commands()
+    if has_key(regput_builtin_commands, a:plug) && has_key(a:gm, a:mode)
+        if !has_key(b:sexp_regput_user_customized, a:plug)
+            let b:sexp_regput_user_customized[a:plug] = ''
+        endif
+        let b:sexp_regput_user_customized[a:plug] .= a:mode
+    endif
+
+    return lhs
+endfunction
+
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 " TODO: Consider moving more of this infrastructure into the plug autoload module.
@@ -501,8 +457,11 @@ function! s:sexp_create_mappings()
         " Skip map creation in the special parse buffer.
         return
     endif
+    " Initialize buffer-local tracking dict
+    call s:init_regput_customization_tracking()
+    let sexp_mappings = sexp#data#get_sexp_mappings()
     " Note: {s,g}entry stand for {s,g}:sexp_mappings entry, respectively.
-    for [plug, sentry] in items(s:sexp_mappings)
+    for [plug, sentry] in items(sexp_mappings)
         " Get corresponding user override if it exists.
         let gentry = get(g:sexp_mappings, plug, {})
         " Parse entry into a flat dict of modechar => lhs: e.g.,
@@ -540,6 +499,13 @@ function! s:sexp_create_mappings()
                 " No lhs mapping for this one, so skip it.
                 continue
             endif
+
+            " FIXME: Comment this...
+            let lhs = s:regput_prepare_mapping(plug, mode, lhs, gm)
+            if empty(lhs)
+                continue
+            endif
+
             " TODO: Decide whether the plugin should warn, or simply override...
             "call s:check_for_map_conflicts(lhs, mode, plug)
             " Create the mapping.
@@ -567,6 +533,13 @@ function! s:sexp_create_mappings()
         imap <silent><buffer> "    <Plug>(sexp_insert_double_quote)
         imap <silent><buffer> <BS> <Plug>(sexp_insert_backspace)
     endif
+
+    " Create persistent TextYankPost autocommand for smart-paste metadata collection.
+    " This is separate from the operator-specific TextYankPost to avoid entanglement
+    " with the already-validated operator mechanism.
+    augroup SexpRegputSmartPaste
+        autocmd! TextYankPost <buffer> call sexp#regput__TextYankPost()
+    augroup END
 endfunction
 
 """ Text Object Selections {{{1
@@ -781,16 +754,23 @@ Defplug  xnoremap sexp_capture_next_element sexp#docount_stateful(v:count, 'sexp
 " Put register before/after
 DefplugN! nnoremap sexp_put_before  sexp#put(v:count, 0)
 DefplugN! nnoremap sexp_put_after   sexp#put(v:count, 1)
+" Put register before/after (force smart paste)
+DefplugN! nnoremap sexp_put_before_smart  sexp#put(v:count, 0)
+DefplugN! nnoremap sexp_put_after_smart   sexp#put(v:count, 1)
 " Replace operator
 DefoperN! nnoremap sexp_replace_op   sexp#regput_op(1, 0)
 DefoperN! nnoremap sexp_replace_op_P sexp#regput_op(1, 1)
 " Replace selection with register
 DefplugN! xnoremap sexp_replace   sexp#replace('v', v:count, 0)
 DefplugN! xnoremap sexp_replace_P sexp#replace('v', v:count, 1)
+DefplugN! xnoremap sexp_replace_smart   sexp#replace('v', v:count, 0)
+DefplugN! xnoremap sexp_replace_P_smart sexp#replace('v', v:count, 1)
 " Replace element under cursor with register
 " TODO: Decide whether to map this by default...
 DefplugN! nnoremap sexp_replace   sexp#replace('n', v:count, 0)
 DefplugN! nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
+DefplugN! nnoremap sexp_replace_smart   sexp#replace('n', v:count, 0)
+DefplugN! nnoremap sexp_replace_P_smart sexp#replace('n', v:count, 1)
 " Put before/after operators
 DefoperN! nnoremap sexp_put_before_op sexp#regput_op(0, 1)
 DefoperN! nnoremap sexp_put_after_op  sexp#regput_op(0, 0)

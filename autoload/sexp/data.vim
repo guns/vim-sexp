@@ -1,4 +1,8 @@
-" TODO: Comment...
+" This file is for data that would be script-local except that it's needed by multiple
+" modules: i.e., plugin-global data. The data are defined script-locally and public
+" accessors are provided.
+
+" Define the plugin's default mappings.
 let s:sexp_mappings = {
     \ 'sexp_outer_list':                   {'xo': 'af'},
     \ 'sexp_inner_list':                   {'xo': 'if'},
@@ -89,6 +93,8 @@ let s:sexp_mappings = {
     \ }
 
 " Dictionary mapping contextual regput commands to their builtin-overridden modes.
+" TODO: Consider synthesizing this dict from s:sexp_mappings and a list of builtins
+" (possibly associated with modes).
 let s:regput_builtin_commands = {
     \ 'sexp_put_before': {
     \     'modes': 'n',

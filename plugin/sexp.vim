@@ -240,6 +240,10 @@ if !exists('g:sexp_regput_ignore_list_shape')
     let g:sexp_regput_ignore_list_shape = 0
 endif
 
+if !exists('g:sexp_regput_fallback_source')
+    let g:sexp_regput_fallback_source = 'slc'
+endif
+
 if !exists('g:sexp_regput_fallback_target')
     let g:sexp_regput_fallback_target = ''
 endif
@@ -293,18 +297,6 @@ endif
 if !exists('g:sexp_mappings')
     let g:sexp_mappings = {}
 endif
-
-if !exists('g:sexp_regput_fallback_source')
-    let g:sexp_regput_fallback_source = 'slc'
-endif
-
-" Initialize buffer-local dict for tracking regput customizations
-" (done at buffer level since g:sexp_mappings can change between calls)
-function! s:init_regput_customization_tracking()
-    if !exists('b:sexp_regput_user_customized')
-        let b:sexp_regput_user_customized = {}
-    endif
-endfunction
 
 if !empty(g:sexp_filetypes)
     augroup sexp_filetypes
@@ -424,31 +416,6 @@ function! s:check_for_map_conflicts(lhs, mode, plug)
     return 0
 endfunction
 
-" Determine the final lhs for a regput command, considering smart-paste option.
-" FIXME: Need better name.
-function! s:regput_decide_lhs(plug, mode, lhs, gm)
-    return a:lhs
-endfunction
-
-" Prepare the final lhs for a regput mapping and update the buffer-local record of
-" contextual regput commands the user explicitly customized via g:sexp_mappings.
-function! s:regput_prepare_mapping(plug, mode, lhs, gm)
-    let lhs = s:regput_decide_lhs(a:plug, a:mode, a:lhs, a:gm)
-    if empty(lhs)
-        return ''
-    endif
-
-    let regput_builtin_commands = sexp#data#get_regput_builtin_commands()
-    if has_key(regput_builtin_commands, a:plug) && has_key(a:gm, a:mode)
-        if !has_key(b:sexp_regput_user_customized, a:plug)
-            let b:sexp_regput_user_customized[a:plug] = ''
-        endif
-        let b:sexp_regput_user_customized[a:plug] .= a:mode
-    endif
-
-    return lhs
-endfunction
-
 " Bind <Plug> mappings in current buffer to values in g:sexp_mappings or
 " s:sexp_mappings
 " TODO: Consider moving more of this infrastructure into the plug autoload module.
@@ -457,8 +424,6 @@ function! s:sexp_create_mappings()
         " Skip map creation in the special parse buffer.
         return
     endif
-    " Initialize buffer-local tracking dict
-    call s:init_regput_customization_tracking()
     let sexp_mappings = sexp#data#get_sexp_mappings()
     " Note: {s,g}entry stand for {s,g}:sexp_mappings entry, respectively.
     for [plug, sentry] in items(sexp_mappings)
@@ -500,12 +465,6 @@ function! s:sexp_create_mappings()
                 continue
             endif
 
-            " FIXME: Comment this...
-            let lhs = s:regput_prepare_mapping(plug, mode, lhs, gm)
-            if empty(lhs)
-                continue
-            endif
-
             " TODO: Decide whether the plugin should warn, or simply override...
             "call s:check_for_map_conflicts(lhs, mode, plug)
             " Create the mapping.
@@ -535,7 +494,7 @@ function! s:sexp_create_mappings()
     endif
 
     " Create persistent TextYankPost autocommand for smart-paste metadata collection.
-    " This is separate from the operator-specific TextYankPost to avoid entanglement
+    " This is kept separate from the operator-specific TextYankPost to avoid entanglement
     " with the already-validated operator mechanism.
     augroup SexpRegputSmartPaste
         autocmd! TextYankPost <buffer> call sexp#regput__TextYankPost()

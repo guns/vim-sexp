@@ -91,7 +91,10 @@ let s:aligncom_weights = {
 "   is_complete_sexp_in_buffer: 1 if yanked/deleted text is a complete sexp, 0 otherwise
 "   from_sexp_object:           1 if yank/delete used a sexp object, 0 otherwise
 let s:yank_metadata = {}
-let s:regput_internal_typ_depth = 0
+" Inhibit persistent regput TextYankPost logic during internal vim-sexp operations.
+let s:regput_internal_typ_active = 0
+" Saved 'virtualedit' value pending deferred restoration at SafeState.
+let s:regput_pending_ve_restore = v:null
 
 " Temporary hint created when sexp object command executes.
 " Used by TextYankPost handler to validate whether subsequent yank/delete came from
@@ -4619,11 +4622,55 @@ endfunction
 " logic) should cause metadata update. Failure to apply this constraint can result in the
 " spurious clearing of metadata flags like 'is_complete_sexp_in_buffer'.
 function! s:regput__begin_internal_typ()
-    let s:regput_internal_typ_depth += 1
+    let s:regput_internal_typ_active = 1
 endfunction
 
 function! s:regput__end_internal_typ()
-    let s:regput_internal_typ_depth = max([0, s:regput_internal_typ_depth - 1])
+    let s:regput_internal_typ_active = 0
+endfunction
+
+" Defer restoration of 'virtualedit' after a delete TextYankPost handler temporarily
+" widens it to preserve the still-live operator range.
+" Rationale: On the delete path, the TextYankPost handler may move the cursor while the
+" target delete range is still live. In this window, cursor() appears to trigger
+" normalization of that range. If the range was created with ve=onemore but the
+" normalization occurs after restoring a less permissive 'virtualedit' setting, a boundary
+" that should remain one past end of line can collapse onto the line's final actual
+" character. Defer restoration of 've' till SafeState to preserve the virtualedit
+" semantics under which the delete range was established.
+function! s:regput__schedule_ve_restore(ve_save)
+    if s:regput_pending_ve_restore isnot v:null
+        return
+    endif
+    let s:regput_pending_ve_restore = a:ve_save
+    augroup SexpRegputVeRestore
+        autocmd!
+        autocmd SafeState * call <SID>regput__maybe_restore_ve()
+    augroup END
+endfunction
+
+" Restore 'virtualedit' once Vim reaches a quiescent post-operator state.
+" Design Decision: Rely on SafeState alone rather than additionally requiring mode() ==# 'n'.
+" Rationale: This shortens the lifetime of the pending restore state. If experience later
+" shows that SafeState can still be too early in some non-Normal mode scenario, a
+" `mode() !=# 'n'` early return can be re-enabled here.
+function! s:regput__maybe_restore_ve()
+    if s:regput_pending_ve_restore isnot v:null
+        " Conservative alternative:
+        " if mode() !=# 'n'
+        "     return
+        " endif
+
+        if &ve ==# 'onemore'
+            let &ve = s:regput_pending_ve_restore
+        endif
+
+        let s:regput_pending_ve_restore = v:null
+    endif
+
+    augroup SexpRegputVeRestore
+        autocmd!
+    augroup END
 endfunction
 
 " Determine whether a regput command should fall back to builtin paste.
@@ -4918,8 +4965,12 @@ endfunction
 " This runs on every yank and delete in sexp-enabled buffers.
 " Populates s:yank_metadata[regname] with metadata for subsequent smart-paste decisions.
 function! sexp#regput__TextYankPost()
+    if v:event.operator ==# 'd' && &ve !=# 'onemore'
+        call s:regput__schedule_ve_restore(&ve)
+        set ve=onemore
+    endif
     try
-        if s:regput_internal_typ_depth > 0
+        if s:regput_internal_typ_active
             return
         endif
         if sexp#plug#typ_op_ipg()
@@ -4960,6 +5011,8 @@ function! sexp#regput__TextYankPost()
         call s:regput__clear_object_yank_hint()
     catch
         " Silently catch errors; TextYankPost handler shouldn't disrupt normal workflow
+        " Note: Restore of 've` intentionally deferred. See note in
+        " s:regput__schedule_ve_restore() header.
     endtry
 endfunction
 

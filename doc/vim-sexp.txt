@@ -911,8 +911,9 @@ the operators.
 Overview  ~
 All of the register put (paste) commands and operators accept an optional
 register name via the standard Vim mechanism (e.g., `"ap` to put from the `"a`
-register). The non-operator commands also accept an optional `[count]`, whose
-usage is documented with the corresponding command. Commands that replace
+register); when no register is specified, the unnamed register is used. The
+non-operator commands also accept an optional `[count]`, whose usage is
+documented with the corresponding command. Commands that replace
 existing elements have distinct `p` and `P` variants: by analogy with builtin
 `p` and `P`, only the former updates the unnamed register (|@"|). By default,
 the cursor is left at the head of the put text, but this can be changed with
@@ -936,12 +937,10 @@ builtin commands `p`, `P`, `gp` and `gP`. These commands choose between smart
 and builtin paste functionality on the basis of source register content and
 target buffer context. The specific criteria considered by the contextual
 logic can be customized with options |g:sexp_regput_fallback_source| and
-|g:sexp_regput_fallback_target|. The default configuration also provides
-"smart only" variants of these commands, which disable the conditional
-fallback logic, thereby allowing you to force a smart paste when the
-contextual logic might otherwise choose builtin paste. The names of the "smart
-only" commands have a "_smart" suffix. For details, see
-|sexp-regput-builtin-overrides|.
+|g:sexp_regput_fallback_target|. Vim-sexp also provides "_smart" versions of
+these commands. They are not mapped by default. The "_smart" commands skip the
+fallback logic and always use vim-sexp's smart-paste behavior. For details,
+see |sexp-regput-builtin-overrides|.
 
 
 Put register before/after (normal)  ~
@@ -949,17 +948,11 @@ Put register before/after (normal)  ~
 
 [count]["x] p                                         *<Plug>(sexp_put_after)*
 [count]["x] P                                        *<Plug>(sexp_put_before)*
-        Put `[count]` copies of register x before (`P`) or after (`p`) the
+        Put `[count]` copies of register `x` before (`P`) or after (`p`) the
         current element; alternatively, works like "put register into list"
         when the conditions in the following paragraph are met.
 
         See also |sexp-regput-contextual-smart-commands|.
-
-[count]["x] <LocalLeader>p                      *<Plug>(sexp_put_after_smart)*
-[count]["x] <LocalLeader>P                     *<Plug>(sexp_put_before_smart)*
-        Force smart put after/before current element, bypassing the contextual
-        fallback logic used by |<Plug>(sexp_put_after)| and
-        |<Plug>(sexp_put_before)|.
 
                                              *sexp-regput-behavior-on-bracket*
         Special Behavior on List Brackets  ~
@@ -980,14 +973,24 @@ Put register before/after (normal)  ~
         *away from* an adjacent element on the same line as the cursor forces
         a line break between the put text and the adjacent element.
 
+                                                *<Plug>(sexp_put_after_smart)*
+                                               *<Plug>(sexp_put_before_smart)*
+        Unconditionally Smart Variants:  ~
+        Unmapped "_smart" versions of |<Plug>(sexp_put_after)| and
+        |<Plug>(sexp_put_before)|. These commands bypass the contextual
+        fallback logic and always use vim-sexp's smart put behavior.
+
+        They accept the same `[count]["x]` prefix as the corresponding
+        contextual commands.
+
 
 Replace with register (normal and visual)  ~
                                                                 *sexp-replace*
                                  *<Plug>(sexp_replace)* *<Plug>(sexp_replace_P)*
 Visual  ~
                                                          *sexp-replace-visual*
-["x] p
-["x] P
+[count]["x] p
+[count]["x] P
         Replace the visually selected element(s) with `[count]` copies of
         register `x`.
 
@@ -998,15 +1001,20 @@ Visual  ~
 
         See also |sexp-regput-contextual-smart-commands|.
 
-["x] <LocalLeader>p                         *<Plug>(sexp_replace_smart)*
-["x] <LocalLeader>P                       *<Plug>(sexp_replace_P_smart)*
-        Force smart replace in visual mode, bypassing the contextual fallback
-        logic used by |<Plug>(sexp_replace)| and |<Plug>(sexp_replace_P)|.
+                                                  *<Plug>(sexp_replace_smart)*
+                                                *<Plug>(sexp_replace_P_smart)*
+        Unconditionally Smart Variants:  ~
+        Unmapped "_smart" versions of |<Plug>(sexp_replace)| and
+        |<Plug>(sexp_replace_P)|. These commands bypass the contextual fallback
+        logic and always use vim-sexp's smart replace behavior.
+
+        They accept the same `[count]["x]` prefix as the corresponding
+        contextual commands.
 
 Normal  ~
                                                          *sexp-replace-normal*
-["x] gp
-["x] gP
+[count]["x] gp
+[count]["x] gP
         Replace element at cursor with `[count]` copies of register `x`.
 
         `gP` does not update the unnamed register.
@@ -1019,17 +1027,18 @@ Normal  ~
 
         See also |sexp-regput-contextual-smart-commands|.
 
-[count]["x] <LocalLeader>gp
-[count]["x] <LocalLeader>gP
-        Force vim-sexp smart replace in normal mode, bypassing the contextual
-        fallback logic used by |<Plug>(sexp_replace)| and
-        |<Plug>(sexp_replace_P)|. These are the normal-mode mappings for
-        |<Plug>(sexp_replace_smart)| and |<Plug>(sexp_replace_P_smart)|.
+        Unconditionally Smart Variants:  ~
+        The |<Plug>(sexp_replace_smart)| and |<Plug>(sexp_replace_P_smart)|
+        commands documented above for visual mode are also available in normal
+        mode.
+
+        They accept the same `[count]["x]` prefix as the corresponding
+        contextual commands.
 
 Put register into current list (normal)  ~
 
-["x] <LocalLeader><p                                *<Plug>(sexp_put_at_head)*
-["x] <LocalLeader>>p                                *<Plug>(sexp_put_at_tail)*
+[count]["x] <LocalLeader><p                         *<Plug>(sexp_put_at_head)*
+[count]["x] <LocalLeader>>p                         *<Plug>(sexp_put_at_tail)*
         Put register `x` into the current list, just before the `[count]`th
         child from head (`<LocalLeader><p`) or after the `[count]`th child
         from tail (`<LocalLeader>>p`).
@@ -1054,6 +1063,9 @@ Replace operator (normal)  ~
         Works just like the corresponding non-operator replace commands, but
         instead of the element at the cursor, replaces the S-expression(s)
         selected by the operator's motion/object.
+
+        Note: The operator itself does not support a count, though its
+        target motion/object may. See |sexp-regput-operator-counts|.
 
                                              *sexp-replace-target-constraints*
         The target range may contain multiple S-expressions, but must not
@@ -1086,6 +1098,9 @@ Put operator (normal)  ~
         Works just like the corresponding non-operator put commands, but
         instead of the element at the cursor, puts before or after the first
         or last element selected by the operator's motion/object.
+
+        Note: The operator itself does not support a count, though its
+        target motion/object may. See |sexp-regput-operator-counts|.
 
                                                  *sexp-put-target-constraints*
         As with the replace operator, the target can be specified with either
@@ -1212,15 +1227,11 @@ decision criteria can be customized using the following options:
         |g:sexp_regput_fallback_source| (applies to register contents)
         |g:sexp_regput_fallback_target| (applies to buffer context)
 
-Vim-sexp also provides explicit "smart only" mappings, which inhibit the
-fallback logic to perform an unconditional smart paste:
-
-        `<LocalLeader>p` and `<LocalLeader>P`
-        `<LocalLeader>gp` and `<LocalLeader>gP`
-
-Recommendation: Use these commands to force smart paste in situations where
-the builtin might otherwise be chosen; or simply unmap them if you're nearly
-always happy with the contextual fallback logic.
+Vim-sexp also provides "_smart" versions of these commands. They are not mapped
+by default. The "_smart" commands skip the fallback logic and always use
+vim-sexp's smart-paste behavior. Map these commands if you want a keybinding
+that forces smart paste in situations where the builtin might otherwise be
+chosen.
 
 If you wish to keep Vim's builtin put commands on their usual keys in Lisp
 buffers, the most straightforward approach is to remap the contextual
@@ -1237,8 +1248,21 @@ commands elsewhere and leave the builtin keys alone: e.g.,
 <
 Alternatively, you can unmap these commands and define only the "_smart"
 command variants, which would preserve access to the builtin commands on their
-normal keys, but still give access to smart paste functionality, albeit on
-slightly less convenient keybindings.
+normal keys, but still give access to smart paste functionality:
+>
+    let g:sexp_mappings = {
+        \ 'sexp_put_before':       '',
+        \ 'sexp_put_after':        '',
+        \ 'sexp_put_before_smart': '<LocalLeader>P',
+        \ 'sexp_put_after_smart':  '<LocalLeader>p',
+        \ 'sexp_replace':          {'x': '', 'n': ''},
+        \ 'sexp_replace_P':        {'x': '', 'n': ''},
+        \ 'sexp_replace_smart':    {'x': '<LocalLeader>p',
+        \                           'n': '<LocalLeader>gp'},
+        \ 'sexp_replace_P_smart':  {'x': '<LocalLeader>P',
+        \                           'n': '<LocalLeader>gP'},
+    \ }
+<
 
 If instead you want to keep the default contextual bindings on `p`, `P`,
 `gp`, and `gP`, but want an easy way to invoke the raw builtin commands, add
@@ -1260,10 +1284,17 @@ it is also possible to define mode-specific aliases: e.g.,
 ...but the simpler form is sufficient if you want the same <lhs> in both
 supported modes.
 
-Recommendation: Keep the default split unless you have a strong preference.
-It gives you both paths immediately: contextual put on Vim's usual keys and
-force-smart put on `<LocalLeader>` aliases.
-
+Recommendation: Keep the default contextual bindings unless you have a strong
+preference for preserving the builtin keys. Add explicit mappings for the
+"_smart" commands only if you find yourself needing to force smart paste
+frequently. Note that even if you generally prefer builtin paste, aggressive
+settings of the fallback options can give the best of both worlds. For
+example, with the following settings, contextual put would choose builtin put
+unless the register was yanked with a sexp object:
+>
+        let g:sexp_regput_fallback_source = 'slco'
+        let g:sexp_regput_fallback_target = 'cs'
+<
 
                                                  *sexp-regput-operator-counts*
 Put/Replace Operator Counts  ~
@@ -2245,16 +2276,14 @@ Note: To unbind a command, simply set its <lhs> to an empty string.
             \ 'sexp_capture_next_element':      '<M-S-l>',
             \ 'sexp_put_before':                'P',
             \ 'sexp_put_after':                 'p',
-            \ 'sexp_put_before_smart':          '<LocalLeader>P',
-            \ 'sexp_put_after_smart':           '<LocalLeader>p',
+            \ 'sexp_put_before_smart':          '',
+            \ 'sexp_put_after_smart':           '',
             \ 'sexp_put_before_op':             '<p',
             \ 'sexp_put_after_op':              '>p',
             \ 'sexp_replace':                   {'x': 'p', 'n': 'gp'},
             \ 'sexp_replace_P':                 {'x': 'P', 'n': 'gP'},
-            \ 'sexp_replace_smart':             {'x': '<LocalLeader>p',
-            \                                    'n': '<LocalLeader>gp'},
-            \ 'sexp_replace_P_smart':           {'x': '<LocalLeader>P',
-            \                                    'n': '<LocalLeader>gP'},
+            \ 'sexp_replace_smart':             {'x': '', 'n': ''},
+            \ 'sexp_replace_P_smart':           {'x': '', 'n': ''},
             \ 'sexp_replace_op':                '<M-p>',
             \ 'sexp_replace_op_P':              '<M-P>',
             \ 'sexp_put_at_head':               '<LocalLeader><p',
@@ -2453,18 +2482,12 @@ copy, paste, and edit this example to taste.
             xmap <silent><buffer> <M-S-l>         <Plug>(sexp_capture_next_element)
             nmap <silent><buffer> P               <Plug>(sexp_put_before)
             nmap <silent><buffer> p               <Plug>(sexp_put_after)
-            nmap <silent><buffer> <LocalLeader>P  <Plug>(sexp_put_before_smart)
-            nmap <silent><buffer> <LocalLeader>p  <Plug>(sexp_put_after_smart)
             nmap <silent><buffer> <p              <Plug>(sexp_put_before_op)
             nmap <silent><buffer> >p              <Plug>(sexp_put_after_op)
             nmap <silent><buffer> gp              <Plug>(sexp_replace)
             xmap <silent><buffer> p               <Plug>(sexp_replace)
             nmap <silent><buffer> gP              <Plug>(sexp_replace_P)
             xmap <silent><buffer> P               <Plug>(sexp_replace_P)
-            nmap <silent><buffer> <LocalLeader>gp <Plug>(sexp_replace_smart)
-            xmap <silent><buffer> <LocalLeader>p  <Plug>(sexp_replace_smart)
-            nmap <silent><buffer> <LocalLeader>gP <Plug>(sexp_replace_P_smart)
-            xmap <silent><buffer> <LocalLeader>P  <Plug>(sexp_replace_P_smart)
             nmap <silent><buffer> <M-p>           <Plug>(sexp_replace_op)
             nmap <silent><buffer> <M-P>           <Plug>(sexp_replace_op_P)
             nmap <silent><buffer> <LocalLeader><p <Plug>(sexp_put_at_head)

@@ -3743,7 +3743,8 @@ function! s:regput__get_splice_info(count, ctx, reg, sep, flags)
             " Note: Because relevant sep has been determined to be NL, we must ensure a
             " min gap of 1, even if tgt and adj are currently colinear.
             " Question: Does num_nl need to take exc_typ into account?
-            let num_nl = min([max([gap, 1]), g:sexp_cleanup_keep_empty_lines + 1])
+            let num_nl = max([1, g:sexp_cleanup_keep_empty_lines < 0
+                    \ ? gap : min([gap, g:sexp_cleanup_keep_empty_lines + 1])])
             let sep[tail] = repeat("\n", num_nl)
         endif
         if is_repl
@@ -3953,7 +3954,8 @@ function! s:put__get_tgt(count, tail, ...)
     let curpos = getpos('.')
     let ret = a:0 && !empty(a:1)
         \ ? a:1
-        \ : s:regput__ctx_init('n', a:tail ? 'put_after' : 'put_before', a:count)
+        \ : s:regput__ctx_init('n', a:tail ? 'put_after' : 'put_before', a:count,
+        \   {'tail': a:tail})
     try
         " First, attempt to get natural target: i.e., side of *current* element in
         " direction of put. If no such element, special logic will determine a 'virtual'
@@ -6470,7 +6472,8 @@ function! s:cleanup_ws(start, ps, ...)
                 " Note: Treating negative 'keep_empty_lines' as infinity ensures removal
                 " of non-NL whitespace at EOL.
                 let precedes_com = next[1] && sexp#is_comment(next[1], next[2])
-                if gap > g:sexp_cleanup_keep_empty_lines + 1
+                if g:sexp_cleanup_keep_empty_lines >= 0
+                    \ && gap > g:sexp_cleanup_keep_empty_lines + 1
                     \ || getline(eff_prev[1])[eff_prev[2] - 1:] =~ '.\s\+$'
                     " Replace gap with number of newlines determined by existing line gap
                     " and g:sexp_cleanup_keep_empty_lines option, followed by original

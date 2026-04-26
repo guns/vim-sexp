@@ -35,14 +35,19 @@ local closing_bracket = [[\v\)|\]|\}]]
 
 local cache = require'sexp.cache':new()
 
+-- Caveat: Use loops rather than the functional style employed in the original release.
+-- Rationale: Some users are still using Lua 0.9.5, which doesn't contain vim.iter().
+
 -- Compile the primitive regexes.
-local regexes = vim.iter({
+local regexes = {}
+for key, patt in pairs({
   character = "character|char_lit",
   string = "string|str_lit",
   comment = "comment",
   regex = "regex|pattern",
-}):map(function (key, patt) return key, vim.regex("\\v" .. patt) end):fold(
-  {}, function (acc, k, v) acc[k] = v; return acc end)
+}) do
+  regexes[key] = vim.regex("\\v" .. patt)
+end
 
 -- Map of region keys to primitives
 -- Note: Answers the question, Which primitives satisfy this region?
@@ -57,13 +62,13 @@ local regions = {
 
 -- Invert regions map to get map of primitives to regions.
 -- Note: Answers the question, Which regions does this primitive satisfy?
-local primitives = vim.iter(regions):fold({}, function(acc, k, v)
-  vim.iter(v):each(function(prim)
-    acc[prim] = acc[prim] or {}
-    acc[prim][k] = true
-  end)
-  return acc
-end)
+local primitives = {}
+for k, v in pairs(regions) do
+  for _, prim in ipairs(v) do
+    primitives[prim] = primitives[prim] or {}
+    primitives[prim][k] = true
+  end
+end
 
 -- Map a node type() to corresponding primitive or nil if node not primitive.
 -- Assumption: A node cannot be more than one primitive.
@@ -71,9 +76,11 @@ end)
 ---@return string? key # name of primitive corresponding to input node typ or nil
 local function is_primitive(typ)
   -- Return the primitive name or nil if none match.
-  return vim.iter(regexes):filter(function (_, v)
-    return v:match_str(typ)
-  end):next()
+  for key, regex in pairs(regexes) do
+    if regex:match_str(typ) then
+      return key
+    end
+  end
 end
 
 -- Return true iff input node matches named region.
@@ -82,7 +89,12 @@ end
 ---@return boolean # true iff node matches specfied region
 local function is_node_rgn_type(node, rgn)
   local typ = node:type()
-  return vim.iter(regions[rgn]):any(function (prim) return regexes[prim]:match_str(typ) end)
+  for _, prim in ipairs(regions[rgn]) do
+    if regexes[prim]:match_str(typ) then
+      return true
+    end
+  end
+  return false
 end
 
 function M.show_cache()
@@ -538,7 +550,11 @@ local function analyze_codestr(tree, codestr, filetype)
   ]])
   local root = tree:root()
   -- Execute query for errors, saving only the first one in return table.
-  local _, node = vim.iter(query:iter_captures(root, 0)):next()
+  local node
+  for _, captured_node in query:iter_captures(root, 0) do
+    node = captured_node
+    break
+  end
   if node then
     ret.err_loc = ApiPos:new(node:start()):to_vim4()
     -- TODO: Should we attempt to provide hint?

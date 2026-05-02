@@ -722,12 +722,14 @@ DefoperN! nnoremap sexp_replace_op_P sexp#regput_op(1, 1)
 " Replace selection with register
 DefplugN! xnoremap sexp_replace   sexp#replace('v', v:count, 0)
 DefplugN! xnoremap sexp_replace_P sexp#replace('v', v:count, 1)
+" Replace selection with register (force smart paste)
 DefplugN! xnoremap sexp_replace_smart   sexp#replace('v', v:count, 0)
 DefplugN! xnoremap sexp_replace_P_smart sexp#replace('v', v:count, 1)
 " Replace element under cursor with register
 " TODO: Decide whether to map this by default...
 DefplugN! nnoremap sexp_replace   sexp#replace('n', v:count, 0)
 DefplugN! nnoremap sexp_replace_P sexp#replace('n', v:count, 1)
+" Replace element under cursor with register (force smart paste)
 DefplugN! nnoremap sexp_replace_smart   sexp#replace('n', v:count, 0)
 DefplugN! nnoremap sexp_replace_P_smart sexp#replace('n', v:count, 1)
 " Put before/after operators

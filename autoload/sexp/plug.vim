@@ -120,15 +120,17 @@ function! s:opfunc(mode, name, cnt, expr, ...)
 endfunction
 
 " Called from sexp#plug#wrapper() to cache an object hint iff the executing command is a
-" sexp object command.
+" sexp object command. Object hints are used in 'TextYankPost' handler to determine
+" whether the yank/delete that just completed involves a sexp object.
 function! s:maybe_set_regput_object_hint(mapmode, plug_name)
     if a:mapmode !~# '[xo]' || a:plug_name !~# 'sexp_\(outer\|inner\)_'
+        " not a sexp object
         return
     endif
     try
-        let [start_pos, end_pos] = [getpos("'<"), getpos("'>")]
-        if start_pos[1] != 0 && end_pos[1] != 0
-            call sexp#regput__set_object_yank_hint(start_pos, end_pos)
+        let [s, e] = [getpos("'<"), getpos("'>")]
+        if s[1] && e[1]
+            call sexp#regput__set_object_yank_hint(s, e)
         endif
     catch
         call sexp#warn#msg("Failed to set sexp object yank hint: " . v:exception)

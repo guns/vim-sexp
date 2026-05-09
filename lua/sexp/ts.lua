@@ -434,10 +434,9 @@ function M.nearest_bracket(closing, open_re, close_re)
   if not node then
     return nil
   end
-  -- Get pattern matching desired bracket type.
-  local bracket_re = closing ~= 0
-    and (close_re and close_re ~= vim.NIL and close_re or closing_bracket)
-    or (open_re and open_re ~= vim.NIL and open_re or opening_bracket)
+  -- Get patterns matching bracket terminals.
+  local open_bracket_re = open_re ~= vim.NIL and open_re or opening_bracket
+  local close_bracket_re = close_re ~= vim.NIL and close_re or closing_bracket
   -- Traverse nodes upwards looking for containing (or matching) bracket of desired type
   -- in indicated direction.
   -- Assumption: There will always be a top-level node representing the source file
@@ -445,9 +444,11 @@ function M.nearest_bracket(closing, open_re, close_re)
   -- Caveat: Failure to check for root here would result in our spuriously treating an
   -- open bracket at (0,0) as a *containing* bracket, even when we're at top level!
   while node and node ~= root do
-    -- Check current node, skipping ignored regions, as we're interested only in
-    -- "list-like" nodes.
-    if not is_node_rgn_type(node, "str_com_chr") then
+    -- Check current node, skipping ignored regions and error-contaminated nodes, as we're
+    -- interested only in reliable, "list-like" nodes.
+    if node:type() ~= "ERROR"
+        and not node:has_error()
+        and not is_node_rgn_type(node, "str_com_chr") then
       -- Get position of node terminals, converting end pos to inclusive form...
       ---@type ApiPos
       local spos = ApiPos:new(node:start())
@@ -491,28 +492,33 @@ function M.nearest_bracket(closing, open_re, close_re)
           local macro_end = vim.fn['sexp#current_macro_character_terminal'](1)
           cs = macro_end[3]
           spos.c = cs
-          -- Set ch to candidate open bracket in case it's needed for subsequent matching.
+          -- Set ch to candidate open bracket for subsequent matching.
           ch = vim.api.nvim_buf_get_text(0, rs, cs, rs, cs + 1, {})[1]
           -- Restore cursor position.
           vim.fn.setpos('.', pos:to_vim4())
         end
+        -- A node can be a bracket candidate only if its effective range, after stripping
+        -- any leading macro chars, is bracket-delimited.
+        --
+        -- In normal trees we expect a quoted bracketed form to expose the inner list node
+        -- before we ever reach the outer quoting node. The macro-stripping case below is
+        -- only a defensive fallback for compact reader-macro forms like '(...) in grammars
+        -- that might not expose that inner node. If whitespace/comment separates the macro
+        -- chars from the bracket, this node is not a coherent bracket candidate; finding
+        -- that bracket would require a separate lexical scan, as this test assumes
+        -- open bracket immediately follows macro chars.
+        local end_ch = vim.api.nvim_buf_get_text(0, re, ce, re, ce + 1, {})[1]
+        local is_bracketed = vim.fn.match(ch, open_bracket_re) >= 0
+          and vim.fn.match(end_ch or '', close_bracket_re) >= 0
         -- Caveat: Regardless of search direction, make sure cursor is strictly inside
         -- bracket in desired direction and not outside the bracket in other direction.
         -- Note that because the outside bracket test is necessitated by the possibility
         -- of macro chars, it's needed only at start. (No macro chars at end guarantees
         -- cursor is not past epos.)
-        if spos <= pos and pos ~= (closing == 0 and spos or epos) then
-          if closing ~= 0 then
-            -- Get the end bracket candidate for matching.
-            -- Note: If looking for start, ch was set correctly above.
-            ch = vim.api.nvim_buf_get_text(0, re, ce, re, ce + 1, {})[1]
-          end
-          --dbg:logf("Testing %s against %s", ch, bracket_re)
-          if vim.fn.match(ch, bracket_re) >= 0 then
-            -- Found desired bracket! Return inclusive ApiPos as VimPos4.
-            return closing ~= 0 and {0, re + 1, ce + 1, 0} or {0, rs + 1, cs + 1, 0}
-            --return closing ~= 0 and epos:to_vim4() or spos:to_vim4()
-          end
+        if is_bracketed and spos <= pos and pos ~= (closing == 0 and spos or epos) then
+          -- Found desired bracket! Return inclusive ApiPos as VimPos4.
+          return closing ~= 0 and {0, re + 1, ce + 1, 0} or {0, rs + 1, cs + 1, 0}
+          --return closing ~= 0 and epos:to_vim4() or spos:to_vim4()
         end
       end
     end

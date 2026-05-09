@@ -962,10 +962,17 @@ Put register before/after (normal)  ~
         "put register into list" command:
                 p ==> |<Plug>(sexp_put_at_head)|
                 P ==> |<Plug>(sexp_put_at_tail)|
-        I.e., the register text will be inserted into the head or tail of the
-        list at an offset determined by `[count]`. If you prefer that this
-        command treat lists just like regular elements, simply set option
-        |g:sexp_regput_bracket_is_target| to 0.
+
+        In this mode (|g:sexp_regput_bracket_is_target| == 1), `[count]`
+        specifies the list position at which the register text is inserted.
+
+        If |g:sexp_regput_bracket_is_target| == 2, the command still puts at
+        the head or tail of the list, but `[count]` specifies the number of
+        copies to paste, just as it normally does for `p` and `P`.
+
+        If |g:sexp_regput_bracket_is_target| == 0, lists are treated like
+        ordinary elements, so the command puts `[count]` copies before or
+        after the list rather than inside it.
 
         Note: If there is no current element, the register contents are put
         before or after the cursor position; moreover, there is a subtle
@@ -982,7 +989,6 @@ Put register before/after (normal)  ~
 
         They accept the same `[count]["x]` prefix as the corresponding
         contextual commands.
-
 
 Replace with register (normal and visual)  ~
                                                                 *sexp-replace*
@@ -1966,10 +1972,22 @@ Like |g:sexp_regput_curpos|, but applies only to the put/replace operators.
 <
 
                                              *g:sexp_regput_bracket_is_target*
-When this is set, |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| are
-silently converted to |<Plug>(sexp_put_at_head)| and |<Plug>(sexp_put_at_tail)|,
-respectively, when the cursor is on a list's bracket or macro chars and the
-put direction is towards the list interior.
+Determines how |<Plug>(sexp_put_before)| and |<Plug>(sexp_put_after)| behave
+when the cursor is on a list's bracket or macro chars and the put direction is
+towards the list interior:
+
+          0       Treat the list like an ordinary element: `p` / `P` put
+                  `[count]` copies after / before the list.
+
+          1       Put into the head or tail of the list at a child offset
+                  determined by `[count]`. In this mode, `p` and `P` behave
+                  like |<Plug>(sexp_put_at_head)| and
+                  |<Plug>(sexp_put_at_tail)|, respectively.
+
+          2       Like 1, but use `[count]` as the number of copies to paste
+                  rather than a child offset.
+
+
 Note: This option does not apply when the put command puts "away from" the
 list (i.e., `P` from head or `p` from tail).
 >

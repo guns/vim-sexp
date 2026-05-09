@@ -4171,9 +4171,9 @@ function! s:put__get_tgt(count, tail, ...)
     endtry
 endfunction
 
-" Return 1 iff all conditions are met for converting a put before/after to the
-" corresponding put into list.
-function! s:regput__handle_as_put_into_empty_list(count, tail)
+" Return 1 iff a put before/after should be handled as put into list rather than put
+" *around* list. Takes both geometry and relevant option into account.
+function! s:put__should_handle_bracket_target(tail)
     if !g:sexp_regput_bracket_is_target
         " Feature disabled by user config
         return 0
@@ -4188,20 +4188,34 @@ function! s:regput__handle_as_put_into_empty_list(count, tail)
     if !a:tail && isl != 3 || a:tail && isl == 3
         return 0
     endif
-    " Treat as put into empty list!
     return 1
+endfunction
+
+" Handle put before/after from a bracket towards the list interior.
+" Option determines whether a count represents a child position or number of copies.
+function! s:put__from_bracket_into_list(count, tail, ...)
+    let cnt = a:count ? a:count : 1
+    " Toggle tail due to change in meaning: i.e.,
+    "   put (forwards) from open bracket (tail == 1) ==> put at head (tail == 0)
+    "   put (backwards) from close bracket (tail == 0) ==> put at tail (tail == 1)
+    let child_tail = !a:tail
+    if g:sexp_regput_bracket_is_target == 2
+        " Treat [count] as # of copies of register.
+        let tgt = s:put_child__get_tgt(1, child_tail, a:0 ? a:1 : {})
+        call s:regput__impl(tgt, cnt)
+    else
+        " Treat [count] as child position.
+        call sexp#put_child(cnt, child_tail, a:0 ? a:1 : {})
+    endif
 endfunction
 
 " Put before/after (both normal and operator variants)
 " Note: Optional context dict provided by caller if invoked internally by operator
 " mechanism.
 function! sexp#put(count, tail, ...)
-    if s:regput__handle_as_put_into_empty_list(a:count, a:tail)
-        " All conditions met for converting put to put_child!
-        " Caveat: Toggle tail due to change in meaning: i.e.,
-        "   put (forwards) from open bracket (tail == 1) ==> put at head (tail == 0)
-        "   put (backwards) from close bracket (tail == 0) ==> put at tail (tail == 1)
-        call sexp#put_child(a:count, !a:tail, a:0 ? a:1 : {})
+    if s:put__should_handle_bracket_target(a:tail)
+        " Special Case: Put into list, not *around* it.
+        call s:put__from_bracket_into_list(a:count, a:tail, a:0 ? a:1 : {})
     else
         let cnt = a:count ? a:count : 1
         let tgt = s:put__get_tgt(cnt, a:tail, a:0 ? a:1 : {})

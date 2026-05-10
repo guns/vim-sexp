@@ -551,7 +551,10 @@ function! sexp#current_element_terminal(end)
             let include_macro_characters = 0
             let macro_tail = s:current_macro_character_terminal(1)
             let elem_char = getline(macro_tail[1])[macro_tail[2]]
-            if empty(elem_char) || elem_char =~# '\v\s'
+            " Note: Don't treat ') as valid quoted form.
+            " Rationale: Safest thing is to treat the `'` as a malformed/incomplete
+            " element: e.g., user may be about to add something between the ' and ).
+            if empty(elem_char) || elem_char =~# '\v\s' || elem_char =~# s:closing_bracket
                 let pos = macro_tail
             else
                 keepjumps call cursor(macro_tail[1], macro_tail[2] + 1)
@@ -576,10 +579,153 @@ function! sexp#current_element_terminal(end)
     endif
 endfunction
 
-" Returns position of previous/next element's head/tail.
-" Returns current element's terminal if no adjacent element exists, unless optional
-" 'ignore_current' argument is set, in which case, return unmodified current position,
-" unless 'nullpos_on_fail' (2nd optional arg) is also set, in which case, return nullpos.
+" Return s:nearest_bracket() iff the adjacent-element scan that produced the provided
+" 'info' dict was stopped by that same bracket.
+" Motivation: When Treesitter contains ERROR/MISSING nodes, nearest_element_terminal()
+" can indicate "no more siblings" in a location where the Treesitter-based
+" s:nearest_bracket() returns a bracket from a different part of the buffer. Failure to
+" catch this inconsistency can lead to attempts to replace non-whitespace. Accordingly,
+" this function and the helper it relies on ensure we use brackets only when the legacy
+" parse logic and Treesitter agree on their relevance.
+" Note: If Treesitter is missing or disabled, the purpose of this function remains the
+" same, but with nearest_bracket() and nearest_element_terminal() both legacy scan-based,
+" the likelihood of a mismatch would be lower.
+function! s:nearest_confirmed_bracket(info, closing)
+    if a:info.kind !=# 'bracket'
+        return s:nullpos
+    endif
+    let brkt = s:nearest_bracket(a:closing)
+    return brkt[1] && sexp#compare_pos(brkt, a:info.bracket_pos) == 0
+        \ ? brkt : s:nullpos
+endfunction
+
+" Returns info about previous/next element's head/tail.
+" Motivation: The regput feature needed information nearest_element_terminal() didn't
+" provide, but modifying that function's idiosyncratic interface was deemed too risky;
+" thus, this internal helper was created to provide the additional information, with
+" nearest_element_terminal() kept as a wrapper around it to preserve the interface
+" expected elsewhere.
+"
+" Return Dict:
+"   kind:       current           current element satisfied request
+"               adjacent          adjacent element satisfied request
+"               bracket           stopped by unignored bracket
+"               extremity         stopped by BOF/EOF
+"               invalid_current   cursor is non-ws but not an element
+"               invalid_adjacent  found non-ws that is neither bracket nor element
+"   pos:        requested position iff kind is current or adjacent, else nullpos
+"   fallback_pos:
+"               current element terminal in search direction, used by
+"               sexp#nearest_element_terminal() for legacy no-op/failure behavior
+"   bracket_pos:
+"               bracket position iff kind is bracket, else nullpos
+"   bracket_char:
+"               char at bracket_pos
+" TODO: Convert the optional args to a (possibly optional) flags dict.
+" Cursor Preservation: Saved/restored
+function! s:nearest_element_terminal_info(next, tail, ...)
+    let cursor = getpos('.')
+    let ignore_current = a:0 && a:1
+    let pos = s:nullpos
+    let ret = {
+        \ 'kind': '',
+        \ 'pos': s:nullpos,
+        \ 'fallback_pos': s:nullpos,
+        \ 'bracket_pos': s:nullpos,
+        \ 'bracket_char': '',
+    \ }
+    try
+        " Attempt to find edge of current element (if applicable).
+        let pos = sexp#current_element_terminal(a:next)
+        if !pos[1] && sexp#range_has_non_ws(cursor, cursor, 1)
+            " nullpos returned by sexp#current_element_terminal() from a non-ws pos
+            " generally means unbalanced bracket!
+            let ret.kind = 'invalid_current'
+            return
+        endif
+
+        " The fallback position may be used by sexp#nearest_element_terminal(), even if we
+        " don't ultimately accept it (e.g., because it's the same as cursor pos).
+        let ret.fallback_pos = pos
+        if pos[1] && sexp#compare_pos(pos, cursor) != 0
+            " Cursor was on element and not already at edge in search direction.
+            " We may be done if 'ignore_current' is not set...
+            " b moves to the head of the current word if not already on the
+            " head and e moves to the tail if not on the tail. However, ge
+            " will never result in updated position on starting element!
+            if !ignore_current && a:next == a:tail
+                let ret.kind = 'current'
+                let ret.pos = pos
+                return
+            endif
+            " Still need adjacent; move to found pos before searching for it.
+            call s:setcursor(pos)
+        endif
+
+        " Look for adjacent.
+        let [l, c] = s:findpos('\v\S', a:next)
+        if !l
+            " We hit beginning or end of file without finding adjacent.
+            let ret.kind = 'extremity'
+            return
+        endif
+
+        " Were we stopped by an enclosing bracket?
+        let scan_pos = [0, l, c, 0]
+        let scan_char = getline(l)[c - 1]
+        if scan_char =~ (a:next ? s:closing_bracket : s:opening_bracket)
+            \ && !s:is_rgn_type('str_com_chr', l, c)
+            " Already on head or tail of list
+            let ret.kind = 'bracket'
+            let ret.bracket_pos = scan_pos
+            let ret.bracket_char = scan_char
+            return
+        endif
+
+        " Found near side of possible adjacent element.
+        call s:setcursor(scan_pos)
+        " Move to near side of adjacent to validate element and normalize cursor. In the
+        " backward case, this may move through ignored whitespace (e.g., escaped space)
+        " that s:findpos('\v\S') did not treat as part of the element.
+        let pos = sexp#move_to_current_element_terminal(!a:next)
+        if !pos[1]
+            let ret.kind = 'invalid_adjacent'
+            return
+        endif
+
+        " We're on near side of adjacent whose existence guarantees successful return,
+        " regardless of optional input flags.
+        " If movement is b or e (next == tail), move to far side of adjacent.
+        let ret.kind = 'adjacent'
+        if a:next == a:tail
+            let pos = sexp#current_element_terminal(a:tail)
+        endif
+        let ret.pos = pos
+    finally
+        call s:setcursor(cursor)
+        return ret
+    endtry
+endfunction
+
+" Returns position of previous/next (or in some cases, current) element's head/tail, in a
+" manner analogous to builtin w/b/e/ge commands.
+" The target position is the nearest element head/tail (as indicated by 'tail') a nonzero
+" distance from cursor position in the direction indicated by 'next'.
+" Return: On success, the target position is returned; on failure, one of the following is
+" returned, depending on optional parameters:
+"   if !ignore_current and current element has an edge in search direction
+"     fallback position at edge of current element in direction of search
+"   else if !nullpos_on_fail
+"     original cursor pos
+"   else
+"     nullpos
+" -- Optional Args --
+" 1: ignore_current:  determines whether either of the following can be returned:
+"                     - target position on the current element
+"                     - fallback position at edge of current element in the search
+"                       direction (when no adjacent is found)
+" 2: nullpos_on_fail: whether to return cursor position or nullpos when not returning
+"                     either target or fallback position.
 " TODO: Consider impact of combining 'ignore_current' and 'nullpos_on_fail' into a single
 " flag requesting nullpos on fail.
 " Rationale: I can't think of a scenario in which we'd want ignore_current but not
@@ -594,71 +740,16 @@ endfunction
 " TODO: Convert the optional args to a (possibly optional) flags dict.
 function! sexp#nearest_element_terminal(next, tail, ...)
     let cursor = getpos('.')
-    " By function end, a non-null pos indicates the desired terminal pos iff
-    " !ignore_current OR have_adj.
-    " Rationale: The function logic sets 'pos' optimistically, even in cases where we
-    " ultimately fail to find adjacent.
-    let [pos, has_adj] = [s:nullpos, 0]
-    " Cache optional flags.
     let ignore_current = a:0 && a:1
-    let nullpos_on_fail = a:0 > 1 && a:1
-    try
-        " Attempt to find edge of current element (if applicable).
-        let pos = sexp#current_element_terminal(a:next)
-        if !pos[1] && sexp#range_has_non_ws(cursor, cursor, 1)
-            " nullpos returned by sexp#current_element_terminal() from a non-ws pos
-            " generally means unbalanced bracket!
-            return
-        endif
-        if pos[1] > 0 && sexp#compare_pos(pos, cursor) != 0
-            " Cursor was on element and not already at edge in search direction.
-            " We may be done: i.e.,
-            " b moves to the head of the current word if not already on the
-            " head and e moves to the tail if not on the tail. However, ge
-            " will never result in updated position on starting element!
-            if !ignore_current && a:next == a:tail
-                return
-            endif
-            " Still need adjacent; move to found pos before searching for it.
-            call s:setcursor(pos)
-        endif
-        " Look for adjacent.
-        let [l, c] = s:findpos('\v\S', a:next)
-        if !l
-            " We hit beginning or end of file without finding adjacent.
-            return
-        elseif getline(l)[c - 1] =~ (a:next ? s:closing_bracket : s:opening_bracket)
-            \ && !s:is_rgn_type('str_com_chr', l, c)
-            " Already on head or tail of list
-            return
-        else
-            " Found near side of adjacent element.
-            let pos = [0, l, c, 0]
-            call s:setcursor(pos)
-            if !a:next
-                " Note: The s:findpos() above will find only literal non-ws, but we need
-                " to treat ignored ws (e.g., escaped space) as non-ws.
-                " Assumption: Ignored ws can be found at end of element, but not
-                " beginning. TODO Should we skip this if not on ignored char or would it
-                " be slower to check?
-                let pos = sexp#move_to_current_element_terminal(1)
-            endif
-        endif
-        " We're on near side of adjacent whose existence guarantees successful return,
-        " regardless of optional input flags.
-        " If movement is b or e (next == tail), move to far side of adjacent.
-        let has_adj = 1
-        if a:next == a:tail
-            let pos = sexp#current_element_terminal(a:tail)
-        endif
-    finally
-        call s:setcursor(cursor)
-        " Note: The bare return statements above work like simple throws; the return value
-        " is constructed here.
-        return ignore_current && !has_adj || !pos[1]
-            \ ? nullpos_on_fail ? s:nullpos : cursor
-            \ : pos
-    endtry
+    let nullpos_on_fail = a:0 > 1 && a:2
+    let info = call('s:nearest_element_terminal_info', [a:next, a:tail] + a:000)
+    if info.kind ==# 'current' || info.kind ==# 'adjacent'
+        return info.pos
+    elseif ignore_current || !info.fallback_pos[1]
+        return nullpos_on_fail ? s:nullpos : cursor
+    else
+        return info.fallback_pos
+    endif
 endfunction
 
 """ QUERIES AT POSITION {{{1
@@ -3501,7 +3592,7 @@ endfunction
 "                    but the replacement splice itself uses the inclusive inner_range[].
 "   inner_range[]:   (replace modes only) inclusive range for the replacement splice
 "   is_bra[]:        1 iff corresponding end of range is bracket
-"   is_ele[]:        1 iff coreesponding end of range is element
+"   is_ele[]:        1 iff corresponding end of range is element
 "   tail:            Meaning varies slightly across put modes, but in some sense, this
 "                    value determines direction of put. Can be adjusted by special case
 "                    logic; hence, its inclusion here.
@@ -3567,14 +3658,24 @@ function! s:regput__get_context(tgt_info)
                 if i || ret.range[i] != s:BOF
                     " Attempt to find outer adjacent.
                     call s:setcursor(ret.range[i])
-                    let outer = sexp#nearest_element_terminal(i, !i, 1, 1)
-                    if !outer[1]
+                    let outer_info = s:nearest_element_terminal_info(i, !i, 1, 1)
+                    if outer_info.kind ==# 'adjacent'
+                        let outer = outer_info.pos
+                    else
                         " Pre-position on outside of element to ensure that if element is
                         " list, nearest_bracket doesn't find its match.
                         call sexp#move_to_current_element_terminal(i)
-                        let outer = s:nearest_bracket(i)
+                        let outer = s:nearest_confirmed_bracket(outer_info, i)
                         if outer[1]
                             let outer_is_bra = 1
+                        elseif outer_info.kind ==# 'bracket'
+                            " The scan for adjacent element stopped at a bracket
+                            " (outer_info.bracket_pos) that nearest_bracket() couldn't
+                            " confirm.
+                            " Design Decision: Leave 'outer' null to err on the side of
+                            " safety (multiline put).
+                            " Rationale: outer == nullpos tends to set the 'alone' flag,
+                            " which in turn tends to cause put to insert NL around target.
                         endif
                     endif
                 endif
@@ -4114,16 +4215,23 @@ function! s:put__get_tgt(count, tail, ...)
         " Attempt to set both ends of range.
         for i in range(2)
             if !ret.range[i][1]
-                let ret.range[i] = sexp#move_to_adjacent_element_terminal(i, !i, 0, 1)
-                if ret.range[i][1]
+                let adj = s:nearest_element_terminal_info(i, !i, 1, 1)
+                let ret.range[i] = adj.pos
+                if adj.kind ==# 'adjacent'
                     let ret.is_ele[i] = 1
+                    call s:setcursor(ret.range[i])
                 else
                     " If other end of range is already determined, we should be on its
                     " near side, thereby ensuring call to nearest_bracket() from list will
                     " not find the list's own bracket.
-                    let ret.range[i] = s:nearest_bracket(i)
-                    if ret.range[i][1]
+                    let brkt = s:nearest_confirmed_bracket(adj, i)
+                    if brkt[1]
+                        let ret.range[i] = brkt
                         let ret.is_bra[i] = 1
+                    elseif adj.kind !=# 'extremity'
+                        " Design Decision: Abort smart paste (possibly with fallback to
+                        " builtin) when sexp tree errors make continuing risky.
+                        throw 'sexp-ambiguous-target'
                     endif
                 endif
             else
@@ -4171,6 +4279,18 @@ function! s:put__get_tgt(count, tail, ...)
     endtry
 endfunction
 
+" Return count/register prefix for a builtin normal-mode command.
+function! s:regput__builtin_prefix(regname, count)
+    return (a:regname ==# '' || a:regname ==# '"' ? '' : ('"' . a:regname))
+        \ . (a:count > 0 ? a:count : '')
+endfunction
+
+" Execute the builtin normal-mode put corresponding to tail.
+function! s:regput__execute_builtin_put(count, tail)
+    let prefix = s:regput__builtin_prefix(v:register, a:count)
+    execute 'normal! ' . prefix . (a:tail ? 'p' : 'P')
+endfunction
+
 " Return 1 iff a put before/after should be handled as put into list rather than put
 " *around* list. Takes both geometry and relevant option into account.
 function! s:put__should_handle_bracket_target(tail)
@@ -4210,15 +4330,28 @@ function! s:put__from_bracket_into_list(count, tail, ...)
 endfunction
 
 " Put before/after (both normal and operator variants)
-" Note: Optional context dict provided by caller if invoked internally by operator
-" mechanism.
+" -- Optional Args --
+" 0: context dict provided by caller (iff invoked internally by operator mechanism)
 function! sexp#put(count, tail, ...)
+    let has_ctx = a:0
+    let ctx = has_ctx ? a:1 : {}
     if s:put__should_handle_bracket_target(a:tail)
         " Special Case: Put into list, not *around* it.
-        call s:put__from_bracket_into_list(a:count, a:tail, a:0 ? a:1 : {})
+        call s:put__from_bracket_into_list(a:count, a:tail, ctx)
     else
         let cnt = a:count ? a:count : 1
-        let tgt = s:put__get_tgt(cnt, a:tail, a:0 ? a:1 : {})
+        try
+            let tgt = s:put__get_tgt(cnt, a:tail, ctx)
+        catch /^sexp-ambiguous-target$/
+            call sexp#warn#msg(
+                \ "Malformed Lisp near cursor makes smart put target ambiguous;"
+                \ . (has_ctx ? " aborting." : " using builtin put."))
+            if !has_ctx
+                " ordinary (non-operator) put
+                call s:regput__execute_builtin_put(cnt, a:tail)
+            endif
+            return
+        endtry
         call s:regput__impl(tgt, cnt)
     endif
 endfunction
@@ -4231,16 +4364,19 @@ function! s:replace__process_inner_range(tgt)
     " Determine the range that *contains* inner_range.
     for i in range(2)
         call s:setcursor(tgt.inner_range[i])
-        let p = sexp#nearest_element_terminal(i, !i, 1, 1)
-        if p[1]
+        let info = s:nearest_element_terminal_info(i, !i, 1, 1)
+        let p = info.pos
+        if info.kind ==# 'adjacent'
             let tgt.is_ele[i] = 1
         else
-            let p = s:nearest_bracket(i)
+            let p = s:nearest_confirmed_bracket(info, i)
             if p[1]
                 let tgt.is_bra[i] = 1
-            else
+            elseif info.kind ==# 'extremity'
                 " Default to buffer extremity.
                 let p = i ? [0, line('$'), col([line('$'), '$']), 0] : s:BOF
+            else
+                throw 'sexp-ambiguous-target'
             endif
         endif
         let tgt.range[i] = p
@@ -4538,6 +4674,9 @@ function! sexp#replace(mode, count, P, ...)
         let tgt = s:replace__get_tgt(a:mode, cnt, -1, a:P, a:0 ? a:1 : {})
         " Design Decision: Let tail==1 represent put with P.
         call s:regput__impl(tgt, cnt)
+    catch /^sexp-ambiguous-target$/
+        call sexp#warn#msg(
+            \ "Malformed Lisp near cursor makes replace target ambiguous; aborting.")
     catch /sexp-warning:/
         call sexp#warn#msg(v:exception)
     catch
@@ -4898,8 +5037,7 @@ function! sexp#regput__maybe_execute_builtin(plug_name, mode, count, regname)
         return 0
     endif
     " Make sure builtin uses any provided register/count.
-    let prefix = (a:regname ==# '' || a:regname ==# '"' ? '' : ('"' . a:regname))
-        \ . (a:count > 0 ? a:count : '')
+    let prefix = s:regput__builtin_prefix(a:regname, a:count)
     if a:mode ==# 'x'
         " TODO: Verify that we can always trust range here.
         execute 'normal! gv' . prefix . cmd

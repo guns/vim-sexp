@@ -4228,7 +4228,7 @@ function! s:put__get_tgt(count, tail, ...)
                     if brkt[1]
                         let ret.range[i] = brkt
                         let ret.is_bra[i] = 1
-                    elseif adj.kind ==# 'bracket'
+                    elseif adj.kind !=# 'extremity'
                         " Design Decision: Abort smart paste (possibly with fallback to
                         " builtin) when sexp tree errors make continuing risky.
                         throw 'sexp-ambiguous-target'

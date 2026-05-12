@@ -5571,8 +5571,8 @@ function! s:yankdel_range__postadjust_positions(adj)
     endfor
 endfunction
 
-" Yank, delete or splice text in range defined by start/end, returning any deleted text,
-" and optionally adjusting input positions to account for deletions.
+" Yank, delete or splice text in range defined by start/end, returning any yanked/deleted
+" text, and optionally adjusting input positions to account for deletions.
 " Splice Note: If a string (rather than a boolean flag) is supplied for del_or_spl, the
 " range will be *replaced* by the provided text and the replaced text will be returned.
 " -- Optional Args --
@@ -5628,10 +5628,10 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
         let op = s:yankdel_range__preadjust_range(a:start, a:end, a:del_or_spl, inc)
         if op.err
             call sexp#warn#msg("yankdel_range: Internal error detected: " . op.errmsg)
-            return
+            return ret
         elseif empty(op.cmd)
             " NO-OP
-            return
+            return ret
         endif
         " See header comment on failsafe mechanism.
         " Note: Failsafe doesn't apply to a directed put.
@@ -5639,7 +5639,7 @@ function! s:yankdel_range(start, end, del_or_spl, ...)
             \ && sexp#range_has_non_ws(op.start, op.end, 1)
             call sexp#warn#msg("yankdel_range: Internal error detected:"
                 \ . " refusing to modify non-whitespace!")
-            return
+            return ret
         endif
         " Perform splice, directed put, delete or yank.
         if op.cmd != 'y'

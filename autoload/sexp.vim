@@ -1846,7 +1846,7 @@ function! s:trim_range_to_non_ws(start_pos, end_pos)
         return s:nullpos_pair
     endif
 
-    let trail = match(text, '\s*$')
+    let trail = match(text, '\_s*$')
     let range_start_byte = s:pos2byte(a:start_pos)
     let start_byte = range_start_byte + lead
     let end_byte = range_start_byte + trail - 1

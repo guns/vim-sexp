@@ -1565,7 +1565,7 @@ A string representing an |autocmd-pattern| for the |FileType|s in which you
 wish to activate vim-sexp mappings.
 >
         " Default
-        let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel'
+        let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel,janet'
 
 <
                                             *g:sexp_filetype_macro_characters*
@@ -1580,6 +1580,7 @@ builtin support are as follows:
                 \ 'lisp':    "#'`,@",
                 \ 'timl':    "#'`~@^_*",
                 \ 'fennel':  "#'`,@",
+                \ 'janet':   "|'~,;@",
                 \ }
 <
 Note: It is best to override only unsupported filetypes (or supported
@@ -2525,7 +2526,7 @@ in the filetypes of your choosing.
 >
         augroup VIM_SEXP_MAPPING
             autocmd!
-            autocmd FileType clojure,scheme,lisp,timl,fennel call s:vim_sexp_mappings()
+            autocmd FileType clojure,scheme,lisp,timl,fennel,janet call s:vim_sexp_mappings()
         augroup END
 <
 ==============================================================================

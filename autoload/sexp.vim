@@ -53,6 +53,7 @@ let s:filetype_macro_characters = {
     \ 'lisp':    "#'`,@",
     \ 'timl':    "#'`~@^_*",
     \ 'fennel':  "#'`,@",
+    \ 'janet':   "|'~,;@",
     \ }
 let s:default_macro_characters = s:filetype_macro_characters['scheme']
 let s:pairs = {

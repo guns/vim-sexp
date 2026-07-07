@@ -64,7 +64,7 @@ call s:deprecate_options([
 """ Global State {{{1
 
 if !exists('g:sexp_filetypes')
-    let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel'
+    let g:sexp_filetypes = 'clojure,scheme,lisp,timl,fennel,janet'
 endif
 
 if !exists('g:sexp_enable_insert_mode_mappings')

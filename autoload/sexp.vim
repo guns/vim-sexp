@@ -1359,11 +1359,29 @@ function! s:count_brackets(start, end, all_brackets, opening_brackets)
     while 1
         let [line, col] = searchpos(a:all_brackets, 'cnW')
 
-        " Start next iteration at next element if in ignored scope
+        " Skip past the current string/comment/char literal if bracket is in ignored scope.
         " Caveat: searchpos() returns [0,0] if no bracket found before EOF.
+        " Note: We used to move to the head of the next element here, but when no element
+        " follows (e.g., a comment containing a bracket is the last thing in a list),
+        " sexp#move_to_adjacent_element_terminal() falls back to the end of the current
+        " element, which may be the very bracket we just found, and the 'c' flag on
+        " searchpos() would then match it again forever.
         if line && s:is_rgn_type('str_com_chr', line, col)
             keepjumps call cursor(line, col)
-            call sexp#move_to_adjacent_element_terminal(1, 0, 0)
+            let term = sexp#current_element_terminal(1)
+            " Caveat: If region end can't be determined (or is somehow behind us), skip
+            " only the bracket itself; any subsequent brackets in the region will be
+            " skipped individually.
+            if !term[1] || sexp#compare_pos(term, [0, line, col, 0]) < 0
+                let term = [0, line, col, 0]
+            endif
+            " Break if region end doesn't precede end of range (nothing left to count).
+            if sexp#compare_pos(term, a:end) >= 0 | break | endif
+            if col([term[1], '$']) - 1 == term[2]
+                keepjumps call cursor(term[1] + 1, 1)
+            else
+                keepjumps call cursor(term[1], term[2] + 1)
+            endif
             continue
         endif
 
@@ -7302,7 +7320,7 @@ function! sexp#raise__final(ex, state, mode, func, ...)
     " Perform indent if auto-indent enabled *and* raise target is multiline.
     " Rationale: Raised target should start exactly where replaced list did; thus,
     " need for re-indent depends on what was raised, not what was replaced.
-    if ((g:sexp_auto_indent != -1 && g:sexp_auto_indent) || g:sexp_raise_does_indent)
+    if (g:sexp_auto_indent != -1 ? g:sexp_auto_indent : g:sexp_raise_does_indent)
         \ && s[1] != e[1]
         " Note: Though we use visual marks, it's important that we be in normal mode.
         call sexp#ensure_normal_mode()

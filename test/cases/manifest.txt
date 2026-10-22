@@ -1,0 +1,33 @@
+# One test per line: <file> <line> <col> <plug-command> [expect] [vim-option]
+#   file          case file in this directory; cursor is placed at <line>,<col>
+#   plug-command  <Plug>(name) to run in normal mode, without the <Plug>() wrapper
+#   expect        changed  (default) the buffer must differ from the input
+#                 noindent the raised list must keep its original 4-space indent
+#   vim-option    extra "let" assignment applied before the plugin loads
+# A test fails if Vim does not finish within the timeout (the hang this guards
+# against), exits with an error, or the expectation does not hold.
+trailing_comment_bracket.clj          1 6 sexp_raise_list
+trailing_comment_bracket.clj          1 6 sexp_splice_list
+trailing_comment_bracket_5line.clj    2 3 sexp_raise_list
+trailing_comment_bracket_5line.clj    2 3 sexp_raise_element
+trailing_string_bracket.clj           2 3 sexp_raise_list
+trailing_string_then_comment.clj      2 3 sexp_raise_list
+trailing_char_literal.clj             1 6 sexp_raise_list
+comment_bracket_not_last.clj          2 3 sexp_raise_list
+trailing_comment_no_bracket.clj       2 3 sexp_raise_list
+multiline_string_then_element.clj     2 3 sexp_raise_list
+multiline_string_then_element.clj     2 3 sexp_splice_list
+multiline_string_then_element.clj     2 3 sexp_raise_element
+comment_bracket_before_nested.clj     2 3 sexp_raise_list
+comment_bracket_before_nested.clj     2 3 sexp_splice_list
+comment_bracket_before_nested.clj     2 3 sexp_raise_element
+mixed_comment_regex_char.clj          2 3 sexp_raise_list
+mixed_comment_regex_char.clj          2 3 sexp_splice_list
+mixed_comment_regex_char.clj          2 3 sexp_raise_element
+trailing_multiline_string.clj         2 3 sexp_raise_list
+trailing_multiline_string.clj         2 3 sexp_splice_list
+trailing_multiline_string.clj         2 3 sexp_raise_element
+sibling_lists_trailing_comments.clj   2 3 sexp_raise_list
+sibling_lists_trailing_comments.clj   2 3 sexp_splice_list
+sibling_lists_trailing_comments.clj   2 3 sexp_raise_element
+auto_indent_off.clj                   2 3 sexp_raise_list noindent g:sexp_auto_indent=0
